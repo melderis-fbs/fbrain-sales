@@ -4,7 +4,9 @@ import { filas } from '@/lib/db'
 import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn, rango } from '@/motor/periodos'
 import { Tarjeta, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
-import { altaDeCatalogoAccion, altaDePersonaAccion, objetivoAccion, monedaBaseAccion } from './acciones'
+import { equipo } from '@/datos/personas'
+import { Equipo } from '@/componentes/Equipo'
+import { altaDeCatalogoAccion, objetivoAccion, monedaBaseAccion } from './acciones'
 
 export default async function Configuracion() {
   const usuario = await exigirUsuario()
@@ -12,9 +14,10 @@ export default async function Configuracion() {
 
   const hoy = hoyEn()
   const mes = rango('mes', hoy)
-  const [cats, monedaBase, objetivos] = await Promise.all([
+  const [cats, monedaBase, personas, objetivos] = await Promise.all([
     catalogos(),
     config<string>('moneda_base', 'USD'),
+    equipo(),
     filas<{ id: number; ambito: string; tipo: string; desde: string; hasta: string; valor: number; moneda: string; quien: string | null }>(
       `select o.id, o.ambito, o.tipo, o.desde, o.hasta, o.valor, o.moneda,
               coalesce(c.nombre, s.nombre) as quien
@@ -35,26 +38,9 @@ export default async function Configuracion() {
         </p>
       </div>
 
+      <Equipo personas={personas} yo={usuario.id} />
+
       <div className="rejilla g2">
-        <Tarjeta titulo="Closers">
-          <Lista items={cats.closers.map((c) => c.nombre)} />
-          <form action={altaDePersonaAccion} className="fila" style={{ marginTop: 10 }}>
-            <input type="hidden" name="tipo" value="closers" />
-            <input name="nombre" placeholder="Nombre del closer" required style={{ flex: 1, minWidth: 140 }} />
-            <input name="capacidadSemanal" placeholder="Llamadas/sem" inputMode="numeric" style={{ width: 120 }} />
-            <button type="submit" className="secundario">Agregar</button>
-          </form>
-        </Tarjeta>
-
-        <Tarjeta titulo="Setters">
-          <Lista items={cats.setters.map((s) => s.nombre)} />
-          <form action={altaDePersonaAccion} className="fila" style={{ marginTop: 10 }}>
-            <input type="hidden" name="tipo" value="setters" />
-            <input name="nombre" placeholder="Nombre del setter" required style={{ flex: 1, minWidth: 140 }} />
-            <button type="submit" className="secundario">Agregar</button>
-          </form>
-        </Tarjeta>
-
         <Tarjeta titulo="Fuentes">
           <Lista items={cats.fuentes.map((f) => f.nombre)} />
           <form action={altaDeCatalogoAccion} className="fila" style={{ marginTop: 10 }}>

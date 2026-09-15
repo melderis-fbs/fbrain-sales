@@ -3,9 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { exigirUsuario } from '@/lib/auth'
 import { exigir } from '@/lib/permisos'
-import { escribir } from '@/lib/db'
-import { plegar, oNulo } from '@/lib/texto'
+import { enTransaccion, escribir, escribirDevolviendo, fila } from '@/lib/db'
+import { clave as normalizar, plegar, oNulo } from '@/lib/texto'
+import { hashDeClave } from '@/lib/claves'
 import { anotar } from '@/datos/cambios'
+import { ROLES, type Rol } from '@/dominio/roles'
 
 /**
  * Toda variable de negocio se cambia desde acá, no tocando código.
@@ -19,27 +21,108 @@ function texto(datos: FormData, campo: string): string | null {
   return oNulo(datos.get(campo) === null ? null : String(datos.get(campo)))
 }
 
-export async function altaDePersonaAccion(datos: FormData): Promise<void> {
+/**
+ * Dar de alta a alguien del equipo.
+ *
+ * Una persona puede ser dos cosas y acá se resuelven juntas, que es lo que
+ * antes faltaba: la **cuenta** con la que entra y la **figura comercial** a
+ * cuyo nombre salen los números. Si un closer tiene cuenta pero no queda atada
+ * a su fila de `closers`, entra y no ve ninguno de sus leads — vacío por
+ * permiso, que desde afuera se lee como datos perdidos.
+ *
+ * Un closer o un setter puede no entrar a la aplicación: hace falta para cargar
+ * a alguien que ya no está pero cuyas ventas siguen contando. Los demás roles
+ * sin cuenta no significan nada, así que se exige.
+ */
+export async function crearPersonaAccion(_previo: string | null, datos: FormData): Promise<string | null> {
   const usuario = await exigirUsuario()
   exigir(usuario, 'configurar')
 
-  const tipo = String(datos.get('tipo'))
-  if (tipo !== 'closers' && tipo !== 'setters') throw new Error('Tipo desconocido.')
+  const nombre = normalizar(String(datos.get('nombre') ?? ''))
+  const funcion = String(datos.get('funcion') ?? '') as Rol
+  const comercial = funcion === 'closer' || funcion === 'setter'
+  const entra = comercial ? datos.get('entra') === 'on' : true
+  const email = (texto(datos, 'email') ?? '').toLowerCase()
+  const clave = String(datos.get('clave') ?? '')
 
-  const nombre = texto(datos, 'nombre')
-  if (!nombre) throw new Error('Hace falta un nombre.')
+  if (nombre === '') return 'Hace falta un nombre.'
+  if (!ROLES.includes(funcion)) return 'Elegí qué hace esta persona.'
+  if (entra) {
+    if (!email.includes('@')) return 'Para entrar a la aplicación hace falta un email.'
+    if (clave.length < 8) return 'La clave tiene que tener al menos 8 caracteres.'
+    const repetido = await fila('select 1 from usuarios where lower(email) = lower($1)', [email])
+    if (repetido) return 'Ya hay una cuenta con ese email.'
+  }
 
-  // `nombre_pleg` es único: dos veces «María» y «MARIA» no crean dos personas.
-  const capacidad = texto(datos, 'capacidadSemanal')
-  await escribir(
-    tipo === 'closers'
-      ? `insert into closers (nombre, nombre_pleg, capacidad_semanal) values ($1, $2, $3)
-         on conflict (nombre_pleg) do update set activo = true, nombre = excluded.nombre`
-      : `insert into setters (nombre, nombre_pleg) values ($1, $2)
-         on conflict (nombre_pleg) do update set activo = true, nombre = excluded.nombre`,
-    tipo === 'closers' ? [nombre, plegar(nombre), capacidad ? Number(capacidad) : null] : [nombre, plegar(nombre)],
-  )
+  const hash = entra ? await hashDeClave(clave) : null
 
+  await enTransaccion(async (cx) => {
+    let usuarioId: number | null = null
+    if (entra && hash) {
+      const creado = await escribirDevolviendo<{ id: number }>(
+        'insert into usuarios (email, nombre, rol, clave_hash) values ($1, $2, $3, $4) returning id',
+        [email, nombre, funcion, hash], cx,
+      )
+      usuarioId = creado.id
+    }
+
+    // Si ya existía la figura —cargada antes sin cuenta, o importada— se
+    // reactiva y se le ata la cuenta en vez de crear una segunda persona.
+    if (funcion === 'closer' || funcion === 'setter') {
+      const tabla = funcion === 'closer' ? 'closers' : 'setters'
+      await escribir(
+        `insert into ${tabla} (nombre, nombre_pleg, usuario_id) values ($1, $2, $3)
+         on conflict (nombre_pleg) do update
+            set activo = true, nombre = excluded.nombre,
+                usuario_id = coalesce(${tabla}.usuario_id, excluded.usuario_id)`,
+        [nombre, plegar(nombre), usuarioId], { esperadas: 1, cliente: cx },
+      )
+    }
+
+    if (usuarioId !== null) {
+      await anotar([{ entidad: 'config', entidadId: usuarioId, campo: 'alta de persona',
+                      anterior: null, nuevo: `${nombre} (${funcion})` }], usuario.id, cx)
+    }
+  })
+
+  revalidatePath('/configuracion')
+  return null
+}
+
+/** Cambiarle la clave a alguien. Sin esto, quien se la olvida queda afuera. */
+export async function cambiarClaveAccion(datos: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'configurar')
+
+  const usuarioId = Number(datos.get('usuarioId'))
+  const clave = String(datos.get('clave') ?? '')
+  if (clave.length < 8) throw new Error('La clave tiene que tener al menos 8 caracteres.')
+
+  await escribir('update usuarios set clave_hash = $1 where id = $2', [await hashDeClave(clave), usuarioId])
+  await anotar([{ entidad: 'config', entidadId: usuarioId, campo: 'clave',
+                  anterior: null, nuevo: 'cambiada' }], usuario.id)
+  revalidatePath('/configuracion')
+}
+
+/**
+ * Dar de baja a alguien, o volver a darle acceso.
+ *
+ * Se desactiva, no se borra: sus ventas, sus llamadas y su historial siguen
+ * contando. Y nadie se puede desactivar a sí mismo, que es la forma más rápida
+ * de quedarse sin ningún admin.
+ */
+export async function activarPersonaAccion(datos: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'configurar')
+
+  const usuarioId = Number(datos.get('usuarioId'))
+  const activo = datos.get('activo') === '1'
+  if (usuarioId === usuario.id && !activo) throw new Error('No te podés dar de baja a vos mismo.')
+
+  await escribir('update usuarios set activo = $1 where id = $2', [activo, usuarioId])
+  await anotar([{ entidad: 'config', entidadId: usuarioId, campo: 'acceso',
+                  anterior: activo ? 'sin acceso' : 'con acceso',
+                  nuevo: activo ? 'con acceso' : 'sin acceso' }], usuario.id)
   revalidatePath('/configuracion')
 }
 
