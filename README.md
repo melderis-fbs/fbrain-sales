@@ -160,20 +160,75 @@ depende de una tabla que en producción no existe.
 
 ---
 
-## Publicar en Vercel
+## Conectar Supabase la primera vez
 
-1. **Add New → Project** e importá este repositorio. El framework lo detecta solo.
-2. En **Settings → Environment Variables** cargá `DATABASE_URL` con la cadena del
-   **pooler** (6543, modo transacción).
-3. Creá las tablas una vez contra ese mismo proyecto: `npm run migrar` desde tu
-   máquina, o —sin terminal— pegá en el SQL Editor de Supabase el contenido de
-   `supabase/migrations/`, los tres archivos en orden.
-4. Abrí la URL. La aplicación te lleva sola a `/instalacion` y ahí creás el
-   primer usuario, que queda como admin. Después de eso esa pantalla se cierra
-   sola y no vuelve a existir.
+Se puede hacer entero desde el navegador, sin terminal. Son quince minutos.
+
+### 1 · Crear la base
+
+En [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
+
+- **Name**: `founders-sales`.
+- **Database Password**: usá el botón **Generate a password** y **guardala** —
+  no se vuelve a mostrar. Si preferís escribirla vos, que no lleve `@ : / ? # [ ]`:
+  esos caracteres rompen la cadena de conexión y hay que escaparlos a mano.
+- **Region**: la más cercana. Para Argentina, `South America (São Paulo)`.
+
+Tarda un par de minutos en quedar lista.
+
+### 2 · Copiar la cadena de conexión
+
+Con el proyecto abierto, botón **Connect** (arriba). En **Connection string**
+elegí **Transaction pooler** y copiá la cadena. Termina en `:6543/postgres` y se
+ve así:
+
+```
+postgresql://postgres.abcdefgh:[YOUR-PASSWORD]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres
+```
+
+Dos cosas que se pasan por alto, y son las que hacen perder la tarde:
+
+1. **Reemplazá `[YOUR-PASSWORD]`** por la contraseña del paso 1, corchetes
+   incluidos. La cadena viene con el placeholder puesto.
+2. **Tiene que ser la del pooler, puerto 6543.** La *Direct connection*, la de
+   `5432`, va sólo por IPv6 y desde Vercel no se llega. Es el error más común.
+
+### 3 · Crear las tablas
+
+**SQL Editor** (menú de la izquierda) → **New query** → pegá los tres archivos de
+`supabase/migrations/` en orden y **Run**. Son idempotentes: si los corrés dos
+veces no rompen nada.
+
+Tienen que quedar 19 tablas. Se ven en **Table Editor**.
+
+### 4 · Cargarla en Vercel
+
+En el proyecto de Vercel: **Settings → Environment Variables**.
+
+- **Key**: `DATABASE_URL`
+- **Value**: la cadena del paso 2, ya con la contraseña puesta
+- Marcá los tres entornos (Production, Preview, Development) → **Save**
+
+**Redeployá.** Las variables se leen al construir: el deploy que ya estaba
+hecho no se entera. En **Deployments**, en el último, los tres puntitos →
+**Redeploy**.
+
+### 5 · Entrar
+
+Abrí la URL. La aplicación te lleva sola a `/instalacion` y ahí creás el primer
+usuario, que queda como admin. Esa pantalla se cierra apenas existe alguien.
 
 En cada paso, si falta algo, la aplicación lo dice en pantalla con los pasos
 para arreglarlo: no hay que mirar logs para saber qué falta.
+
+> En el plan gratuito, un proyecto de Supabase se **pausa** después de una
+> semana sin uso y la aplicación deja de conectarse hasta que lo despertás desde
+> el dashboard.
+
+## Publicar en Vercel
+
+1. **Add New → Project** e importá este repositorio. El framework lo detecta solo.
+2. Seguí los cinco pasos de arriba.
 
 La cookie de sesión sale con `Secure` en producción, así que la aplicación tiene
 que servirse por HTTPS. En Vercel ya lo está.
