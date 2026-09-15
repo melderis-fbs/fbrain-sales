@@ -1,0 +1,199 @@
+/* FOUNDERS SALES OS
+ *
+ * Pocos colores y cada uno con significado. Verde: bien. Amarillo: atención.
+ * Rojo: problema. Beige: seña —ni venta ni seguimiento—. Negro: lo principal
+ * y la navegación. Gris: lo secundario y «sin datos».
+ *
+ * Gris NO es verde: un dato que no está no puede salir del color que hace que
+ * nadie lo mire.
+ */
+
+:root {
+  --negro: #111111;
+  --tinta: #1c1c1c;
+  --carbon: #191919;
+  --papel: #FAFAF8;
+  --crema: #F2EEE9;
+  --borde: #E6E1DA;
+  --gris: #6b6b6b;
+  --gris-claro: #9a9a9a;
+
+  --verde: #1f7a45;
+  --verde-suave: #e6f4ec;
+  --amarillo: #b07c12;
+  --amarillo-suave: #fdf3dd;
+  --rojo: #b3261e;
+  --rojo-suave: #fbe9e7;
+  --sena: #A8946F;
+  --sena-suave: #f4efe4;
+
+  --radio: 14px;
+  --sombra: 0 1px 2px rgba(17, 17, 17, .06), 0 4px 16px rgba(17, 17, 17, .04);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 4px; color: var(--negro); }
+h2 { font-size: 17px; font-weight: 700; margin: 0 0 12px; color: var(--negro); }
+h3 { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: var(--negro); }
+
+.kicker {
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gris);
+}
+
+/* ── El marco ───────────────────────────────────────────────────────────── */
+
+.marco { display: flex; min-height: 100vh; }
+
+.lateral {
+  width: 208px;
+  flex: 0 0 208px;
+  background: var(--negro);
+  color: #fff;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lateral .marca { font-weight: 800; letter-spacing: -.02em; font-size: 15px; margin-bottom: 18px; color: #fff; }
+.lateral .marca small { display: block; font-weight: 500; font-size: 11px; color: var(--sena); letter-spacing: .14em; text-transform: uppercase; }
+.lateral a {
+  display: block; padding: 8px 10px; border-radius: 9px;
+  color: #cfcfcf; font-size: 14px;
+}
+.lateral a:hover { background: #1f1f1f; color: #fff; text-decoration: none; }
+.lateral a.activo { background: #fff; color: var(--negro); font-weight: 650; }
+.lateral .pie { margin-top: auto; padding-top: 16px; border-top: 1px solid #2a2a2a; font-size: 12px; color: var(--gris-claro); }
+
+.contenido { flex: 1; padding: 26px 30px 60px; max-width: 1400px; min-width: 0; }
+
+/* ── Piezas ─────────────────────────────────────────────────────────────── */
+
+.tarjeta {
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 16px;
+  box-shadow: var(--sombra);
+}
+
+.rejilla { display: grid; gap: 12px; }
+.rejilla.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.rejilla.g3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.rejilla.g4 { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
+
+.numero { font-size: 30px; font-weight: 800; letter-spacing: -.03em; color: var(--negro); line-height: 1.1; }
+.numero.chico { font-size: 21px; }
+.etiqueta { font-size: 12px; color: var(--gris); font-weight: 600; }
+.contra { font-size: 12px; color: var(--gris); margin-top: 2px; }
+.sindato { color: var(--gris-claro); font-weight: 600; font-size: 13px; }
+
+/* Los colores nunca van solos: siempre con su palabra al lado. */
+.pildora {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: 99px;
+  font-size: 12px; font-weight: 650; white-space: nowrap;
+}
+.pildora.verde    { background: var(--verde-suave);    color: var(--verde); }
+.pildora.amarillo { background: var(--amarillo-suave); color: var(--amarillo); }
+.pildora.rojo     { background: var(--rojo-suave);     color: var(--rojo); }
+.pildora.sena     { background: var(--sena-suave);     color: #7a6a44; }
+.pildora.gris     { background: #f0f0ee;               color: var(--gris); }
+
+.barra { height: 9px; border-radius: 99px; background: #eceae6; overflow: hidden; }
+.barra > i { display: block; height: 100%; border-radius: 99px; background: var(--negro); }
+.barra.verde > i    { background: var(--verde); }
+.barra.amarillo > i { background: var(--amarillo); }
+.barra.rojo > i     { background: var(--rojo); }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--gris); font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--borde);
+  white-space: nowrap;
+}
+td { padding: 9px 10px; border-bottom: 1px solid #f2f0ec; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla-scroll { overflow-x: auto; }
+
+/* ── Formularios ────────────────────────────────────────────────────────── */
+
+label { display: block; font-size: 12px; font-weight: 650; color: var(--gris); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%; padding: 8px 10px; font: inherit; font-size: 14px;
+  border: 1px solid var(--borde); border-radius: 9px; background: #fff; color: var(--tinta);
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--negro); outline-offset: -1px; }
+textarea { min-height: 76px; resize: vertical; }
+.campo { margin-bottom: 12px; }
+
+button, .boton {
+  display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+  padding: 8px 15px; border-radius: 99px; border: 1px solid var(--negro);
+  background: var(--negro); color: #fff; font: inherit; font-size: 14px; font-weight: 650;
+  cursor: pointer;
+}
+button:hover, .boton:hover { background: #000; text-decoration: none; }
+button.secundario, .boton.secundario { background: #fff; color: var(--negro); }
+button.secundario:hover, .boton.secundario:hover { background: var(--crema); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 16px; }
+.filtros .campo { margin-bottom: 0; min-width: 140px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips a {
+  padding: 5px 12px; border-radius: 99px; border: 1px solid var(--borde);
+  background: #fff; font-size: 13px; font-weight: 600; color: var(--gris);
+}
+.chips a.activo { background: var(--negro); color: #fff; border-color: var(--negro); }
+.chips a:hover { text-decoration: none; border-color: var(--negro); }
+
+.aviso {
+  border-radius: var(--radio); padding: 12px 14px; font-size: 14px;
+  border: 1px solid var(--borde); background: #fff; margin-bottom: 14px;
+}
+.aviso.atencion { background: var(--amarillo-suave); border-color: #eedfb4; color: #6b4e08; }
+.aviso.problema { background: var(--rojo-suave); border-color: #f3ccc8; color: #7d1a15; }
+
+.vacio { padding: 34px 16px; text-align: center; color: var(--gris); font-size: 14px; }
+
+.pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); margin-bottom: 16px; flex-wrap: wrap; }
+.pestanas a {
+  padding: 8px 13px; font-size: 14px; font-weight: 600; color: var(--gris);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.pestanas a.activo { color: var(--negro); border-bottom-color: var(--negro); }
+.pestanas a:hover { text-decoration: none; color: var(--negro); }
+
+.entre { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.apilado { display: flex; flex-direction: column; gap: 14px; }
+.fila { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+@media (max-width: 860px) {
+  .marco { flex-direction: column; }
+  .lateral { width: 100%; flex: none; flex-direction: row; overflow-x: auto; padding: 10px; gap: 4px; align-items: center; }
+  .lateral .marca, .lateral .pie { display: none; }
+  .lateral a { white-space: nowrap; }
+  .contenido { padding: 18px 14px 50px; }
+  .dos { grid-template-columns: 1fr; }
+}

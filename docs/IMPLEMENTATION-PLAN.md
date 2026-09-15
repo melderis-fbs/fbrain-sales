@@ -37,8 +37,9 @@ raíz: **no hay un registro que editar**. Una agenda es una fila en una hoja de
 cálculo que llegó por un webhook de Zapier desde un mensaje de Slack. No tiene
 id, no tiene historia, y la aplicación que la muestra es de sólo lectura.
 
-> Esto es la primera pregunta del final: cuál de estos es «el proyecto actual»
-> contra el que hay que no romper nada. Ver Parte 15.
+> Decidido (Parte 15): el Sales OS se construye nuevo en `fbrain-sales`. Nada de
+> lo que hay se rompe — cada aplicación sigue andando hasta que una fase la
+> reemplace — y se reutilizan las fundaciones de `founders-brain`.
 
 ---
 
@@ -118,7 +119,8 @@ es un problema de *quién* hace la aritmética.
   un jsonb no se calculan percentiles, ni evoluciones, ni patrones por closer.
 - Cuelga de `clientes`, que son los **clientes del programa**, no el equipo
   comercial de Founders. El analizador está construido para que cada cliente
-  analice *sus* llamadas con *su* playbook. Ver la pregunta 4 de la Parte 15.
+  analice *sus* llamadas con *su* playbook. Hay que confirmarlo antes de la Fase 2
+  (Parte 15 bis).
 - El `talk_ratio` se lo pide al modelo. Eso se cuenta en código.
 
 ### 1.3 · Biblioteca comercial (`clientes`)
@@ -193,7 +195,8 @@ se cambie desde la app.
 copiar de la equivocada: la buena es `founders-brain`.
 
 **9 · La escritura de agendas pasa por Slack → Zapier → Apps Script.** Funciona,
-y hay que decidir si sigue siendo la puerta de entrada (pregunta 2 de la Parte 15).
+y por ahora no se toca: la Fase 1 carga a mano y la integración entra después
+(Parte 15).
 
 ---
 
@@ -323,8 +326,7 @@ El documento maestro lista las tablas en inglés (`leads`, `opportunities`,
 `sesiones`, `campo_historial`, `escribir()`, `alcanceDe()`—. Mezclar los dos
 idiomas en el mismo esquema es peor que elegir cualquiera de los dos.
 
-**Propuesta: castellano**, con esta equivalencia contra el documento. Si preferís
-inglés, se cambia ahora y no cuesta nada; después sí. (Pregunta 3 de la Parte 15.)
+**Decidido: castellano**, con esta equivalencia contra el documento maestro.
 
 ### 5.2 · Núcleo (Fase 0–1)
 
@@ -793,8 +795,8 @@ seguimientos pendientes y el huso horario. La decisión la toma una persona.
 ### 12.8 · Atribución
 
 `oportunidad_participaciones` guarda quién tocó cada oportunidad y en qué rol. La
-regla de reparto por defecto es una decisión de negocio, no técnica → pregunta 5
-de la Parte 15. Mientras no se defina, se guarda la participación completa y se
+regla de reparto por defecto es una decisión de negocio, no técnica → Parte 15
+bis. Mientras no se defina, se guarda la participación completa y se
 reporta el cierre a nombre de los dos, sin repartir.
 
 ---
@@ -862,14 +864,14 @@ reanalizan con la v1 en background, y ahí sí cuentan.
 
 ## Parte 14 · Fases y prioridades
 
-### Fase 0 · Fundaciones — 1 semana
+### Fase 0 · Fundaciones — **construida**
 
 Lo que la Fase 1 del documento da por supuesto. Auth y sesión, `usuarios` con los
 seis roles, `alcanceDe()` extendido, migraciones, `revision.ts`, pantallas de
 error, tabla `config`, tabla `cambios` (audit), tabla `trabajos` y el drenador,
 registro de costo del modelo. Casi todo se copia de `founders-brain`.
 
-### Fase 1 · Foundation
+### Fase 1 · Foundation — **construida**
 
 `leads`, `oportunidades`, `llamadas`, closers, setters, fuentes, funnels,
 resultados, señas, ventas, pagos. **Editar leads y reasignar closer con
@@ -918,71 +920,79 @@ aprendizajes semanales, alertas, reportes automáticos.
 
 ---
 
-## Parte 15 · Qué falta definir
+## Parte 15 · Lo que ya se decidió
 
-Decisiones funcionales que **no voy a inventar**. Las cinco primeras bloquean; el
-resto se pueden contestar sobre la marcha.
+Estas cinco estaban abiertas cuando se escribió el plan. Están contestadas y la
+Fase 1 se construyó sobre ellas.
 
-**1 · ¿Cuál es «el proyecto actual»?** Los dos repos a los que tengo permiso de
-escribir están vacíos. ¿El Sales OS se construye nuevo en `fbrain-sales`
-reutilizando las fundaciones de `founders-brain`, o hay que partir del dashboard
-de `claude/`, o del analizador de `synoma`? Cambia todo el plan de migración.
+**1 · Repositorio nuevo, desde cero.** No hay nada que romper: el dashboard de
+`claude/`, el analizador de `synoma` y la biblioteca de `clientes` siguen
+andando hasta que cada fase los reemplace. El Sales OS se construye acá,
+reutilizando las fundaciones de `founders-brain` (escrituras verificadas,
+permisos por alcance, migraciones, revisión del esquema, pantallas de error).
 
-**2 · ¿Por dónde entran las agendas?** Hoy: Slack → Zapier → Apps Script →
-planilla. ¿Sigue siendo así y el Sales OS lee de ahí, se conecta directo a la
-fuente (GoHighLevel, Calendly, Meta), o el setter carga a mano en la aplicación?
-La Fase 1 se diseña distinto en cada caso.
+**2 · Los leads entran a mano ahora; la integración viene después.** La Fase 1
+tiene alta manual con detección de duplicados. La conexión automática a la
+fuente de agendas (GoHighLevel / Calendly / Meta, o el camino Slack → Zapier que
+existe hoy) entra en una fase posterior, cuando esté decidido cuál es.
 
-**3 · La seña y la plata.** Tres preguntas que cambian todos los números del
-tablero: ¿el importe de la seña cuenta en **Cash Collected**? ¿cuenta para el
-**objetivo mensual**? ¿con qué probabilidad entra al **forecast**? Mi supuesto
-por ahora: **sí a cash** (es dinero cobrado), **no al objetivo de facturación**
-(no hay venta todavía), y al forecast con la probabilidad histórica de conversión
-de seña a venta. Decime si es así.
+**3 · La seña se ve sólo en su propia tarjeta.** No entra a Cash Collected, no
+entra a facturación y no entra al forecast mientras esté abierta. Aparece en su
+tarjeta y en el embudo, y recién impacta cuando se convierte en venta. Al
+convertirse, su importe se registra como el **primer pago** de esa venta, así el
+dinero se cuenta una vez: no dos, y no cero.
 
-**4 · Las transcripciones de `synoma`, ¿de quién son?** El analizador está armado
-por `cliente_id` con playbook propio, o sea que parece pensado para que **cada
-cliente del programa analice sus propias llamadas**. Si es así, esas
-transcripciones **no sirven** para el matching de los closers de Founders, y la
-Fase 5 arranca desde cero. ¿Hay transcripciones de llamadas de venta de Founders
-en algún lado (Fathom, Fireflies, Zoom, Drive)?
+**4 · El analizador se ve después.** Primero lo grueso: leads, oportunidades,
+resultados, dinero y tablero. La pregunta sobre de quién son las transcripciones
+de `synoma` —de los clientes del programa o de los closers de Founders— queda
+abierta y hay que contestarla antes de la Fase 2, porque decide si el matching
+arranca con historia o desde cero.
 
-**5 · Atribución del cierre.** Closer A toma la primera llamada, Closer B cierra
+**5 · Castellano en el esquema y en el código**, por coherencia con el resto de
+la casa. La equivalencia contra los nombres del documento maestro está en la
+Parte 5.1.
+
+---
+
+## Parte 15 bis · Lo que todavía falta definir
+
+Ninguna bloquea la Fase 1, que ya está construida. La 5 y la 10 hay que
+contestarlas antes de arrancar el analizador.
+
+**1 · Atribución del cierre.** Closer A toma la primera llamada, Closer B cierra
 en la segunda. ¿Cómo se reparte para comisiones y para performance? ¿Mitad y
 mitad, 30/70, el que cierra se lleva todo pero la performance se mide por
 participación? Y para comisiones, ¿el criterio es el mismo?
 
-**6 · Nombres del esquema: castellano o inglés.** Recomiendo castellano por
-coherencia con el resto de la casa. Cambiarlo ahora no cuesta; después sí.
-
-**7 · Autenticación.** Recomiendo la sesión por cookie de `founders-brain` en vez
+**2 · Autenticación.** Para la Fase 1 se usó la sesión por cookie de
+`founders-brain`. Recomiendo la sesión por cookie de `founders-brain` en vez
 de Supabase Auth: ya está resuelta, probada, y necesitamos igual una tabla
 `usuarios` propia para los seis roles. El documento menciona Supabase Auth —
 ¿hay algún motivo (SSO, Google) para usarlo?
 
-**8 · Objetivos.** ¿El objetivo mensual es sólo de empresa, o también por closer
+**3 · Objetivos.** ¿El objetivo mensual es sólo de empresa, o también por closer
 y por setter? ¿Se define en USD, en pesos, o en los dos?
 
-**9 · Moneda.** ¿El sistema opera en USD, en pesos, o en ambos con conversión?
+**4 · Moneda.** ¿El sistema opera en USD, en pesos, o en ambos con conversión?
 Si son ambos, ¿con qué cotización y quién la carga?
 
-**10 · Las dimensiones del Call Score.** Las ocho de la Parte 10.3 están claras,
+**5 · Las dimensiones del Call Score.** Las ocho de la Parte 10.3 están claras,
 pero las **anclas de cada nivel** tienen que salir del método de Founders, no de
 mí. Necesito, para cada dimensión, cómo se ve un 4 y cómo se ve un 1 en una
 llamada real. Es media hora con quien entrena a los closers y es lo que define si
 el analizador sirve.
 
-**11 · Playbook.** ¿Hay un script único de Founders contra el que se evalúa, o
+**6 · Playbook.** ¿Hay un script único de Founders contra el que se evalúa, o
 cada closer tiene el suyo? `synoma` tiene `sales_playbooks` por cliente.
 
-**12 · Tipos de sesión.** «Primera sesión», «segunda sesión», «onboarding»
+**7 · Tipos de sesión.** «Primera sesión», «segunda sesión», «onboarding»
 aparecen en el Tracker. ¿Cuál es la lista completa y cuáles cuentan como
 oportunidad nueva?
 
-**13 · Comisiones.** El porcentaje está hardcodeado hoy. ¿Es uno solo? ¿Cambia
+**8 · Comisiones.** El porcentaje está hardcodeado hoy. ¿Es uno solo? ¿Cambia
 por closer, por programa, por tramo de facturación? ¿El setter también comisiona?
 
-**14 · Volumen.** ¿Cuántas llamadas por mes? De eso depende cuándo las fases 4 y
+**9 · Volumen.** ¿Cuántas llamadas por mes? De eso depende cuándo las fases 4 y
 5 tienen sentido y cuánto va a costar el análisis mensual.
 
 ---
