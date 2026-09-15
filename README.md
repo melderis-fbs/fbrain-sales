@@ -174,6 +174,28 @@ depende de una tabla que en producción no existe.
 La cookie de sesión sale con `Secure` en producción, así que la aplicación tiene
 que servirse por HTTPS. En Vercel ya lo está.
 
+### Si el deploy falla
+
+Estas dos están declaradas en el repo, así que Vercel no las tiene que adivinar:
+`engines.node` en `package.json` (Next 15.5 necesita Node 20 o más) y
+`vercel.json` con `framework: nextjs`, que fija el preset y el directorio de
+salida.
+
+Si igual falla, el build **no** es lo que hay que mirar primero: `npm ci` +
+`npm run build` sobre un clon limpio, sin ninguna variable de entorno y sin
+devDependencies, pasa. Entonces mirá la configuración del proyecto en Vercel:
+
+| Dónde | Qué tiene que decir |
+|---|---|
+| Settings → General → Framework Preset | **Next.js**. Si el proyecto se creó cuando el repo estaba vacío, suele quedar en «Other» y el build termina en «No Output Directory named "public" found» |
+| Settings → General → Root Directory | vacío — el proyecto está en la raíz del repo |
+| Settings → General → Build & Development Settings | sin overrides: ni Build Command ni Install Command ni Output Directory |
+| Settings → General → Node.js Version | 20 o más |
+| Settings → Git → Production Branch | la rama donde está el código |
+
+El error real siempre está en el **Build Log** del deployment, en la primera
+línea roja. Es lo único que dice qué pasó.
+
 ---
 
 ## Qué falta, y en qué orden
