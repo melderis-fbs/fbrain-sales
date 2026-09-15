@@ -41,9 +41,10 @@ export async function revisar(): Promise<Problema | null> {
       titulo: 'Falta la conexión a la base',
       detalle: 'La variable DATABASE_URL no está cargada, así que la aplicación no tiene a dónde conectarse.',
       pasos: [
-        'En Supabase: botón Connect, arriba del proyecto.',
-        'Copiá la cadena del pooler en modo transacción (puerto 6543).',
+        'En Neon: el botón Connect del proyecto, con Connection pooling prendido.',
+        'En Supabase: botón Connect → Transaction pooler (puerto 6543).',
         'En local va en .env.local; en Vercel, en Settings → Environment Variables.',
+        'Si la acabás de cargar en Vercel, redeployá: las variables se leen al construir.',
       ],
     }
   }
@@ -56,22 +57,25 @@ export async function revisar(): Promise<Problema | null> {
       return {
         titulo: 'La contraseña de la base no es la correcta',
         detalle: 'La cadena llega al servidor pero el usuario o la contraseña no coinciden.',
-        pasos: ['Regenerá la contraseña en Supabase → Project Settings → Database.',
+        pasos: ['Fijate que reemplazaste el marcador de la contraseña en la cadena.',
+                'Si no la tenés, regenerala: en Neon, Connection Details → Reset password; en Supabase, Project Settings → Database.',
                 'Actualizá DATABASE_URL donde esté cargada.'],
       }
     }
     if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ENETUNREACH/i.test(mensaje)) {
       return {
         titulo: 'No se llega al servidor de la base',
-        detalle: 'El caso más común al publicar es usar la conexión directa en vez del pooler. ' +
-                 'La directa (puerto 5432) va sólo por IPv6 y desde Vercel no se llega.',
-        pasos: ['Usá la cadena del pooler en modo transacción, puerto 6543.'],
+        detalle: 'El caso más común al publicar es usar la conexión directa en vez de la del pooler. ' +
+                 'Desde una función de Vercel hay que entrar por el pooler.',
+        pasos: ['En Neon: la cadena con «-pooler» en el nombre del host.',
+                'En Supabase: la del Transaction pooler, puerto 6543. La directa (5432) va sólo por IPv6 y desde Vercel no se llega.'],
       }
     }
     return {
       titulo: 'La base no responde',
       detalle: 'La conexión falló antes de poder leer nada.',
-      pasos: ['Revisá que el proyecto de Supabase esté activo y no pausado.'],
+      pasos: ['Revisá que el proyecto esté activo y no pausado.',
+              'En el plan gratuito de Supabase se pausa solo tras una semana sin uso y hay que despertarlo a mano.'],
     }
   }
 
@@ -89,7 +93,7 @@ export async function revisar(): Promise<Problema | null> {
       detalle: `No están estas tablas: ${faltan.map((f) => f.tabla).join(', ')}. ` +
                `Salen de: ${migraciones.join(', ')}.`,
       pasos: ['Corré `npm run migrar` apuntando a esta misma base.',
-              'O, sin terminal: abrí el SQL Editor de Supabase y pegá ahí los archivos de supabase/migrations en orden.'],
+              'O, sin terminal: pegá los archivos de supabase/migrations, en orden, en el editor SQL de tu base (Neon: SQL Editor; Supabase: SQL Editor).'],
     }
   }
 

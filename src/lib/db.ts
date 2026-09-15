@@ -33,7 +33,9 @@ export class ErrorDeEscritura extends Error {
  * pisa lo que le pongamos acá con lo que diga la cadena. Si la cadena trae
  * `sslmode=`, manda la cadena, porque es alguien eligiendo a propósito. Si no
  * dice nada, ciframos igual pero sin validar el certificado —que es lo que
- * necesita Supabase, con su propia autoridad— y en un Postgres local, nada.
+ * necesita la conexión directa de Supabase, con su propia autoridad— y en un
+ * Postgres local, nada. Neon trae `sslmode` en la cadena, así que decide ella y
+ * el certificado se valida de verdad.
  */
 export function opcionesDePool(url: string) {
   const esLocal = /@(localhost|127\.0\.0\.1)/.test(url)
@@ -53,8 +55,9 @@ function crearPool(): Pool {
   const url = process.env.DATABASE_URL
   if (!url) {
     throw new Error(
-      'Falta DATABASE_URL. En Supabase está en el botón Connect, arriba del proyecto: ' +
-        'la cadena del pooler en modo transacción (puerto 6543).',
+      'Falta DATABASE_URL. Es la cadena de conexión del pooler de tu Postgres: ' +
+        'en Neon, el botón Connect con Connection pooling prendido; ' +
+        'en Supabase, Connect → Transaction pooler (puerto 6543).',
     )
   }
   return new Pool(opcionesDePool(url))

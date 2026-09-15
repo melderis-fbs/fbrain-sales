@@ -160,58 +160,62 @@ depende de una tabla que en producción no existe.
 
 ---
 
-## Conectar Supabase la primera vez
+## Conectar la base la primera vez
 
 Se puede hacer entero desde el navegador, sin terminal. Son quince minutos.
 
+Va con **[Neon](https://neon.tech)**, que es Postgres a secas y en el plan
+gratuito no te topa en dos proyectos como Supabase. Si preferís Supabase, los
+pasos son los mismos cambiando de dónde sale la cadena (ver más abajo): a la
+aplicación le da igual, habla Postgres plano por `pg`.
+
 ### 1 · Crear la base
 
-En [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
+En [console.neon.tech](https://console.neon.tech) → **New Project**.
 
-- **Name**: `founders-sales`.
-- **Database Password**: usá el botón **Generate a password** y **guardala** —
-  no se vuelve a mostrar. Si preferís escribirla vos, que no lleve `@ : / ? # [ ]`:
-  esos caracteres rompen la cadena de conexión y hay que escaparlos a mano.
-- **Region**: la más cercana. Para Argentina, `South America (São Paulo)`.
-
-Tarda un par de minutos en quedar lista.
+- **Name**: `founders-sales`
+- **Region**: la más cercana. Para Argentina, `AWS South America (São Paulo)`.
+- La versión de Postgres, la que venga.
 
 ### 2 · Copiar la cadena de conexión
 
-Con el proyecto abierto, botón **Connect** (arriba). En **Connection string**
-elegí **Transaction pooler** y copiá la cadena. Termina en `:6543/postgres` y se
-ve así:
+Apenas se crea te la muestra; después está en **Connect** o en el panel
+**Connection Details** del proyecto.
+
+- Dejá **Connection pooling** prendido. La cadena tiene que decir **`-pooler`**
+  en el nombre del host: desde una función de Vercel hay que entrar por el
+  pooler, no por la conexión directa.
+- Copiala con la contraseña incluida (hay un botón para mostrarla).
+
+Queda así:
 
 ```
-postgresql://postgres.abcdefgh:[YOUR-PASSWORD]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres
+postgresql://neondb_owner:CLAVE@ep-nombre-123456-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require
 ```
 
-Dos cosas que se pasan por alto, y son las que hacen perder la tarde:
-
-1. **Reemplazá `[YOUR-PASSWORD]`** por la contraseña del paso 1, corchetes
-   incluidos. La cadena viene con el placeholder puesto.
-2. **Tiene que ser la del pooler, puerto 6543.** La *Direct connection*, la de
-   `5432`, va sólo por IPv6 y desde Vercel no se llega. Es el error más común.
+Un retoque opcional: cambiá `sslmode=require` por **`sslmode=verify-full`**. Hoy
+hacen exactamente lo mismo —el certificado se valida igual—, pero `require` está
+por cambiar de significado en la próxima versión de `pg` y mientras tanto
+imprime un aviso de deprecación en los logs.
 
 ### 3 · Crear las tablas
 
-**SQL Editor** (menú de la izquierda) → **New query** → pegá los tres archivos de
-`supabase/migrations/` en orden y **Run**. Son idempotentes: si los corrés dos
-veces no rompen nada.
+En el proyecto → **SQL Editor** → pegá los tres archivos de
+`supabase/migrations/` en orden y ejecutá. Son idempotentes: correrlos dos veces
+no rompe nada.
 
-Tienen que quedar 19 tablas. Se ven en **Table Editor**.
+Tienen que quedar **19 tablas**. Se ven en **Tables**.
 
 ### 4 · Cargarla en Vercel
 
 En el proyecto de Vercel: **Settings → Environment Variables**.
 
 - **Key**: `DATABASE_URL`
-- **Value**: la cadena del paso 2, ya con la contraseña puesta
+- **Value**: la cadena del paso 2
 - Marcá los tres entornos (Production, Preview, Development) → **Save**
 
-**Redeployá.** Las variables se leen al construir: el deploy que ya estaba
-hecho no se entera. En **Deployments**, en el último, los tres puntitos →
-**Redeploy**.
+**Redeployá.** Las variables se leen al construir: el deploy que ya estaba hecho
+no se entera. En **Deployments**, en el último, los tres puntitos → **Redeploy**.
 
 ### 5 · Entrar
 
@@ -221,9 +225,22 @@ usuario, que queda como admin. Esa pantalla se cierra apenas existe alguien.
 En cada paso, si falta algo, la aplicación lo dice en pantalla con los pasos
 para arreglarlo: no hay que mirar logs para saber qué falta.
 
-> En el plan gratuito, un proyecto de Supabase se **pausa** después de una
-> semana sin uso y la aplicación deja de conectarse hasta que lo despertás desde
-> el dashboard.
+> Neon **suspende** la base después de unos minutos sin uso y la despierta sola
+> en el primer pedido. No hay que hacer nada: sólo que esa primera consulta
+> tarda un segundo más.
+
+### Si preferís Supabase
+
+Cambia sólo de dónde sale la cadena. Botón **Connect** → **Connection string** →
+**Transaction pooler**, la que termina en `:6543/postgres`. Dos cuidados:
+
+1. Viene con `[YOUR-PASSWORD]` sin reemplazar, corchetes incluidos.
+2. Tiene que ser la del pooler. La *Direct connection*, la de `5432`, va sólo
+   por IPv6 y desde Vercel no se llega.
+
+Y tené en cuenta que el plan gratuito permite **dos proyectos activos por
+organización**, y que un proyecto sin uso se **pausa** a la semana y hay que
+despertarlo a mano desde el dashboard.
 
 ## Publicar en Vercel
 
