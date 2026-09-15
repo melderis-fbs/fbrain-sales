@@ -21,7 +21,6 @@ Necesitás Node 22 y un proyecto de Supabase (o cualquier Postgres).
 npm install
 cp .env.example .env.local        # y poné ahí tu DATABASE_URL
 npm run migrar                    # crea las tablas
-npm run seed -- tu@email.com "Tu Nombre" tuclave
 npm run dev                       # http://localhost:3000
 ```
 
@@ -39,7 +38,7 @@ Vercel no se llega: es el error más común al publicar.
 | `npm test` | Las pruebas. Las que escriben necesitan `DATABASE_URL_PRUEBAS` |
 | `npm run migrar` | Aplica `supabase/migrations/*.sql` en orden |
 | `npm run esquema` | Las imprime todas juntas, para pegar en el SQL Editor |
-| `npm run seed -- <email> "<nombre>" <clave> [rol]` | Crea o actualiza un usuario |
+| `npm run seed -- <email> "<nombre>" <clave> [rol]` | Crea o actualiza un usuario (el primero también se crea desde el navegador) |
 | `npm run recorrido` | Maneja la aplicación con un navegador de verdad |
 
 ### Las pruebas corren sobre una base aparte
@@ -166,10 +165,15 @@ depende de una tabla que en producción no existe.
 1. **Add New → Project** e importá este repositorio. El framework lo detecta solo.
 2. En **Settings → Environment Variables** cargá `DATABASE_URL` con la cadena del
    **pooler** (6543, modo transacción).
-3. Antes del primer deploy corré las migraciones una vez contra ese mismo
-   proyecto: `npm run migrar` desde tu máquina, o pegá `npm run esquema` en el
-   SQL Editor de Supabase.
-4. Creá el primer usuario: `npm run seed -- tu@email.com "Tu Nombre" tuclave`.
+3. Creá las tablas una vez contra ese mismo proyecto: `npm run migrar` desde tu
+   máquina, o —sin terminal— pegá en el SQL Editor de Supabase el contenido de
+   `supabase/migrations/`, los tres archivos en orden.
+4. Abrí la URL. La aplicación te lleva sola a `/instalacion` y ahí creás el
+   primer usuario, que queda como admin. Después de eso esa pantalla se cierra
+   sola y no vuelve a existir.
+
+En cada paso, si falta algo, la aplicación lo dice en pantalla con los pasos
+para arreglarlo: no hay que mirar logs para saber qué falta.
 
 La cookie de sesión sale con `Secure` en producción, así que la aplicación tiene
 que servirse por HTTPS. En Vercel ya lo está.

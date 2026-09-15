@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom'
 import { crearLeadAccion, type EstadoDeAlta } from '@/app/(app)/leads/acciones'
 import { NOMBRE_DE_TIPO, TIPOS_SESION } from '@/dominio/resultados'
 import type { Opcion, CloserOpcion } from '@/datos/catalogos'
+import { useCampos } from './campos'
 
 function Boton({ confirmar }: { confirmar: boolean }) {
   const { pending } = useFormStatus()
@@ -22,8 +23,19 @@ export function LeadNuevo({ catalogos }: {
   const [estado, accion] = useActionState<EstadoDeAlta, FormData>(crearLeadAccion, null)
   const hayDuplicados = estado?.tipo === 'duplicados'
 
+  // Sin esto, el aviso de duplicado vacía el formulario entero: doce campos
+  // recién cargados se pierden justo cuando le estamos pidiendo a la persona
+  // que decida si es la misma persona o no.
+  const { campo, form } = useCampos({
+    nombre: '', empresa: '', email: '', telefono: '', pais: '',
+    fuenteId: '', funnelId: '', setterId: '',
+    closerId: '', tipoSesion: 'primera', fechaAgenda: '', horaAgenda: '',
+    valorPotencial: '', moneda: 'USD',
+    notas: '', infoNegocio: '', links: '', infoExtra: '',
+  }, estado)
+
   return (
-    <form action={accion} className="apilado">
+    <form ref={form} action={accion} className="apilado">
       {estado?.tipo === 'error' ? <div className="aviso problema">{estado.mensaje}</div> : null}
 
       {hayDuplicados ? (
@@ -51,23 +63,23 @@ export function LeadNuevo({ catalogos }: {
         <div className="dos">
           <div className="campo">
             <label htmlFor="nombre">Nombre *</label>
-            <input id="nombre" name="nombre" required autoFocus />
+            <input {...campo('nombre')} required autoFocus />
           </div>
           <div className="campo">
             <label htmlFor="empresa">Empresa</label>
-            <input id="empresa" name="empresa" />
+            <input {...campo('empresa')} />
           </div>
           <div className="campo">
             <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" />
+            <input {...campo('email')} type="email" />
           </div>
           <div className="campo">
             <label htmlFor="telefono">Teléfono</label>
-            <input id="telefono" name="telefono" />
+            <input {...campo('telefono')} />
           </div>
           <div className="campo">
             <label htmlFor="pais">País</label>
-            <input id="pais" name="pais" />
+            <input {...campo('pais')} />
           </div>
         </div>
       </section>
@@ -82,7 +94,7 @@ export function LeadNuevo({ catalogos }: {
           ] as const).map(([nombre, etiqueta, opciones]) => (
             <div className="campo" key={nombre}>
               <label htmlFor={nombre}>{etiqueta}</label>
-              <select id={nombre} name={nombre} defaultValue="">
+              <select {...campo(nombre)}>
                 <option value="">Sin cargar</option>
                 {opciones.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
               </select>
@@ -99,32 +111,32 @@ export function LeadNuevo({ catalogos }: {
         <div className="dos">
           <div className="campo">
             <label htmlFor="closerId">Closer</label>
-            <select id="closerId" name="closerId" defaultValue="">
+            <select {...campo('closerId')}>
               <option value="">Sin asignar</option>
               {catalogos.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
           <div className="campo">
             <label htmlFor="tipoSesion">Tipo de sesión</label>
-            <select id="tipoSesion" name="tipoSesion" defaultValue="primera">
+            <select {...campo('tipoSesion')}>
               {TIPOS_SESION.map((t) => <option key={t} value={t}>{NOMBRE_DE_TIPO[t]}</option>)}
             </select>
           </div>
           <div className="campo">
             <label htmlFor="fechaAgenda">Fecha de la reunión</label>
-            <input id="fechaAgenda" name="fechaAgenda" type="date" />
+            <input {...campo('fechaAgenda')} type="date" />
           </div>
           <div className="campo">
             <label htmlFor="horaAgenda">Hora</label>
-            <input id="horaAgenda" name="horaAgenda" type="time" />
+            <input {...campo('horaAgenda')} type="time" />
           </div>
           <div className="campo">
             <label htmlFor="valorPotencial">Valor potencial</label>
-            <input id="valorPotencial" name="valorPotencial" inputMode="decimal" placeholder="3000" />
+            <input {...campo('valorPotencial')} inputMode="decimal" placeholder="3000" />
           </div>
           <div className="campo">
             <label htmlFor="moneda">Moneda</label>
-            <select id="moneda" name="moneda" defaultValue="USD">
+            <select {...campo('moneda')}>
               <option value="USD">USD</option>
               <option value="ARS">ARS</option>
               <option value="EUR">EUR</option>
@@ -143,7 +155,7 @@ export function LeadNuevo({ catalogos }: {
         ] as const).map(([nombre, etiqueta]) => (
           <div className="campo" key={nombre}>
             <label htmlFor={nombre}>{etiqueta}</label>
-            <textarea id={nombre} name={nombre} />
+            <textarea {...campo(nombre)} />
           </div>
         ))}
       </section>

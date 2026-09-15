@@ -89,18 +89,22 @@ export async function revisar(): Promise<Problema | null> {
       detalle: `No están estas tablas: ${faltan.map((f) => f.tabla).join(', ')}. ` +
                `Salen de: ${migraciones.join(', ')}.`,
       pasos: ['Corré `npm run migrar` apuntando a esta misma base.',
-              'O pegá el resultado de `npm run esquema` en el SQL Editor de Supabase.'],
-    }
-  }
-
-  const usuarios = await filas<{ n: number }>('select count(*)::int as n from usuarios')
-  if ((usuarios[0]?.n ?? 0) === 0) {
-    return {
-      titulo: 'Todavía no hay ningún usuario',
-      detalle: 'Las tablas están creadas pero nadie puede entrar porque no hay a quién dejar entrar.',
-      pasos: ['Corré: npm run seed -- tu@email.com "Tu Nombre" tuclave'],
+              'O, sin terminal: abrí el SQL Editor de Supabase y pegá ahí los archivos de supabase/migrations en orden.'],
     }
   }
 
   return null
+}
+
+/**
+ * ¿Ya hay alguien dado de alta?
+ *
+ * Va aparte de `revisar()` porque no es un problema que haya que arreglar desde
+ * una terminal: es el primer paso de la instalación, y se hace en la pantalla
+ * `/instalacion`. Pedirle a alguien que corra un comando de Node para poder
+ * entrar a su propia aplicación recién publicada es dejarla instalada a medias.
+ */
+export async function hayUsuarios(): Promise<boolean> {
+  const usuarios = await filas<{ n: number }>('select count(*)::int as n from usuarios')
+  return (usuarios[0]?.n ?? 0) > 0
 }

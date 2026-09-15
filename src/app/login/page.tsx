@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { usuarioActual } from '@/lib/auth'
-import { revisar } from '@/lib/revision'
+import { revisar, hayUsuarios } from '@/lib/revision'
 import { HOME_DE_ROL } from '@/dominio/roles'
 import { FormularioDeEntrada } from '@/componentes/FormularioDeEntrada'
 import { BaseSinAndar } from '@/componentes/BaseSinAndar'
@@ -12,6 +12,10 @@ export default async function Login() {
   // migración, que lo diga acá y no cuando ya escribió la contraseña.
   const problema = await revisar()
   if (problema) return <BaseSinAndar problema={problema} />
+
+  // Sin nadie dado de alta no tiene sentido pedir una clave: falta el primer
+  // usuario, y eso se hace acá al lado.
+  if (!(await hayUsuarios())) redirect('/instalacion')
 
   const usuario = await usuarioActual()
   if (usuario) redirect(HOME_DE_ROL[usuario.rol])

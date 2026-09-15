@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { usuarioActual } from '@/lib/auth'
-import { revisar } from '@/lib/revision'
+import { revisar, hayUsuarios } from '@/lib/revision'
 import { HOME_DE_ROL } from '@/dominio/roles'
 import { BaseSinAndar } from '@/componentes/BaseSinAndar'
 
@@ -18,6 +18,8 @@ export const dynamic = 'force-dynamic'
 export default async function Inicio() {
   const problema = await revisar()
   if (problema) return <BaseSinAndar problema={problema} />
+
+  if (!(await hayUsuarios())) redirect('/instalacion')
 
   const usuario = await usuarioActual()
   if (!usuario) redirect('/login')
