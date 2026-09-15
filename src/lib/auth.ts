@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { claveCoincide } from './claves'
 import { escribir, escribirDevolviendo, fila } from './db'
 import type { Rol } from '@/dominio/roles'
@@ -93,13 +94,21 @@ export async function usuarioActual(): Promise<Usuario | null> {
 }
 
 /**
- * El usuario, o se corta.
+ * El usuario, o al login.
  *
- * Lo usan las acciones de servidor y los route handlers. Devolver null y que
- * cada lugar se acuerde de chequearlo es un permiso que depende de la memoria.
+ * Lo usan las pantallas y las acciones de servidor. Devolver null y que cada
+ * lugar se acuerde de chequearlo es un permiso que depende de la memoria.
+ *
+ * Manda al login en vez de tirar una excepción, y la diferencia no es de
+ * estilo. Next dibuja el marco y la pantalla a la vez, así que cuando la sesión
+ * no está, el marco redirige y la pantalla —que corre igual— tiraba
+ * «Tu sesión venció»: quedaba un error en los logs en cada pedido sin sesión, y
+ * lo que terminaba viendo la persona dependía de cuál de los dos ganaba. Una
+ * sesión vencida no es una falla del sistema: es alguien que tiene que volver a
+ * entrar.
  */
 export async function exigirUsuario(): Promise<Usuario> {
   const usuario = await usuarioActual()
-  if (!usuario) throw new Error('Tu sesión venció. Volvé a entrar.')
+  if (!usuario) redirect('/login')
   return usuario
 }
