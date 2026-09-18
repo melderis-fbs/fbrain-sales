@@ -239,27 +239,40 @@ hacen lo mismo y evita un aviso de deprecación de `pg`.
 La cookie de sesión sale con `Secure` en producción, así que la aplicación tiene
 que servirse por HTTPS. En Vercel ya lo está.
 
-### Si el deploy falla
+### Si el deploy falla, o el dominio no muestra lo último
 
-Estas dos están declaradas en el repo, así que Vercel no las tiene que adivinar:
-`engines.node` en `package.json` (Next 15.5 necesita Node 20 o más) y
-`vercel.json` con `framework: nextjs`, que fija el preset y el directorio de
-salida.
+Tres cosas que ya nos pasaron, en orden de cuál cuesta más ver:
 
-Si igual falla, el build **no** es lo que hay que mirar primero: `npm ci` +
-`npm run build` sobre un clon limpio, sin ninguna variable de entorno y sin
-devDependencies, pasa. Entonces mirá la configuración del proyecto en Vercel:
+**1 · Un deployment verde no quiere decir que el dominio sirva eso.**
+En Vercel, producción queda clavada en el último deployment **promovido**, no en
+el último que compiló. Se puede tener toda la lista en verde y el dominio
+sirviendo un commit de hace semanas. Mirá en **Deployments** cuál tiene la
+etiqueta **Production**: si no es el de arriba, sus tres puntitos →
+**Promote to Production**.
 
-| Dónde | Qué tiene que decir |
-|---|---|
-| Settings → General → Framework Preset | **Next.js**. Si el proyecto se creó cuando el repo estaba vacío, suele quedar en «Other» y el build termina en «No Output Directory named "public" found» |
-| Settings → General → Root Directory | vacío — el proyecto está en la raíz del repo |
-| Settings → General → Build & Development Settings | sin overrides: ni Build Command ni Install Command ni Output Directory |
-| Settings → General → Node.js Version | 20 o más |
-| Settings → Git → Production Branch | la rama donde está el código |
+Una pista que lo delata sin mirar nada más: **cuánto tardó el build**. Esta
+aplicación tarda entre 25 y 40 segundos. Un «Ready 2s» es un commit sin
+aplicación —documentación sola, por ejemplo—, y si ése es el que está en
+producción, el dominio devuelve 404 porque no hay ninguna página que servir.
 
-El error real siempre está en el **Build Log** del deployment, en la primera
-línea roja. Es lo único que dice qué pasó.
+**2 · La versión de Node.**
+Next 15.5 no corre en Node 18. Por eso `package.json` declara
+`engines.node >= 20`: sin eso Vercel puede elegir una vieja y el build falla con
+la aplicación intacta.
+
+**3 · La rama de producción.**
+**Settings → Git → Production Branch** (en Git, no en General) tiene que apuntar
+a la rama donde está el código. Si apunta a una que no existe, cada push queda
+como *Preview* y el dominio corto no sirve nada: da el 404 de plataforma de
+Vercel, el que dice `NOT_FOUND` con un identificador de región.
+
+El resto ya está declarado en el repo para que Vercel no lo adivine:
+`vercel.json` fija el preset de Next —que suele quedar en «Other» cuando el
+proyecto se creó apuntando a un repositorio todavía vacío— y `engines.node` la
+versión.
+
+Si nada de eso es, el error está en el **Build Log** del deployment, en la
+primera línea roja. Es lo único que dice qué pasó.
 
 ---
 
