@@ -92,3 +92,42 @@ export function hoyEn(zona = 'America/Argentina/Buenos_Aires', ahora = new Date(
   })
   return f.format(ahora)
 }
+
+/**
+ * El período inmediatamente anterior, del mismo largo.
+ *
+ * Para meses usa el mes calendario anterior y no «treinta días antes»: comparar
+ * febrero con «los 28 días previos al 1 de marzo» da un número parecido y
+ * responde otra pregunta.
+ */
+export function rangoAnterior(periodo: NombreDePeriodo, actual: Rango): Rango {
+  if (periodo === 'mes' || periodo === 'mes_anterior') {
+    const [a, m] = partes(actual.desde)
+    const ma = m === 1 ? a - 1 : a
+    const mm = m === 1 ? 12 : m - 1
+    return { desde: armar(ma, mm, 1), hasta: armar(ma, mm, diasDelMes(ma, mm)), etiqueta: 'Período anterior' }
+  }
+  if (periodo === 'anio') {
+    const [a] = partes(actual.desde)
+    return { desde: armar(a - 1, 1, 1), hasta: armar(a - 1, 12, 31), etiqueta: 'Año anterior' }
+  }
+  const largo = diasEntreFechas(actual.desde, actual.hasta) + 1
+  return {
+    desde: sumarDias(actual.desde, -largo),
+    hasta: sumarDias(actual.desde, -1),
+    etiqueta: 'Período anterior',
+  }
+}
+
+function diasEntreFechas(desde: string, hasta: string): number {
+  const [a1, m1, d1] = partes(desde)
+  const [a2, m2, d2] = partes(hasta)
+  return Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000)
+}
+
+/** La diferencia entre dos números, o null cuando no hay con qué comparar. */
+export function variacion(ahora: number, antes: number): number | null {
+  if (antes === 0 && ahora === 0) return 0
+  if (antes === 0) return null
+  return Math.round(((ahora - antes) / antes) * 1000) / 10
+}

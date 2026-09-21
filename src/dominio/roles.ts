@@ -39,10 +39,10 @@ export const PUEDE: Record<Rol, Record<Permiso, boolean>> = {
 
 /** A dónde manda el home de cada rol. Cada uno abre en la pregunta que le toca. */
 export const HOME_DE_ROL: Record<Rol, string> = {
-  admin: '/tablero',
-  direccion: '/tablero',
-  head: '/tablero',
-  closer: '/hoy',
+  admin: '/dashboard',
+  direccion: '/dashboard',
+  head: '/dashboard',
+  closer: '/tracker',
   setter: '/leads',
-  coach: '/closers',
+  coach: '/llamadas',
 }

@@ -1,25 +1,25 @@
 /**
- * Qué le puede pasar a una oportunidad.
+ * Qué le puede pasar a un lead.
+ *
+ * El lead ES la oportunidad: no hay una capa intermedia. Las llamadas que
+ * hagan falta para cerrarlo —una, dos o tres— cuelgan de él.
  *
  * Dos ejes distintos, y mezclarlos es lo que hace que después no se pueda
  * contestar «cuántas asistencias hubo» sin discutir:
  *
  *   ESTADO     qué pasó con la reunión  (vino, no vino, se canceló)
  *   RESULTADO  qué pasó con la venta    (compró, señó, quedó abierto, se perdió)
- *
- * Una reunión a la que el prospecto asistió y terminó en seguimiento tiene
- * estado «asistida» y resultado «seguimiento». Las dos cosas son ciertas.
  */
 
-export const ESTADOS = ['agendada', 'asistida', 'no_show', 'cancelada', 'reagendada'] as const
+export const ESTADOS = ['agendado', 'asistio', 'no_show', 'cancelado', 'reagendado'] as const
 export type Estado = (typeof ESTADOS)[number]
 
 export const NOMBRE_DE_ESTADO: Record<Estado, string> = {
-  agendada: 'Agendada',
-  asistida: 'Asistió',
+  agendado: 'Agendado',
+  asistio: 'Asistió',
   no_show: 'No show',
-  cancelada: 'Cancelada',
-  reagendada: 'Reagendada',
+  cancelado: 'Cancelado',
+  reagendado: 'Reagendado',
 }
 
 export const RESULTADOS = ['pendiente', 'venta', 'sena', 'seguimiento', 'perdida', 'no_calificado'] as const
@@ -30,33 +30,34 @@ export const NOMBRE_DE_RESULTADO: Record<Resultado, string> = {
   venta: 'Venta',
   sena: 'Seña',
   seguimiento: 'Seguimiento',
-  perdida: 'Perdida',
+  perdida: 'Perdido',
   no_calificado: 'No calificado',
 }
 
 /**
- * El color de cada resultado. Nunca un color sin significado.
+ * El color de cada cosa. Nunca un color sin significado.
  *
- * La seña es su propio color —no es verde y no es amarillo— porque no es una
- * venta y tampoco es un seguimiento cualquiera: hubo compromiso financiero.
+ * La seña tiene el acento celeste: no es una venta y no es un seguimiento
+ * cualquiera, porque hubo compromiso financiero. Que el acento de la interfaz
+ * tenga un trabajo es lo que evita que sea decoración.
  */
-export type Color = 'verde' | 'sena' | 'amarillo' | 'rojo' | 'gris'
+export type Color = 'verde' | 'acento' | 'ambar' | 'rojo' | 'gris'
 
 export const COLOR_DE_RESULTADO: Record<Resultado, Color> = {
   venta: 'verde',
-  sena: 'sena',
-  seguimiento: 'amarillo',
+  sena: 'acento',
+  seguimiento: 'ambar',
   perdida: 'rojo',
   no_calificado: 'gris',
   pendiente: 'gris',
 }
 
 export const COLOR_DE_ESTADO: Record<Estado, Color> = {
-  asistida: 'verde',
-  agendada: 'gris',
-  reagendada: 'amarillo',
+  asistio: 'verde',
+  agendado: 'gris',
+  reagendado: 'ambar',
   no_show: 'rojo',
-  cancelada: 'rojo',
+  cancelado: 'rojo',
 }
 
 export const TIPOS_SESION = ['primera', 'segunda', 'seguimiento', 'onboarding', 'otra'] as const
@@ -71,11 +72,9 @@ export const NOMBRE_DE_TIPO: Record<TipoSesion, string> = {
 }
 
 /**
- * Los motivos por los que se pierde una oportunidad.
- *
- * Lista cerrada a propósito: «no le interesó» escrito de nueve maneras
- * distintas no se puede contar, y contar por qué se pierde es de lo poco que
- * cambia decisiones.
+ * Por qué se pierde. Lista cerrada a propósito: «no le interesó» escrito de
+ * nueve maneras no se puede contar, y contar por qué se pierde es de lo poco
+ * que cambia decisiones.
  */
 export const MOTIVOS_PERDIDA = [
   'precio', 'timing', 'socio', 'confianza', 'urgencia', 'encaje',
@@ -97,7 +96,7 @@ export const NOMBRE_DE_MOTIVO: Record<MotivoPerdida, string> = {
   seguimiento_deficiente: 'Seguimiento deficiente',
 }
 
-/** Una oportunidad sigue abierta mientras no se haya vendido ni perdido. La seña NO la cierra. */
-export function sigueAbierta(resultado: Resultado): boolean {
+/** Un lead sigue abierto mientras no se haya vendido ni perdido. La seña NO lo cierra. */
+export function sigueAbierto(resultado: Resultado): boolean {
   return resultado === 'pendiente' || resultado === 'seguimiento' || resultado === 'sena'
 }

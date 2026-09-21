@@ -1,20 +1,31 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe } from '@/lib/permisos'
+import { alcanceDe, puede } from '@/lib/permisos'
 import { listarLeads } from '@/datos/leads'
 import { catalogos } from '@/datos/catalogos'
-import { Pildora, Tarjeta, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
-import { NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO,
-         type Estado, type Resultado } from '@/dominio/resultados'
 import { hoyEn } from '@/motor/periodos'
+import { Pildora, Tarjeta, Encabezado, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
+import {
+  NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO,
+  RESULTADOS, ESTADOS, type Resultado, type Estado,
+} from '@/dominio/resultados'
+import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
 
 type Busqueda = Promise<Record<string, string | undefined>>
 
+/**
+ * La lista de leads.
+ *
+ * Una fila por persona, no una por llamada. María con tres llamadas es una
+ * fila: es una sola oportunidad de venta, y verla tres veces hacía que la lista
+ * no se pudiera contar de un vistazo.
+ */
 export default async function Leads({ searchParams }: { searchParams: Busqueda }) {
   const q = await searchParams
   const usuario = await exigirUsuario()
   const alcance = alcanceDe(usuario)
   const hoy = hoyEn()
+  const verPlata = puede(usuario, 'verDinero')
 
   const [leads, cats] = await Promise.all([
     listarLeads(alcance, {
@@ -24,23 +35,25 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
       setterId: q.setter ? Number(q.setter) : undefined,
       closerId: q.closer ? Number(q.closer) : undefined,
       resultado: q.resultado as Resultado | undefined,
-      soloAbiertas: q.abiertas === '1',
+      estado: q.estado as Estado | undefined,
+      desde: q.desde,
+      hasta: q.hasta,
+      soloAbiertos: q.abiertos === '1',
     }),
     catalogos(),
   ])
 
+  const abiertos = leads.filter((l) => l.resultado === 'pendiente' || l.resultado === 'seguimiento' || l.resultado === 'sena').length
+
   return (
     <div className="apilado">
-      <div className="entre">
-        <div>
-          <div className="kicker">Leads</div>
-          <h1>{leads.length} {leads.length === 1 ? 'lead' : 'leads'}</h1>
-        </div>
+      <Encabezado kicker="Leads" titulo={`${leads.length} ${leads.length === 1 ? 'lead' : 'leads'}`}
+                  bajada={`${abiertos} ${abiertos === 1 ? 'sigue abierto' : 'siguen abiertos'} · cada lead es una oportunidad de venta`}>
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
-      </div>
+      </Encabezado>
 
       <form className="filtros" method="get">
-        <div className="campo" style={{ minWidth: 220 }}>
+        <div className="campo" style={{ minWidth: 210 }}>
           <label htmlFor="q">Buscar</label>
           <input id="q" name="q" defaultValue={q.q ?? ''} placeholder="Nombre, email o teléfono" />
         </div>
@@ -59,30 +72,38 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
           </div>
         ))}
         <div className="campo">
+          <label htmlFor="f-estado">Reunión</label>
+          <select id="f-estado" name="estado" defaultValue={q.estado ?? ''}>
+            <option value="">Todas</option>
+            {ESTADOS.map((e) => <option key={e} value={e}>{NOMBRE_DE_ESTADO[e]}</option>)}
+          </select>
+        </div>
+        <div className="campo">
           <label htmlFor="f-resultado">Resultado</label>
           <select id="f-resultado" name="resultado" defaultValue={q.resultado ?? ''}>
             <option value="">Todos</option>
-            {(Object.keys(NOMBRE_DE_RESULTADO) as Resultado[]).map((r) => (
-              <option key={r} value={r}>{NOMBRE_DE_RESULTADO[r]}</option>
-            ))}
+            {RESULTADOS.map((r) => <option key={r} value={r}>{NOMBRE_DE_RESULTADO[r]}</option>)}
           </select>
         </div>
         <button type="submit" className="secundario">Filtrar</button>
+        <Link className="boton sutil" href="/leads">Limpiar</Link>
       </form>
 
       <Tarjeta>
         {leads.length === 0 ? (
           <Vacio>
-            No hay leads con esos filtros. <Link href="/leads/nuevo">Registrar el primero →</Link>
+            No hay leads con esos filtros.{' '}
+            <Link href="/leads/nuevo" style={{ color: 'var(--acento)', fontWeight: 650 }}>Registrar el primero →</Link>
           </Vacio>
         ) : (
           <div className="tabla-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Nombre</th><th>Fuente</th><th>Setter</th><th>Funnel</th>
-                  <th>Closer</th><th>Reunión</th><th>Resultado</th>
-                  <th>Próximo contacto</th><th className="num">Valor</th>
+                  <th>Nombre</th><th>Quality</th><th>Fuente</th><th>Setter</th>
+                  <th>Closer</th><th>Reunión</th><th>Estado</th><th>Resultado</th>
+                  <th>Próximo contacto</th>
+                  {verPlata ? <th className="num">Valor</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -91,25 +112,35 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
                   return (
                     <tr key={l.id}>
                       <td>
-                        <Link href={`/leads/${l.id}`} style={{ fontWeight: 650 }}>{l.nombre}</Link>
-                        {l.oportunidades > 1 ? (
-                          <span style={{ color: 'var(--gris)', fontSize: 12 }}> · {l.oportunidades} sesiones</span>
+                        <Link href={`/leads/${l.id}`} style={{ fontWeight: 600 }}>{l.nombre}</Link>
+                        {l.ciclo > 1 ? (
+                          <span className="pildora acento" style={{ marginLeft: 6 }}>ciclo {l.ciclo}</span>
                         ) : null}
+                        {l.empresa ? <div style={{ fontSize: 11.5, color: 'var(--gris)' }}>{l.empresa}</div> : null}
                       </td>
-                      <td style={{ fontSize: 13 }}>{l.fuente ?? <span className="sindato">—</span>}</td>
-                      <td style={{ fontSize: 13 }}>{l.setter ?? <span className="sindato">—</span>}</td>
-                      <td style={{ fontSize: 13 }}>{l.funnel ?? <span className="sindato">—</span>}</td>
-                      <td style={{ fontSize: 13 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
-                      <td>{l.estado ? <Pildora color={COLOR_DE_ESTADO[l.estado as Estado]}>{NOMBRE_DE_ESTADO[l.estado as Estado]}</Pildora> : <span className="sindato">sin sesión</span>}</td>
-                      <td>{l.resultado ? <Pildora color={COLOR_DE_RESULTADO[l.resultado as Resultado]}>{NOMBRE_DE_RESULTADO[l.resultado as Resultado]}</Pildora> : '—'}</td>
-                      <td style={{ fontSize: 13 }}>
+                      <td>
+                        {l.calidadNivel
+                          ? <Pildora color={COLOR_DE_CALIDAD[l.calidadNivel]} titulo={`Lead quality ${l.calidadScore}`}>
+                              {NOMBRE_DE_NIVEL[l.calidadNivel]} · {l.calidadScore}
+                            </Pildora>
+                          : <span className="sindato">sin calificar</span>}
+                      </td>
+                      <td style={{ fontSize: 12.5 }}>{l.fuente ?? <span className="sindato">—</span>}</td>
+                      <td style={{ fontSize: 12.5 }}>{l.setter ?? <span className="sindato">—</span>}</td>
+                      <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
+                      <td style={{ fontSize: 12.5 }}>{fechaCorta(l.fechaSesion)}</td>
+                      <td><Pildora color={COLOR_DE_ESTADO[l.estado]}>{NOMBRE_DE_ESTADO[l.estado]}</Pildora></td>
+                      <td><Pildora color={COLOR_DE_RESULTADO[l.resultado]}>{NOMBRE_DE_RESULTADO[l.resultado]}</Pildora></td>
+                      <td style={{ fontSize: 12.5 }}>
                         {l.proximoContacto
                           ? (vencido
                               ? <Pildora color="rojo">{fechaCorta(l.proximoContacto)} · vencido</Pildora>
                               : fechaCorta(l.proximoContacto))
                           : <span className="sindato">—</span>}
                       </td>
-                      <td className="num">{l.valorPotencial ? plata(l.valorPotencial, l.moneda ?? 'USD') : '—'}</td>
+                      {verPlata ? (
+                        <td className="num">{l.valorPotencial ? plata(l.valorPotencial, l.moneda) : '—'}</td>
+                      ) : null}
                     </tr>
                   )
                 })}

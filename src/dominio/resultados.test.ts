@@ -1,28 +1,36 @@
 import { describe, it, expect } from 'vitest'
-import { sigueAbierta, COLOR_DE_RESULTADO, RESULTADOS } from './resultados'
+import { sigueAbierto, COLOR_DE_RESULTADO, COLOR_DE_ESTADO, RESULTADOS, ESTADOS } from './resultados'
 import { PUEDE, ROLES } from './roles'
 
 describe('la seña', () => {
-  it('no cierra la oportunidad', () => {
-    // Es lo que pide la Parte 6: hubo compromiso financiero pero no hay venta.
-    expect(sigueAbierta('sena')).toBe(true)
+  it('no cierra el lead', () => {
+    // Hubo compromiso financiero pero no hay venta: la oportunidad sigue viva.
+    expect(sigueAbierto('sena')).toBe(true)
   })
 
-  it('tiene su propio color: no es una venta y no es un seguimiento', () => {
-    expect(COLOR_DE_RESULTADO.sena).toBe('sena')
+  it('se lleva el acento, que es el único color con trabajo en la interfaz', () => {
+    expect(COLOR_DE_RESULTADO.sena).toBe('acento')
     expect(COLOR_DE_RESULTADO.venta).toBe('verde')
-    expect(COLOR_DE_RESULTADO.seguimiento).toBe('amarillo')
+    expect(COLOR_DE_RESULTADO.seguimiento).toBe('ambar')
   })
 
-  it('una venta y una pérdida sí la cierran', () => {
-    expect(sigueAbierta('venta')).toBe(false)
-    expect(sigueAbierta('perdida')).toBe(false)
+  it('una venta y una pérdida sí lo cierran', () => {
+    expect(sigueAbierto('venta')).toBe(false)
+    expect(sigueAbierto('perdida')).toBe(false)
   })
 })
 
-describe('resultados', () => {
+describe('resultados y estados', () => {
   it('todos tienen color: ninguno queda sin significado', () => {
     for (const r of RESULTADOS) expect(COLOR_DE_RESULTADO[r]).toBeTruthy()
+    for (const e of ESTADOS) expect(COLOR_DE_ESTADO[e]).toBeTruthy()
+  })
+
+  it('el estado de la reunión y el resultado de la venta son ejes distintos', () => {
+    // Mezclarlos es lo que hace que después no se pueda contestar «cuántas
+    // asistencias hubo» sin discutir.
+    expect(ESTADOS).not.toContain('venta')
+    expect(RESULTADOS).not.toContain('asistio')
   })
 })
 

@@ -25,14 +25,43 @@ const ESPERADO: { tabla: string; migracion: string }[] = [
   { tabla: 'cambios', migracion: '0001_fundaciones.sql' },
   { tabla: 'trabajos', migracion: '0001_fundaciones.sql' },
   { tabla: 'leads', migracion: '0002_lead_y_oportunidad.sql' },
-  { tabla: 'oportunidades', migracion: '0002_lead_y_oportunidad.sql' },
-  { tabla: 'oportunidad_participaciones', migracion: '0002_lead_y_oportunidad.sql' },
   { tabla: 'llamadas', migracion: '0002_lead_y_oportunidad.sql' },
   { tabla: 'transcripciones', migracion: '0002_lead_y_oportunidad.sql' },
   { tabla: 'ventas', migracion: '0003_dinero_y_objetivos.sql' },
   { tabla: 'senias', migracion: '0003_dinero_y_objetivos.sql' },
   { tabla: 'pagos', migracion: '0003_dinero_y_objetivos.sql' },
   { tabla: 'objetivos', migracion: '0003_dinero_y_objetivos.sql' },
+  { tabla: 'lead_calificacion', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'lead_quality', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'notas', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'seguimiento_toques', migracion: '0005_seguimientos.sql' },
+  { tabla: 'seguimiento_estado', migracion: '0005_seguimientos.sql' },
+  { tabla: 'seguimiento_interacciones', migracion: '0005_seguimientos.sql' },
+  { tabla: 'playbooks', migracion: '0006_analizador.sql' },
+  { tabla: 'scoring_config', migracion: '0006_analizador.sql' },
+  { tabla: 'analisis', migracion: '0006_analizador.sql' },
+  { tabla: 'analisis_niveles', migracion: '0006_analizador.sql' },
+  { tabla: 'analisis_eventos', migracion: '0006_analizador.sql' },
+  { tabla: 'analisis_objeciones', migracion: '0006_analizador.sql' },
+  { tabla: 'analisis_feedback', migracion: '0006_analizador.sql' },
+  { tabla: 'call_scores', migracion: '0006_analizador.sql' },
+  { tabla: 'score_dimensiones', migracion: '0006_analizador.sql' },
+]
+
+/**
+ * Columnas que una migración AGREGA a una tabla que ya existía.
+ *
+ * Sin esto, una base que corrió 0002 pero no 0004 pasa la revisión —las tablas
+ * están todas— y después revienta con «column l.estado does not exist», que es
+ * justamente el error que esta pantalla existe para evitar.
+ */
+const COLUMNAS_ESPERADAS: { tabla: string; columna: string; migracion: string }[] = [
+  { tabla: 'leads', columna: 'estado', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'leads', columna: 'closer_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'leads', columna: 'ciclo', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'ventas', columna: 'lead_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'senias', columna: 'lead_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },
+  { tabla: 'llamadas', columna: 'lead_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },
 ]
 
 export async function revisar(): Promise<Problema | null> {
@@ -94,6 +123,26 @@ export async function revisar(): Promise<Problema | null> {
                `Salen de: ${migraciones.join(', ')}.`,
       pasos: ['Corré `npm run migrar` apuntando a esta misma base.',
               'O, sin terminal: pegá los archivos de supabase/migrations, en orden, en el editor SQL de tu base (Neon: SQL Editor; Supabase: SQL Editor).'],
+    }
+  }
+
+  const columnas = new Set(
+    (await filas<{ tabla: string; columna: string }>(
+      `select table_name as tabla, column_name as columna
+         from information_schema.columns where table_schema = 'public'`,
+    )).map((c) => `${c.tabla}.${c.columna}`),
+  )
+
+  const faltanColumnas = COLUMNAS_ESPERADAS.filter((c) => !columnas.has(`${c.tabla}.${c.columna}`))
+  if (faltanColumnas.length > 0) {
+    const migraciones = [...new Set(faltanColumnas.map((f) => f.migracion))].sort()
+    return {
+      titulo: 'Faltan migraciones por correr',
+      detalle: `Las tablas están, pero les faltan columnas: ` +
+               `${faltanColumnas.map((f) => `${f.tabla}.${f.columna}`).join(', ')}. ` +
+               `Salen de: ${migraciones.join(', ')}.`,
+      pasos: ['Corré `npm run migrar` apuntando a esta misma base.',
+              'O pegá los archivos que faltan de supabase/migrations, en orden, en el editor SQL de tu base.'],
     }
   }
 

@@ -172,7 +172,7 @@ export async function objetivoAccion(datos: FormData): Promise<void> {
     ],
   )
   revalidatePath('/configuracion')
-  revalidatePath('/tablero')
+  revalidatePath('/dashboard')
 }
 
 export async function monedaBaseAccion(datos: FormData): Promise<void> {
@@ -188,5 +188,5 @@ export async function monedaBaseAccion(datos: FormData): Promise<void> {
   )
   await anotar([{ entidad: 'config', entidadId: 0, campo: 'moneda_base', anterior: null, nuevo: moneda }], usuario.id)
   revalidatePath('/configuracion')
-  revalidatePath('/tablero')
+  revalidatePath('/dashboard')
 }

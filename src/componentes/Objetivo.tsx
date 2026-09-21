@@ -1,68 +1,58 @@
 import type { Ritmo } from '@/motor/objetivo'
 import { Barra, plata } from './Piezas'
 
-const PALABRA: Record<Ritmo['estado'], string> = {
-  sobre: 'sobre ritmo',
-  en_ritmo: 'en ritmo',
-  debajo: 'debajo del ritmo',
-}
-const COLOR: Record<Ritmo['estado'], 'verde' | 'amarillo' | 'rojo'> = {
-  sobre: 'verde', en_ritmo: 'verde', debajo: 'rojo',
-}
-
 /**
- * El objetivo del mes.
+ * El objetivo contra el ritmo esperado.
  *
- * Lo importante no es el 65%: es el 65% contra el 55% que correspondería a esta
- * altura del mes. Por eso la barra lleva una marca en el ritmo esperado.
+ * Lo que importa no es el porcentaje alcanzado: es el porcentaje alcanzado
+ * CONTRA dónde debería estar a esta altura del mes. 67% el día 12 de 22 está
+ * muy bien; 67% el día 21 está muy mal, y las dos veces dice 67%.
  */
-export function Objetivo({ ritmo, moneda }: { ritmo: Ritmo | null; moneda: string }) {
+export function Objetivo({
+  ritmo, moneda, titulo = 'Objetivo del mes', enPlata = true,
+}: { ritmo: Ritmo | null; moneda: string; titulo?: string; enPlata?: boolean }) {
   if (!ritmo) {
     return (
-      <section className="tarjeta">
-        <div className="etiqueta">Objetivo del mes</div>
-        <div className="sindato" style={{ marginTop: 6 }}>
-          No hay objetivo cargado para este período.
-        </div>
-        <div className="contra">Se carga en Configuración. Sin objetivo no se puede decir si vamos bien.</div>
-      </section>
+      <div className="tarjeta">
+        <div className="etiqueta">{titulo}</div>
+        <p className="ayuda" style={{ marginTop: 6 }}>
+          No hay objetivo cargado para este período. Se carga en{' '}
+          <a href="/configuracion" style={{ color: 'var(--acento)', fontWeight: 600 }}>Configuración</a>.
+        </p>
+      </div>
     )
   }
 
+  const color = ritmo.estado === 'sobre' ? 'verde' : ritmo.estado === 'debajo' ? 'rojo' : 'acento'
+  const mostrar = (n: number) => (enPlata ? plata(n, moneda) : n.toLocaleString('es-AR'))
+
   return (
-    <section className="tarjeta">
-      <div className="entre">
+    <div className="tarjeta">
+      <div className="entre" style={{ marginBottom: 8 }}>
         <div>
-          <div className="etiqueta">Objetivo del mes</div>
-          <div className="numero">
-            {plata(ritmo.logrado, moneda)}
-            <span style={{ fontSize: '.5em', color: 'var(--gris)', fontWeight: 700 }}> / {plata(ritmo.objetivo, moneda)}</span>
+          <div className="etiqueta">{titulo}</div>
+          <div className="numero chico" style={{ marginTop: 2 }}>
+            {mostrar(ritmo.logrado)}
+            <span style={{ color: 'var(--gris)', fontWeight: 600, fontSize: 14 }}>
+              {' '}de {mostrar(ritmo.objetivo)}
+            </span>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div className="numero chico">{ritmo.alcanzado}%</div>
-          <span className={`pildora ${COLOR[ritmo.estado]}`}>
-            {ritmo.desvio > 0 ? '+' : ''}{ritmo.desvio} pts · {PALABRA[ritmo.estado]}
+          <span className={`pildora ${color}`}>
+            {ritmo.desvio > 0 ? '+' : ''}{ritmo.desvio} pts {ritmo.estado === 'en_ritmo' ? 'en ritmo' :
+              ritmo.estado === 'sobre' ? 'sobre el ritmo' : 'debajo del ritmo'}
           </span>
+          <div className="contra">
+            día {ritmo.diasTranscurridos} de {ritmo.diasTotales} hábiles
+          </div>
         </div>
       </div>
 
-      <div style={{ position: 'relative', marginTop: 12 }}>
-        <Barra porcentaje={ritmo.alcanzado} color={COLOR[ritmo.estado]} />
-        {/* La marca del ritmo esperado: dónde deberíamos estar hoy. */}
-        <div
-          title={`Ritmo esperado a esta altura del mes: ${ritmo.ritmoEsperado}%`}
-          style={{
-            position: 'absolute', top: -3, bottom: -3,
-            left: `${Math.min(100, ritmo.ritmoEsperado)}%`,
-            width: 2, background: 'var(--negro)',
-          }}
-        />
+      <Barra porcentaje={ritmo.alcanzado} color={color} />
+      <div className="contra" style={{ marginTop: 5 }}>
+        {ritmo.alcanzado}% alcanzado · a esta altura del mes debería ir por {ritmo.ritmoEsperado}%
       </div>
-
-      <div className="contra">
-        Día {ritmo.diasTranscurridos} de {ritmo.diasTotales} hábiles · ritmo esperado {ritmo.ritmoEsperado}%
-      </div>
-    </section>
+    </div>
   )
 }

@@ -1,57 +1,107 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import {
-  crearPersonaAccion, cambiarClaveAccion, activarPersonaAccion,
-} from '@/app/(app)/configuracion/acciones'
+import { crearPersonaAccion, cambiarClaveAccion, activarPersonaAccion } from '@/app/(app)/configuracion/acciones'
+import { useCampos } from './campos'
 import { NOMBRE_DE_ROL, ROLES, type Rol } from '@/dominio/roles'
 import type { Persona } from '@/datos/personas'
-import { useCampos } from './campos'
-import { Pildora } from './Piezas'
+import { Tarjeta, Pildora } from './Piezas'
 
-function Boton({ texto }: { texto: string }) {
+/**
+ * El equipo.
+ *
+ * Una persona son hasta dos cosas: una CUENTA para entrar y una FIGURA
+ * COMERCIAL a cuyo nombre salen los números. No siempre van juntas —un closer
+ * que ya no está sigue teniendo sus ventas—, pero el caso del medio es el que
+ * rompe: si la cuenta de un closer no apunta a su fila de closers, entra a la
+ * aplicación y no ve ninguno de sus leads. Es vacío por permiso, y desde afuera
+ * se lee como datos perdidos.
+ *
+ * Por eso el alta resuelve las dos de una, y por eso esta tabla avisa cuando
+ * quedó a medias.
+ */
+function Boton() {
   const { pending } = useFormStatus()
-  return <button type="submit" disabled={pending}>{pending ? 'Guardando…' : texto}</button>
+  return <button type="submit" disabled={pending}>{pending ? 'Dando de alta…' : 'Dar de alta'}</button>
 }
 
 export function Equipo({ personas, yo }: { personas: Persona[]; yo: number }) {
-  const [error, accion] = useActionState(crearPersonaAccion, null)
-  const { campo, valores } = useCampos({ nombre: '', funcion: 'closer', email: '', clave: '' }, error)
-  const [entra, setEntra] = useState(true)
-
-  const funcion = valores.funcion as Rol
-  const comercial = funcion === 'closer' || funcion === 'setter'
-  // Un admin o un head sin cuenta no significa nada: existe para entrar.
-  const pideCuenta = !comercial || entra
+  const [error, accion] = useActionState<string | null, FormData>(crearPersonaAccion, null)
+  const { campo, valores, form } = useCampos(
+    { nombre: '', funcion: 'closer', email: '', clave: '' }, error,
+  )
+  const comercial = valores.funcion === 'closer' || valores.funcion === 'setter'
+  const sinVincular = personas.filter((p) => p.sinVincular)
 
   return (
-    <div className="apilado">
-      <section className="tarjeta">
-        <h2>El equipo</h2>
-        {personas.length === 0 ? (
-          <div className="sindato">Todavía no hay nadie más que vos.</div>
-        ) : (
-          <div className="tabla-scroll">
-            <table>
-              <thead>
-                <tr><th>Nombre</th><th>Email</th><th>Qué hace</th><th>Acceso</th><th></th></tr>
-              </thead>
-              <tbody>
-                {personas.map((p) => (
-                  <Fila key={`${p.usuarioId ?? 'x'}-${p.nombre}`} persona={p} yo={yo} />
-                ))}
-              </tbody>
-            </table>
+    <div className="rejilla g2">
+      <Tarjeta titulo={`El equipo (${personas.length})`}>
+        {sinVincular.length > 0 ? (
+          <div className="aviso atencion">
+            {sinVincular.map((p) => p.nombre).join(', ')}{' '}
+            {sinVincular.length === 1 ? 'tiene cuenta' : 'tienen cuenta'} de closer o setter pero
+            sin su figura comercial asociada: {sinVincular.length === 1 ? 'entra' : 'entran'} a la
+            aplicación y no {sinVincular.length === 1 ? 've' : 'ven'} ningún lead. Dalos de alta de
+            nuevo con el mismo nombre y se vinculan solos.
           </div>
-        )}
-      </section>
+        ) : null}
 
-      <form className="tarjeta" action={accion}>
-        <h3>Sumar a alguien</h3>
-        {error ? <div className="aviso problema">{error}</div> : null}
+        <div className="tabla-scroll">
+          <table>
+            <thead>
+              <tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Función</th><th></th></tr>
+            </thead>
+            <tbody>
+              {personas.map((p, i) => (
+                <tr key={`${p.usuarioId ?? 'sin'}-${i}`}>
+                  <td style={{ fontWeight: 600 }}>
+                    {p.nombre}
+                    {!p.activo ? <span className="pildora gris" style={{ marginLeft: 6 }}>sin acceso</span> : null}
+                  </td>
+                  <td style={{ fontSize: 12.5 }}>
+                    {p.rol ? NOMBRE_DE_ROL[p.rol] : <span className="sindato">sin cuenta</span>}
+                  </td>
+                  <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{p.email ?? '—'}</td>
+                  <td>
+                    <div className="fila" style={{ gap: 4 }}>
+                      {p.esCloser ? <Pildora color="acento">closer</Pildora> : null}
+                      {p.esSetter ? <Pildora color="gris">setter</Pildora> : null}
+                    </div>
+                  </td>
+                  <td className="num">
+                    {p.usuarioId !== null && p.usuarioId !== yo ? (
+                      <form action={activarPersonaAccion}>
+                        <input type="hidden" name="usuarioId" value={p.usuarioId} />
+                        <input type="hidden" name="activo" value={p.activo ? '0' : '1'} />
+                        <button type="submit" className="sutil" style={{ fontSize: 11.5 }}>
+                          {p.activo ? 'Quitar acceso' : 'Dar acceso'}
+                        </button>
+                      </form>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        <div className="rejilla g3">
+        <div className="separador" />
+        <h3>Cambiarle la clave a alguien</h3>
+        <form action={cambiarClaveAccion} className="fila">
+          <select name="usuarioId" required style={{ maxWidth: 200 }}>
+            {personas.filter((p) => p.usuarioId !== null).map((p) => (
+              <option key={p.usuarioId} value={p.usuarioId!}>{p.nombre}</option>
+            ))}
+          </select>
+          <input name="clave" type="password" placeholder="Clave nueva" required style={{ maxWidth: 190 }} />
+          <button type="submit" className="secundario">Cambiar</button>
+        </form>
+      </Tarjeta>
+
+      <Tarjeta titulo="Dar de alta a alguien">
+        <form action={accion} ref={form}>
+          {error ? <div className="aviso problema">{error}</div> : null}
           <div className="campo">
             <label htmlFor="nombre">Nombre</label>
             <input {...campo('nombre')} required />
@@ -59,93 +109,35 @@ export function Equipo({ personas, yo }: { personas: Persona[]; yo: number }) {
           <div className="campo">
             <label htmlFor="funcion">Qué hace</label>
             <select {...campo('funcion')}>
-              {ROLES.map((r) => <option key={r} value={r}>{NOMBRE_DE_ROL[r]}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{NOMBRE_DE_ROL[r as Rol]}</option>)}
             </select>
           </div>
-        </div>
 
-        {comercial ? (
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, fontSize: 14 }}>
-            <input type="checkbox" name="entra" checked={entra} style={{ width: 'auto' }}
-                   onChange={(e) => setEntra(e.target.checked)} />
-            Entra a la aplicación
-          </label>
-        ) : null}
+          {comercial ? (
+            <div className="campo">
+              <label style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                <input type="checkbox" name="entra" defaultChecked />
+                <span>Entra a la aplicación</span>
+              </label>
+              <div className="nota">
+                Sin tildar se crea la figura comercial sin cuenta. Sirve para cargar a alguien
+                que ya no está pero cuyas ventas siguen contando.
+              </div>
+            </div>
+          ) : null}
 
-        {pideCuenta ? (
-          <div className="rejilla g3">
-            <div className="campo">
-              <label htmlFor="email">Email</label>
-              <input {...campo('email')} type="email" required />
-            </div>
-            <div className="campo">
-              <label htmlFor="clave">Clave inicial</label>
-              <input {...campo('clave')} type="password" minLength={8} required
-                     autoComplete="new-password" placeholder="mínimo 8 caracteres" />
-            </div>
+          <div className="campo">
+            <label htmlFor="email">Email</label>
+            <input {...campo('email')} type="email" />
           </div>
-        ) : (
-          <p style={{ fontSize: 13, color: 'var(--gris)', marginTop: 0 }}>
-            Sin cuenta: no entra a la aplicación, pero los números salen a su nombre.
-            Sirve para alguien que ya no está y cuyas ventas siguen contando.
-          </p>
-        )}
-
-        <Boton texto="Sumar" />
-      </form>
+          <div className="campo">
+            <label htmlFor="clave">Clave</label>
+            <input {...campo('clave')} type="password" />
+            <div className="nota">Al menos 8 caracteres.</div>
+          </div>
+          <Boton />
+        </form>
+      </Tarjeta>
     </div>
-  )
-}
-
-function Fila({ persona: p, yo }: { persona: Persona; yo: number }) {
-  const [cambiando, setCambiando] = useState(false)
-
-  return (
-    <tr style={p.activo ? undefined : { opacity: 0.55 }}>
-      <td style={{ fontWeight: 650 }}>
-        {p.nombre}
-        {p.usuarioId === yo ? <span style={{ color: 'var(--gris)', fontWeight: 400 }}> · vos</span> : null}
-      </td>
-      <td style={{ fontSize: 13 }}>{p.email ?? <span className="sindato">sin cuenta</span>}</td>
-      <td style={{ fontSize: 13 }}>
-        {p.rol ? NOMBRE_DE_ROL[p.rol] : p.esCloser ? 'Closer' : 'Setter'}
-        {p.sinVincular ? (
-          <div style={{ marginTop: 3 }}>
-            <Pildora color="rojo">no ve nada: falta su figura</Pildora>
-          </div>
-        ) : null}
-      </td>
-      <td>
-        {p.usuarioId === null
-          ? <span className="sindato">—</span>
-          : <Pildora color={p.activo ? 'verde' : 'gris'}>{p.activo ? 'entra' : 'sin acceso'}</Pildora>}
-      </td>
-      <td>
-        {p.usuarioId === null ? null : cambiando ? (
-          <form action={cambiarClaveAccion} className="fila" onSubmit={() => setCambiando(false)}>
-            <input type="hidden" name="usuarioId" value={p.usuarioId} />
-            <input name="clave" type="password" minLength={8} required placeholder="clave nueva"
-                   autoComplete="new-password" style={{ width: 150 }} />
-            <button type="submit" style={{ fontSize: 12, padding: '4px 11px' }}>Guardar</button>
-            <button type="button" className="secundario" style={{ fontSize: 12, padding: '4px 11px' }}
-                    onClick={() => setCambiando(false)}>Cancelar</button>
-          </form>
-        ) : (
-          <div className="fila">
-            <button type="button" className="secundario" style={{ fontSize: 12, padding: '4px 11px' }}
-                    onClick={() => setCambiando(true)}>Cambiar clave</button>
-            {p.usuarioId === yo ? null : (
-              <form action={activarPersonaAccion}>
-                <input type="hidden" name="usuarioId" value={p.usuarioId} />
-                <input type="hidden" name="activo" value={p.activo ? '0' : '1'} />
-                <button type="submit" className="secundario" style={{ fontSize: 12, padding: '4px 11px' }}>
-                  {p.activo ? 'Quitar acceso' : 'Dar acceso'}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-      </td>
-    </tr>
   )
 }

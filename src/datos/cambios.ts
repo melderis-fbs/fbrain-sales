@@ -13,7 +13,11 @@ import type { PoolClient } from 'pg'
  * María» llena la historia de ruido y hace que la que importa no se encuentre.
  */
 
-export type Entidad = 'lead' | 'oportunidad' | 'venta' | 'sena' | 'config'
+/**
+ * Ya no hay 'oportunidad': el lead ES la oportunidad. La plata se anota contra
+ * el id del lead, así que la historia de un lead es una sola consulta.
+ */
+export type Entidad = 'lead' | 'venta' | 'sena' | 'config'
 
 export type Cambio = {
   entidad: Entidad
@@ -87,9 +91,7 @@ export async function historialDelLead(leadId: number): Promise<LineaDeHistorial
             u.nombre as usuario, c.creado_en, c.entidad
        from cambios c
        left join usuarios u on u.id = c.usuario_id
-      where (c.entidad = 'lead' and c.entidad_id = $1)
-         or (c.entidad in ('oportunidad', 'venta', 'sena')
-             and c.entidad_id in (select id from oportunidades where lead_id = $1))
+      where c.entidad in ('lead', 'venta', 'sena') and c.entidad_id = $1
       order by c.creado_en desc, c.id desc
       limit 200`,
     [leadId],

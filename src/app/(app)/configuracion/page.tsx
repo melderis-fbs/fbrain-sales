@@ -5,7 +5,11 @@ import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn, rango } from '@/motor/periodos'
 import { Tarjeta, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
 import { equipo } from '@/datos/personas'
+import { toques } from '@/datos/seguimientos'
+import { modeloVigente } from '@/datos/analisis'
 import { Equipo } from '@/componentes/Equipo'
+import { Encabezado } from '@/componentes/Piezas'
+import { guardarCadenciaAccion } from '../seguimientos/acciones'
 import { altaDeCatalogoAccion, objetivoAccion, monedaBaseAccion } from './acciones'
 
 export default async function Configuracion() {
@@ -14,10 +18,12 @@ export default async function Configuracion() {
 
   const hoy = hoyEn()
   const mes = rango('mes', hoy)
-  const [cats, monedaBase, personas, objetivos] = await Promise.all([
+  const [cats, monedaBase, personas, cadencia, modelo, objetivos] = await Promise.all([
     catalogos(),
     config<string>('moneda_base', 'USD'),
     equipo(),
+    toques(),
+    modeloVigente(),
     filas<{ id: number; ambito: string; tipo: string; desde: string; hasta: string; valor: number; moneda: string; quien: string | null }>(
       `select o.id, o.ambito, o.tipo, o.desde, o.hasta, o.valor, o.moneda,
               coalesce(c.nombre, s.nombre) as quien
@@ -30,13 +36,8 @@ export default async function Configuracion() {
 
   return (
     <div className="apilado">
-      <div>
-        <div className="kicker">Configuración</div>
-        <h1>Las variables del negocio</h1>
-        <p style={{ color: 'var(--gris)', marginTop: 2 }}>
-          Todo lo que está acá se cambia sin tocar código.
-        </p>
-      </div>
+      <Encabezado kicker="Configuración" titulo="Las variables del negocio"
+                  bajada="Todo lo que está acá se cambia sin tocar código ni esperar un deploy." />
 
       <Equipo personas={personas} yo={usuario.id} />
 
@@ -72,6 +73,60 @@ export default async function Configuracion() {
           </select>
           <button type="submit" className="secundario">Guardar</button>
         </form>
+      </Tarjeta>
+
+      <Tarjeta titulo="La cadencia de seguimientos"
+               ayuda="Los días son acumulados desde el ingreso; la espera entre un toque y el siguiente es la diferencia entre los dos. En tres meses, cuando se vea qué toque convierte, esto va a cambiar — y que cambiarlo exija un deploy es lo que hace que no cambie nunca.">
+        <form action={guardarCadenciaAccion}>
+          <div className="tabla-scroll">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Nombre del toque</th><th className="num">Día</th><th className="num">Activo</th></tr>
+              </thead>
+              <tbody>
+                {cadencia.map((t) => (
+                  <tr key={t.orden}>
+                    <td>{t.orden}</td>
+                    <td><input name={`nombre_${t.orden}`} defaultValue={t.nombre} /></td>
+                    <td className="num" style={{ width: 90 }}>
+                      <input name={`dias_${t.orden}`} defaultValue={t.dias} inputMode="numeric" />
+                    </td>
+                    <td className="num">
+                      <input type="checkbox" name={`activo_${t.orden}`} defaultChecked />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button type="submit" style={{ marginTop: 12 }}>Guardar la cadencia</button>
+        </form>
+      </Tarjeta>
+
+      <Tarjeta titulo="El modelo de scoring del analizador"
+               ayuda="La nota de una llamada no la pone el modelo de lenguaje: la calcula el motor con estos pesos sobre los niveles que el modelo cita.">
+        <p className="ayuda">
+          Versión vigente: <strong>{modelo.version}</strong> ·{' '}
+          {modelo.modelo.dimensiones.length} dimensiones ·{' '}
+          {Object.keys(modelo.modelo.penalizaciones).length} penalizaciones ·{' '}
+          {modelo.modelo.topes.length} topes.
+        </p>
+        <div className="tabla-scroll" style={{ marginTop: 10 }}>
+          <table>
+            <thead><tr><th>Dimensión</th><th className="num">Peso</th></tr></thead>
+            <tbody>
+              {modelo.modelo.dimensiones.map((d) => (
+                <tr key={d.clave}><td>{d.nombre}</td><td className="num">{d.peso}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="ayuda" style={{ marginTop: 10 }}>
+          Recalibrar no cuesta una llamada al modelo: los niveles de cada análisis ya están
+          guardados, así que cambiar un peso y recalcular mil análisis son segundos. Las notas
+          viejas quedan con su versión, para poder comparar las dos distribuciones antes de
+          adoptar la nueva.
+        </p>
       </Tarjeta>
 
       <Tarjeta titulo="Objetivos">

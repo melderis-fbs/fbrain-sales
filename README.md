@@ -5,10 +5,17 @@ persona con una historia completa —de dónde vino, quién la agendó, con qué
 habló, qué pasó, cuánto se vendió y cuánto se cobró— que se puede reconstruir y
 **corregir** sin borrar nada.
 
-Esto es la **Fase 1**. Lo que hay hoy: entrar, cargar leads y sesiones, editarlos,
-reasignar closers con historial, cargar resultados (venta, seña, seguimiento,
-pérdida), y el tablero con embudo y objetivo. El analizador de llamadas, el Lead
-Quality Score y el matching vienen después, en el orden de
+Un lead **es** una oportunidad de venta. Las llamadas que hagan falta para
+cerrarla —una, dos o tres— cuelgan de él y no lo multiplican.
+
+Lo que hay hoy: Dashboard y Tracker, leads con ficha por pestañas, calificación
+del setter con Lead Quality, pipeline de seguimientos de 12 toques, comparativa
+de closers con el cierre **ajustado por la calidad de los leads que recibió cada
+uno**, setters, y el analizador de llamadas con rúbrica anclada y motor de
+scoring determinista.
+
+Falta la integración con GoHighLevel —hoy los leads se cargan a mano o se
+importan—, el matching lead↔closer y las comisiones. El plan completo está en
 [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
 ---
@@ -48,15 +55,55 @@ operación entera. Por eso el interruptor es **otra variable**,
 `DATABASE_URL_PRUEBAS`: sin ella, las que escriben se saltean solas.
 
 ```
-Test Files  4 passed (4)
-Tests       41 passed (41)
+Test Files  5 passed (5)
+Tests       71 passed (71)
 ```
+
+`npm run recorrido` es lo otro: maneja la aplicación entera con un navegador de
+verdad —entrar, cargar un lead, calificarlo, señar, convertir la seña, mover una
+tarjeta del pipeline— y verifica en pantalla lo que las pruebas verifican en la
+base.
 
 ---
 
 ## Las decisiones que están tomadas, y por qué
 
-### 1 · La seña es su propia categoría
+### 1 · El lead **es** la oportunidad
+
+María no es «un lead con dos oportunidades»: María es la oportunidad. Había una
+capa de más, y era la que hacía que la misma persona apareciera tres veces en
+una lista de leads. Las llamadas cuelgan del lead; la plata también.
+
+Cuando un lead perdido se vuelve a abrir es **el mismo lead con un ciclo más**,
+no uno nuevo: partirlo en dos registros perdería la historia justo cuando la
+historia es lo que sirve. Y queda escrito **quién lo reflotó**, porque esa
+repesca se cobra y suele hacerla el setter.
+
+### 2 · Cada métrica está definida una sola vez
+
+`src/datos/metricas.ts` es el único lugar donde se cuenta algo. Ninguna pantalla
+hace su propia cuenta.
+
+Existe por un problema concreto del sistema anterior: el tablero decía **111% de
+cierre** y el tracker **11%** para el mismo mes. Ninguno estaba roto — contaban
+sobre universos distintos. Las ventas salían de la tabla de ventas por fecha de
+venta, y las asistencias de las reuniones del mes; dividir una cosa por la otra
+da un número que no significa nada.
+
+La regla ahora:
+
+- todo el **embudo** —agendadas, asistencias, ofertas, señas, ventas— se cuenta
+  sobre el mismo universo: los leads cuya reunión cayó en el período. El cierre
+  es ventas sobre asistencias del mismo universo y **por construcción no puede
+  pasar de 100%**;
+- la **plata** se cuenta por su propia fecha: una venta en el mes que se firmó,
+  un cobro en el mes que entró. Son universos distintos a propósito, y la
+  pantalla lo dice en vez de esconderlo.
+
+Hay una prueba que carga una venta de agosto cobrada en septiembre y verifica
+que el cierre de septiembre siga siendo 0%.
+
+### 3 · La seña es su propia categoría
 
 Una seña significa que hubo intención real de compra **y** compromiso
 financiero, pero todavía no hay venta. Entonces:
@@ -69,59 +116,141 @@ financiero, pero todavía no hay venta. Entonces:
 Cuando se convierte, su importe pasa a ser el **primer pago** de la venta. Así el
 dinero se cuenta una vez: no dos, y no cero. Hay una prueba que lo verifica.
 
-### 2 · Facturación y cash son dos tablas distintas
+### 4 · Facturación y cash son dos tablas distintas
 
 `ventas` es lo que se vendió. `pagos` es lo que se cobró. Salen de tablas
 separadas y de fechas separadas: una llamada de septiembre que se cobra en
 octubre es una agenda de septiembre y cash de octubre, y está bien así.
 
-### 3 · Estado y resultado no son lo mismo
+### 5 · Estado y resultado no son lo mismo
 
 `estado` dice qué pasó con la reunión (vino, no vino, se canceló). `resultado`
 dice qué pasó con la venta. Mezclarlos es lo que hace que después no se pueda
 contestar «cuántas asistencias hubo» sin discutir.
 
-### 4 · Todo se edita, nada se borra
+### 6 · Todo se edita, nada se borra
 
 Un lead se corrige después de creado —todos sus campos, incluido el closer— y
 cada cambio deja quién, cuándo, de qué a qué y por qué en la tabla `cambios`. Al
 reasignar, el **closer inicial no se pisa nunca**: sin él no se puede atribuir el
 cierre más adelante.
 
-### 5 · Un número nunca va solo
+### 7 · Un número nunca va solo
 
 Cero y «sin datos» son cosas distintas. `tasa()` devuelve `null` cuando el
 denominador es cero, porque «0% de asistencia» sobre cero agendadas es una
 afirmación falsa con apariencia de dato. Y gris no es verde: verde es el color
 que hace que nadie lo mire.
 
-### 6 · Las monedas no se mezclan
+### 8 · Las monedas no se mezclan
 
 Todo importe lleva su moneda. El tablero suma la moneda base y muestra el resto
 **aparte**, avisando. Una suma con una cotización inventada es un número que
 parece correcto y no lo es.
 
-### 7 · El duplicado se avisa, no se decide
+### 9 · El duplicado se avisa, no se decide
 
 Antes de crear un lead se busca por email, por los **últimos 8 dígitos** del
 teléfono (así «+54 9 11 5555-1234» y «11 5555 1234» se encuentran) y por nombre
 plegado. Si aparece algo, no se crea: se muestra y decide una persona. Unir dos
 registros es una acción explícita, nunca automática.
 
+Y hay un caso que importa más que el duplicado: que el que ya está sea un lead
+**perdido**. Ahí lo que corresponde no es crear otra ficha, es reflotarlo — y la
+pantalla lo ofrece.
+
+### 10 · El analizador no le pide una nota al modelo
+
+Es la decisión que cambia el analizador entero. «¿Del 0 al 10, qué tan bien
+descubrió?» no tiene respuesta verificable, y un modelo de lenguaje contesta lo
+que contestaría una persona amable: de ahí salía que **todas** las llamadas
+terminaran cerca de 7,4.
+
+En lugar de eso, se le pide por dimensión en cuál de cinco descripciones de
+**conducta observable** cae la llamada, y la **frase textual** que lo sostiene.
+Sin cita, el nivel no entra. La nota la calcula el motor
+(`src/motor/scoring.ts`) con los pesos, los topes y las penalizaciones.
+
+Tres consecuencias:
+
+- la misma llamada evaluada dos veces da la misma nota, porque no la improvisa
+  nadie;
+- **recalibrar no cuesta una llamada al modelo**: los niveles ya están
+  guardados, así que cambiar un peso y repuntuar mil análisis son segundos. Con
+  un analizador que guarda la nota, recalibrar es reanalizar — y reanalizar mil
+  llamadas cuesta plata, así que no se hace nunca, así que el modelo de scoring
+  no se corrige nunca;
+- las notas viejas no se pisan: quedan con su versión de `scoring_config`, para
+  poder comparar las dos distribuciones antes de adoptar la nueva.
+
+Los **topes** son lo que rompe el 7,4 de verdad: una llamada impecable en todo
+salvo descubrimiento da 7,8 promediando, y queda en 7,0. Sin descubrimiento no
+se puede saber si lo que se vendió servía, y ningún cierre brillante lo compensa.
+
+### 11 · A los closers se los compara por el índice, no por el cierre
+
+Un closer que cierra 18% con leads flojos y otro que cierra 22% con leads buenos
+están ordenados al revés en cualquier tabla que mire el 18 y el 22. Eso no es
+sólo injusto: es cómo se rompe un equipo, porque el mejor closer aprende a pelear
+por los leads buenos en vez de por las llamadas difíciles.
+
+El **índice** compara lo que cerró contra lo que cerraría cualquiera con la
+mezcla de leads que le tocó. 1,00 es rendir lo esperable. Con menos de ocho
+asistencias no se publica: un número que se mueve veinte puntos con una venta más
+se lee igual que uno sólido.
+
+El nivel de calidad que se usa es el **congelado al asignar el lead**. Si se
+usara el vigente, bastaría con bajarle la calidad a un lead después de perderlo
+para mejorar el propio número. Hay una prueba que lo intenta.
+
+### 12 · La cadencia de seguimientos se cuenta desde el último toque real
+
+Doce toques con su día: 0, 1, 3, 7, 10, 15, 21, 35, 45, 60, 70, 80. Pero la fecha
+de cada uno **no** se cuenta desde que el lead entró: se cuenta desde el último
+toque que se hizo de verdad.
+
+Con las fechas contadas desde el ingreso, un closer que se toma tres días para el
+toque 2 abre la pantalla y encuentra los toques 3, 4 y 5 vencidos a la vez. Nadie
+hace tres toques el mismo día: lo que pasa de verdad es que deja de mirar la
+pantalla.
+
+El pipeline no es una lista aparte de leads: es una **vista** de los leads que
+quedaron en seguimiento. Un lead entra solo cuando el closer marca «seguimiento»
+y sale solo cuando se vende, se pierde o se marca «no interesado». Si fuera una
+lista propia se desincronizaría, y nadie sabría cuál de las dos pantallas tiene
+razón.
+
 ---
 
 ## Cómo está armado
 
 ```
-src/dominio/     Qué es una seña, qué resultados existen, qué puede cada rol.
-src/motor/       El motor estadístico: embudo, tasas, ritmo del objetivo, períodos.
-                 Funciones puras, sin base de datos y sin IA. Acá van los tests.
+src/dominio/     Qué es una seña, qué resultados existen, la rúbrica del
+                 analizador, la ficha de calificación, qué puede cada rol.
+src/motor/       Funciones puras: embudo, tasas, ritmo del objetivo, períodos,
+                 Lead Quality, scoring de llamadas, fechas de la cadencia y el
+                 cierre ajustado. Sin base de datos y sin IA. Acá van los tests.
 src/datos/       Las consultas. Toda consulta recibe el alcance como argumento.
+                 `metricas.ts` es el único lugar donde se cuenta algo.
+src/ia/          Las dos pasadas del analizador y el cliente del modelo, con el
+                 gasto anotado en `llamadas_modelo`.
 src/lib/         Conexión, sesión, permisos, revisión del esquema, texto.
 src/componentes/ UI. Recibe lo que el motor ya calculó; no calcula.
 src/app/         Pantallas y acciones de servidor.
 supabase/        Las migraciones.
 ```
+
+### Las pantallas
+
+| Pantalla | Qué contesta |
+|---|---|
+| **Dashboard** | Cómo viene el mes, contra el anterior y contra el objetivo |
+| **Tracker** | La planilla del equipo: qué hay agendado, qué pasó, qué falta cargar |
+| **Leads** | Una fila por persona. La ficha tiene pestañas porque se completa en momentos distintos y por personas distintas |
+| **Seguimientos** | El pipeline de 12 toques, con la tarjeta que se mueve sola |
+| **Llamadas** | El analizador, la rúbrica a la vista y los playbooks |
+| **Closers / Setters** | El equipo, con el cierre puesto en contexto |
+| **Configuración** | Equipo, catálogos, objetivos, moneda base y la cadencia |
 
 ### Por qué se conecta así a Postgres
 
@@ -193,11 +322,11 @@ Dos cosas que se pasan por alto, y son las que hacen perder la tarde:
 
 ### 3 · Crear las tablas
 
-**SQL Editor** → **New query** → pegá los tres archivos de
+**SQL Editor** → **New query** → pegá los archivos de
 `supabase/migrations/` en orden y **Run**. Son idempotentes: correrlos dos veces
 no rompe nada.
 
-Tienen que quedar **19 tablas**, se ven en **Table Editor**.
+Tienen que quedar **32 tablas**, se ven en **Table Editor**.
 
 ### 4 · Cargarla en Vercel
 
@@ -281,11 +410,19 @@ primera línea roja. Es lo único que dice qué pasó.
 El plan completo está en [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 Lo próximo, por dependencia:
 
-1. **Analizador de llamadas** con el motor de scoring determinista (rúbricas
-   ancladas, topes, penalizaciones y `scoring_config` versionado). La tabla
-   `trabajos` ya está creada esperándolo.
-2. **Seguimientos** en kanban con prioridad.
-3. **Lead Quality Score**, que es lo que después permite comparar closers de
-   verdad. Hasta que exista, la pantalla de Closers muestra el cierre bruto y
-   **lo dice**: inventar el ajuste sería peor que no tenerlo.
-4. **Matching**, que necesita volumen antes de significar algo.
+1. **Integración con GoHighLevel.** Hoy el lead se carga a mano y eso funciona,
+   pero es el trabajo que más se repite. Hace falta un webhook de ejemplo para
+   saber contra qué mapear.
+2. **Matching lead ↔ closer.** Necesita volumen antes de significar algo: con los
+   números de un mes, «Kevin cierra mejor los de e-commerce» son cuatro llamadas.
+3. **Comisiones**, incluida la de repesca — el dato de quién reflotó cada lead ya
+   se guarda.
+4. **Casos de éxito**, para que el toque 3 de la cadencia tenga qué mandar.
+
+### Para que el analizador funcione
+
+Hace falta `ANTHROPIC_API_KEY` en el entorno. Sin ella, el resto de la
+aplicación anda igual y el analizador lo dice en pantalla en vez de fallar con un
+error genérico. El gasto de cada llamada al modelo queda anotado en
+`llamadas_modelo`, con sus tokens y su costo: un sistema que llama a un modelo
+por cada llamada de ventas se vuelve caro sin que nadie se entere.

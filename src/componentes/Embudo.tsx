@@ -1,43 +1,41 @@
 import type { Etapa } from '@/motor/embudo'
-import { Vacio } from './Piezas'
+import { Barra } from './Piezas'
 
 /**
- * El embudo, con la cantidad de cada etapa y el % de paso entre etapas.
+ * El embudo.
  *
- * El porcentaje va ENTRE dos etapas, no debajo de una: lo que se lee es dónde
- * se pierde, y eso vive en el paso, no en el total.
+ * Los porcentajes son de PASO, no sobre el total: 83 asistidas sobre 100
+ * agendadas es 83%, y 76 ofertas sobre 83 asistidas es 91%. Siempre contra la
+ * etapa anterior, porque eso es lo que dice dónde se pierde — que es la única
+ * pregunta que un embudo contesta bien.
  */
 export function Embudo({ etapas }: { etapas: Etapa[] }) {
-  const maximo = Math.max(...etapas.map((e) => e.cantidad), 1)
-  if (etapas.every((e) => e.cantidad === 0)) {
-    return <Vacio>Todavía no hay oportunidades en este período.</Vacio>
-  }
+  const techo = Math.max(1, etapas[0]?.cantidad ?? 1)
 
   return (
-    <div>
-      {etapas.map((etapa, i) => (
-        <div key={etapa.clave}>
-          {i > 0 ? (
-            <div style={{ padding: '3px 0 3px 12px', fontSize: 12, color: 'var(--gris)', fontWeight: 650 }}>
-              ↓ {etapa.paso === null ? 'sin datos' : `${etapa.paso}%`}
+    <div className="apilado" style={{ gap: 10 }}>
+      {etapas.map((e, i) => {
+        const anterior = i === 0 ? null : etapas[i - 1]
+        // La caída, no el paso: es lo que hay que mirar.
+        const caida = e.paso === null ? null : 100 - e.paso
+        return (
+          <div key={e.clave}>
+            <div className="entre" style={{ marginBottom: 3 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{e.etiqueta}</span>
+              <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                <strong>{e.cantidad.toLocaleString('es-AR')}</strong>
+                {e.paso !== null ? (
+                  <span style={{ color: 'var(--gris)', marginLeft: 6, fontSize: 12 }}>
+                    {e.paso}% de {anterior?.etiqueta.toLowerCase()}
+                  </span>
+                ) : null}
+              </span>
             </div>
-          ) : null}
-          <div className="fila" style={{ gap: 12, alignItems: 'center' }}>
-            <div style={{ width: 92, fontSize: 13, fontWeight: 650 }}>{etapa.etiqueta}</div>
-            <div style={{ flex: 1, minWidth: 80 }}>
-              <div className="barra">
-                <i style={{
-                  width: `${(etapa.cantidad / maximo) * 100}%`,
-                  background: etapa.clave === 'senas' ? 'var(--sena)' : etapa.clave === 'ventas' ? 'var(--verde)' : 'var(--negro)',
-                }} />
-              </div>
-            </div>
-            <div style={{ width: 52, textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
-              {etapa.cantidad}
-            </div>
+            <Barra porcentaje={(e.cantidad / techo) * 100}
+                   color={caida !== null && caida > 60 ? 'rojo' : caida !== null && caida > 35 ? 'ambar' : 'acento'} />
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
