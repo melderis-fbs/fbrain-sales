@@ -8,15 +8,13 @@ habló, qué pasó, cuánto se vendió y cuánto se cobró— que se puede recon
 Un lead **es** una oportunidad de venta. Las llamadas que hagan falta para
 cerrarla —una, dos o tres— cuelgan de él y no lo multiplican.
 
-Lo que hay hoy: Dashboard y Tracker, leads con ficha por pestañas, calificación
-del setter con Lead Quality, pipeline de seguimientos de 12 toques, comparativa
-de closers con el cierre **ajustado por la calidad de los leads que recibió cada
-uno**, setters, y el analizador de llamadas con rúbrica anclada y motor de
-scoring determinista.
+Lo que hay hoy: Dashboard, Tracker Diario, Leads con ficha por pestañas,
+Llamadas, Analizador con rúbrica anclada, Closers y Setters, Matching,
+Seguimientos de 12 toques, Métricas, Casos de Éxito, Comisiones y
+Configuración.
 
-Falta la integración con GoHighLevel —hoy los leads se cargan a mano o se
-importan—, el matching lead↔closer y las comisiones. El plan completo está en
-[`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
+Falta la integración con GoHighLevel: hoy los leads se cargan a mano. El plan
+completo está en [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -56,7 +54,7 @@ operación entera. Por eso el interruptor es **otra variable**,
 
 ```
 Test Files  5 passed (5)
-Tests       71 passed (71)
+Tests       75 passed (75)
 ```
 
 `npm run recorrido` es lo otro: maneja la aplicación entera con un navegador de
@@ -245,12 +243,32 @@ supabase/        Las migraciones.
 | Pantalla | Qué contesta |
 |---|---|
 | **Dashboard** | Cómo viene el mes, contra el anterior y contra el objetivo |
-| **Tracker** | La planilla del equipo: qué hay agendado, qué pasó, qué falta cargar |
+| **Tracker Diario** | La planilla del equipo. **Acá el closer carga el resultado de la llamada sin abrir la ficha** |
 | **Leads** | Una fila por persona. La ficha tiene pestañas porque se completa en momentos distintos y por personas distintas |
-| **Seguimientos** | El pipeline de 12 toques, con la tarjeta que se mueve sola |
-| **Llamadas** | El analizador, la rúbrica a la vista y los playbooks |
+| **Llamadas** | Qué se grabó, qué transcripción falta, qué está analizado |
+| **Analizador** | Las notas, la rúbrica a la vista y los playbooks |
 | **Closers / Setters** | El equipo, con el cierre puesto en contexto |
+| **Matching** | Qué closer cierra mejor qué tipo de lead, y con cuánta confianza |
+| **Seguimientos** | El pipeline de 12 toques, con la tarjeta que se mueve sola |
+| **Métricas** | El mismo mes mirado por abajo: aperturas, caídas y variación |
+| **Casos de Éxito** | La munición del toque 3 de la cadencia, lista para mandar |
+| **Comisiones** | Cuánto le toca a cada uno, con las reglas editables |
 | **Configuración** | Equipo, catálogos, objetivos, moneda base y la cadencia |
+
+### Dos cosas que la pantalla tiene que decir, y dice
+
+**Un lead sin fecha de reunión no entra a ninguna métrica**, porque el embudo
+entero cuenta sobre las reuniones del período. Eso no se puede resolver en
+silencio: el Tracker los reclama en su propia tarjeta, con un campo para
+ponerles fecha ahí mismo, y el Dashboard avisa cuántos hay. Un lead que no
+aparece en ninguna pantalla no es un lead prolijo, es un lead perdido — y quien
+lo cargó cree que está.
+
+**El resultado se carga donde el closer está**, no donde el modelo de datos
+querría. Sale de una llamada, entra al Tracker y carga en la misma fila: qué
+pasó con la reunión y qué pasó con la venta. El importe aparece sólo si hubo
+venta o seña; el motivo, sólo si se perdió. Lo demás —próximo paso,
+observaciones, saldo, cobros— vive en la ficha, para cuando haya tiempo.
 
 ### Por qué se conecta así a Postgres
 
@@ -327,7 +345,7 @@ Dos cosas que se pasan por alto, y son las que hacen perder la tarde:
 no rompe nada, y correrlos sobre una base que ya tiene datos **mueve** las filas
 al modelo nuevo en vez de tirarlas.
 
-Tienen que quedar **32 tablas**, se ven en **Table Editor**.
+Tienen que quedar **33 tablas**, se ven en **Table Editor**.
 
 ### 4 · Cargarla en Vercel
 
@@ -409,21 +427,25 @@ primera línea roja. Es lo único que dice qué pasó.
 ## Qué falta, y en qué orden
 
 El plan completo está en [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md).
-Lo próximo, por dependencia:
 
 1. **Integración con GoHighLevel.** Hoy el lead se carga a mano y eso funciona,
    pero es el trabajo que más se repite. Hace falta un webhook de ejemplo para
    saber contra qué mapear.
-2. **Matching lead ↔ closer.** Necesita volumen antes de significar algo: con los
-   números de un mes, «Kevin cierra mejor los de e-commerce» son cuatro llamadas.
-3. **Comisiones**, incluida la de repesca — el dato de quién reflotó cada lead ya
-   se guarda.
-4. **Casos de éxito**, para que el toque 3 de la cadencia tenga qué mandar.
+2. **Que el Matching reparta.** La pantalla ya muestra qué closer cierra mejor
+   qué segmento, con su nivel de confianza. Para que asigne solo faltan dos
+   cosas: volumen —varias decenas de asistencias por combinación— y una regla
+   sobre qué hacer cuando el mejor closer para un lead está lleno. Sin lo
+   segundo, un asignador automático le manda todo al mismo y el resto del
+   equipo deja de aprender.
+3. **Liquidar comisiones, no sólo calcularlas.** Hoy la pantalla calcula contra
+   las reglas vigentes y no guarda nada, a propósito: mientras las reglas se
+   acomodan, un número guardado es un número viejo que alguien va a usar para
+   pagar.
 
 ### Para que el analizador funcione
 
 Hace falta `ANTHROPIC_API_KEY` en el entorno. Sin ella, el resto de la
-aplicación anda igual y el analizador lo dice en pantalla en vez de fallar con un
-error genérico. El gasto de cada llamada al modelo queda anotado en
+aplicación anda igual y el analizador lo dice en pantalla en vez de fallar con
+un error genérico. El gasto de cada llamada al modelo queda anotado en
 `llamadas_modelo`, con sus tokens y su costo: un sistema que llama a un modelo
 por cada llamada de ventas se vuelve caro sin que nadie se entere.

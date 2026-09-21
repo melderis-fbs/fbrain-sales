@@ -216,7 +216,7 @@ export default async function FichaDeCloser({
 
       <Tarjeta titulo="Su playbook"
                ayuda="Cada closer carga su propio guion y lo va corrigiendo. El analizador lo usa como contexto de qué se ofrece."
-               accion={<Link href="/llamadas?pestana=playbooks" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Editar →</Link>}>
+               accion={<Link href="/analizador?pestana=playbooks" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Editar →</Link>}>
         {playbooks.length === 0 ? (
           <p className="ayuda">Todavía no cargó ninguno. Sin playbook el análisis funciona igual,
             pero pierde el contexto de qué programa se está vendiendo.</p>

@@ -77,44 +77,71 @@ h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; color: var(--negro); }
 .marco { display: flex; min-height: 100vh; }
 
 .lateral {
-  width: 208px;
-  flex: 0 0 208px;
+  width: 260px;
+  flex: 0 0 260px;
   background: var(--blanco);
   border-right: 1px solid var(--borde);
-  padding: 16px 12px;
+  padding: 0 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
-.lateral .marca {
-  font-weight: 700; letter-spacing: -.02em; font-size: 14px;
-  margin: 2px 8px 16px; color: var(--negro);
-}
-.lateral .marca small {
-  display: block; font-weight: 500; font-size: 10px; color: var(--gris-claro);
-  letter-spacing: .12em; text-transform: uppercase; margin-top: 1px;
-}
-.lateral a {
-  display: block; padding: 6px 9px; border-radius: var(--radio-chico);
-  color: var(--gris); font-size: 13.5px; font-weight: 500;
-}
-.lateral a:hover { background: var(--gris-fondo); color: var(--negro); text-decoration: none; }
-.lateral a.activo { background: var(--acento-suave); color: var(--acento); font-weight: 600; }
-.lateral .grupo {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .1em; font-weight: 650;
-  color: var(--gris-claro); padding: 14px 9px 4px;
-}
-.lateral .pie {
-  margin-top: auto; padding: 12px 9px 0; border-top: 1px solid var(--borde);
-  font-size: 12px; color: var(--gris);
-}
-.lateral .pie .quien { color: var(--negro); font-weight: 600; font-size: 13px; }
 
-.buscador { padding: 0 2px 6px; }
-.buscador input {
-  font-size: 13px; padding: 6px 9px; background: var(--gris-fondo); border-color: transparent;
+/* El sello de la marca: cuadrado negro con la inicial, como un favicon grande.
+ * Es lo único de la pantalla que puede permitirse ser puramente decorativo. */
+.lateral .marca {
+  display: flex; align-items: center; gap: 11px;
+  padding: 18px 8px 16px;
+  border-bottom: 1px solid var(--borde);
+  margin-bottom: 14px;
 }
-.buscador input:focus { background: var(--blanco); border-color: var(--acento); outline: none; }
+.lateral .marca .sello {
+  width: 38px; height: 38px; flex: 0 0 38px;
+  border-radius: 10px; background: var(--negro); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px; letter-spacing: -.02em;
+}
+.lateral .marca .nombre {
+  font-weight: 700; font-size: 16px; letter-spacing: -.02em; color: var(--negro); line-height: 1.15;
+}
+.lateral .marca .nombre small {
+  display: block; font-weight: 600; font-size: 10px; color: var(--gris-claro);
+  letter-spacing: .14em; text-transform: uppercase; margin-top: 2px;
+}
+
+.lateral .entradas { display: flex; flex-direction: column; gap: 2px; }
+.lateral a {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 11px; border-radius: 9px;
+  color: var(--gris); font-size: 14.5px; font-weight: 500;
+}
+.lateral a svg { flex: 0 0 20px; color: var(--gris-claro); }
+.lateral a:hover { background: var(--gris-fondo); color: var(--negro); text-decoration: none; }
+.lateral a:hover svg { color: var(--gris); }
+
+/* El activo es negro sólido. Un solo ítem en toda la pantalla lo lleva, así que
+ * no compite con nada: dice dónde estás de un vistazo y desde lejos. */
+.lateral a.activo { background: var(--negro); color: #fff; font-weight: 600; }
+.lateral a.activo svg { color: #fff; }
+
+.lateral .pie {
+  margin-top: auto; padding: 12px 11px 0; border-top: 1px solid var(--borde);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.lateral .pie .quien { color: var(--negro); font-weight: 600; font-size: 13.5px; }
+.lateral .pie .rol { font-size: 12px; color: var(--gris); }
+.lateral .pie button { padding: 6px; color: var(--gris-claro); }
+.lateral .pie button:hover { color: var(--negro); }
+
+.buscador { position: relative; margin-bottom: 16px; }
+.buscador svg {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--gris-claro); pointer-events: none;
+}
+.buscador input {
+  font-size: 14px; padding: 9px 11px 9px 38px;
+  background: var(--gris-fondo); border-color: transparent; border-radius: 9px;
+}
+.buscador input:focus { background: var(--blanco); border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-suave); }
 
 .contenido { flex: 1; padding: 22px 26px 60px; max-width: 1500px; min-width: 0; }
 
@@ -301,8 +328,26 @@ button:disabled { opacity: .45; cursor: not-allowed; }
     padding: 8px; gap: 3px; align-items: center; border-right: none;
     border-bottom: 1px solid var(--borde);
   }
-  .lateral .marca, .lateral .pie, .lateral .grupo, .lateral .buscador { display: none; }
-  .lateral a { white-space: nowrap; }
+  .lateral .marca, .lateral .pie, .lateral .buscador { display: none; }
+  .lateral .entradas { flex-direction: row; gap: 3px; }
+  .lateral a { white-space: nowrap; padding: 7px 10px; }
   .contenido { padding: 16px 12px 50px; }
   .dos { grid-template-columns: 1fr; }
+}
+
+/* ── Cargar el resultado sin salir de la lista ──────────────────────────── */
+
+.carga { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.carga select, .carga input { width: auto; font-size: 12.5px; padding: 5px 8px; }
+.carga select { max-width: 160px; }
+.carga-error {
+  flex-basis: 100%; font-size: 11.5px; color: var(--rojo); font-weight: 600; margin-top: 2px;
+}
+.tabla-carga td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
+
+/* Etiqueta para quien usa lector de pantalla: el encabezado de la columna dice
+ * qué es el desplegable, pero un campo sin label no se puede anunciar. */
+.oculto {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
 }

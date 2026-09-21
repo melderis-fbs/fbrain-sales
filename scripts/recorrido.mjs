@@ -269,6 +269,49 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   })
 })
 
+await paso('un lead sin fecha no desaparece: el Tracker lo reclama', async () => {
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Sin Fecha ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+
+  await p.goto(`${RAIZ}/tracker`)
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Sin fecha de reunión")').count() > 0,
+            'aparece en «Sin fecha de reunión», en vez de no estar en ningún lado')
+
+  const fila = p.locator(`.contenido tr:has-text("Sin Fecha ${marca}")`)
+  await fila.locator('input[type=date]').fill(new Date().toISOString().slice(0, 10))
+  await fila.locator('button[type=submit]').click()
+  await esperar()
+  await esperarCuantos('.tarjeta .tabla-carga tr', 0, 3000)
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Sin fecha de reunión")').count() === 0,
+            'al ponerle fecha entra al Tracker y deja de reclamarse')
+})
+
+await paso('el closer carga el resultado sin salir del Tracker', async () => {
+  await p.goto(`${RAIZ}/tracker`)
+  const carga = p.locator('.contenido .tarjeta:has-text("Cargar el resultado de la llamada")')
+  comprobar(await carga.count() > 0, 'el Tracker tiene el espacio para cargar el resultado')
+
+  const fila = carga.locator(`tr:has-text("Sin Fecha ${marca}")`)
+  await fila.locator('select[name=estado]').selectOption('asistio')
+  await fila.locator('select[name=resultado]').selectOption('venta')
+  // El importe aparece SOLO cuando hace falta: es la prueba de que el
+  // formulario no pide catorce campos para cargar un no-show.
+  comprobar(await fila.locator('input[name=importe]').count() === 1,
+            'al elegir «venta» aparece el importe, y sólo entonces')
+  await fila.locator('input[name=importe]').fill('2500')
+  await fila.locator('button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(900)
+
+  await p.goto(`${RAIZ}/leads`)
+  const estado = await p.locator(`.contenido tr:has-text("Sin Fecha ${marca}")`).textContent()
+  comprobar((estado ?? '').includes('Venta'), 'quedó cargado como venta sin abrir la ficha')
+  await foto('tracker-carga')
+})
+
 await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () => {
   await p.goto(`${RAIZ}/dashboard?periodo=mes`)
   const dash = await p.locator('.tarjeta:has-text("Asistencias") .numero').first().textContent()
@@ -280,8 +323,11 @@ await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () =>
 })
 
 await paso('las demás pantallas abren sin romperse', async () => {
-  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas', '/llamadas?pestana=rubrica',
-                      '/llamadas?pestana=playbooks', `/leads/${leadId}?pestana=llamadas`,
+  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas',
+                      '/analizador', '/analizador?pestana=rubrica', '/analizador?pestana=playbooks',
+                      '/metricas', '/matching', '/matching?por=industria', '/matching?por=fuente',
+                      '/casos', '/comisiones', '/leads?sinfecha=1',
+                      `/leads/${leadId}?pestana=llamadas`,
                       `/leads/${leadId}?pestana=notas`, `/leads/${leadId}?pestana=datos`,
                       `/leads/${leadId}?pestana=historial`, `/leads/${leadId}?pestana=seguimiento`]) {
     const r = await p.goto(`${RAIZ}${ruta}`)
@@ -289,8 +335,29 @@ await paso('las demás pantallas abren sin romperse', async () => {
   }
   await p.goto(`${RAIZ}/closers`)
   await foto('closers')
-  await p.goto(`${RAIZ}/llamadas?pestana=rubrica`)
+  await p.goto(`${RAIZ}/analizador?pestana=rubrica`)
   await foto('rubrica')
+  await p.goto(`${RAIZ}/metricas`)
+  await foto('metricas')
+  await p.goto(`${RAIZ}/matching`)
+  await foto('matching')
+  await p.goto(`${RAIZ}/comisiones`)
+  await foto('comisiones')
+})
+
+await paso('un caso de éxito se carga y queda listo para mandar', async () => {
+  await p.goto(`${RAIZ}/casos`)
+  await p.fill(enLaPantalla('#titulo'), `De 5k a 30k ${marca}`)
+  await p.fill(enLaPantalla('#industria'), 'E-commerce')
+  await p.fill(enLaPantalla('#metrica'), 'De USD 5.000 a USD 30.000 en 4 meses')
+  await p.fill(enLaPantalla('#mensaje'), 'Hola, te comparto un caso parecido al tuyo.')
+  // Al formulario de alta, no al botón «Archivar» de una tarjeta ya cargada:
+  // las tarjetas van antes en el DOM y se lo llevarían puesto.
+  await p.click('.contenido .tarjeta:has-text("Agregar un caso") button[type=submit]')
+  await esperar()
+  comprobar(await p.locator(`.contenido .tarjeta:has-text("De 5k a 30k ${marca}")`).count() > 0,
+            'el caso quedó cargado y visible')
+  await foto('casos')
 })
 
 await b.close()

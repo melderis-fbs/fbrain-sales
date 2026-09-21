@@ -464,6 +464,29 @@ export async function senasAbiertas(alcance: Alcance, hoy: string): Promise<Sena
   }))
 }
 
+/**
+ * Leads sin fecha de reunión.
+ *
+ * No entran a ninguna métrica —el embudo entero cuenta sobre las reuniones del
+ * período— y por eso hay que contarlos aparte. Un lead que no aparece en
+ * ninguna pantalla no es un lead prolijo: es un lead perdido, y el que lo cargó
+ * cree que está.
+ */
+export async function sinFechaDeReunion(alcance: Alcance): Promise<number> {
+  if (sinEquipoAsignado(alcance)) return 0
+  const valores: unknown[] = []
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
+  if (alc.parametro !== null) valores.push(alc.parametro)
+
+  const f = await fila<{ n: number }>(
+    `select count(*)::int as n from leads l
+      where l.borrado_en is null and l.fecha_sesion is null
+        and l.resultado not in ('perdida', 'no_calificado') and ${alc.condicion}`,
+    valores,
+  )
+  return f?.n ?? 0
+}
+
 /** Reuniones que ya pasaron y nadie cargó. El trabajo pendiente del equipo. */
 export async function sinCargar(alcance: Alcance, hoy: string, limite = 50): Promise<{
   leadId: number; lead: string; closer: string | null; fecha: string; dias: number

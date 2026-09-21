@@ -46,6 +46,7 @@ const ESPERADO: { tabla: string; migracion: string }[] = [
   { tabla: 'analisis_feedback', migracion: '0006_analizador.sql' },
   { tabla: 'call_scores', migracion: '0006_analizador.sql' },
   { tabla: 'score_dimensiones', migracion: '0006_analizador.sql' },
+  { tabla: 'casos_exito', migracion: '0007_casos_y_comisiones.sql' },
 ]
 
 /**

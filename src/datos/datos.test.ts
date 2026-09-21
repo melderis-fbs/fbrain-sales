@@ -43,7 +43,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
                seguimiento_estado, seguimiento_interacciones,
                analisis, call_scores, scoring_config, playbooks,
                ventas, senias, pagos, objetivos, cambios, usuarios, closers, setters,
-               fuentes, funnels restart identity cascade`,
+               fuentes, funnels, casos_exito, config restart identity cascade`,
       [], { esperadas: 'cualquiera' },
     )
     const u = await db.escribirDevolviendo<{ id: number }>(
@@ -454,6 +454,100 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     const historia = await db.filas<{ score: number }>(
       'select score from call_scores where analisis_id = $1 order by id', [aId])
     expect(historia.map((h) => Number(h.score))).toEqual([7.0, 7.8])
+  })
+
+  it('las comisiones se calculan sobre lo cobrado, y la repesca la cobra quien reflotó', async () => {
+    const comisiones = await import('./comisiones')
+
+    // Un lead que Kevin cerró y Fabricio agendó.
+    const s = await db.escribirDevolviendo<{ id: number }>(
+      `insert into setters (nombre, nombre_pleg) values ('Fabricio','fabricio') returning id`)
+    const id = await leads.crearLead(
+      { nombre: 'María', closerId: closerKevin, setterId: s.id, fechaSesion: '2026-09-10' }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 10000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.registrarPago(id, { importe: 4000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+
+    await comisiones.guardarReglas(
+      { sobre: 'cash', closer: 10, setter: 5, repesca: 2, head: 0 }, usuarioId)
+
+    const l = await comisiones.liquidacion(rango)
+    // Se comisiona sobre los 4000 cobrados, no sobre los 10000 vendidos: pagar
+    // sobre lo facturado es pagar por plata que todavía no entró.
+    expect(l.baseTotal).toBe(4000)
+    expect(l.lineas.find((x) => x.rol === 'closer')?.comision).toBe(400)
+    expect(l.lineas.find((x) => x.rol === 'setter')?.comision).toBe(200)
+    expect(l.total).toBe(600)
+    // Nadie lo reflotó, así que no hay línea de repesca.
+    expect(l.lineas.find((x) => x.rol === 'repesca')).toBeUndefined()
+
+    // Sobre lo facturado, la base es otra y el número también.
+    await comisiones.guardarReglas(
+      { sobre: 'facturacion', closer: 10, setter: 5, repesca: 2, head: 0 }, usuarioId)
+    const facturado = await comisiones.liquidacion(rango)
+    expect(facturado.baseTotal).toBe(10000)
+    expect(facturado.total).toBe(1500)
+  })
+
+  it('el que reflota un lead cobra la repesca, aunque no lo cierre él', async () => {
+    const comisiones = await import('./comisiones')
+    const otro = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email, nombre, rol, clave_hash)
+       values ('f@f.com','Fabricio','setter','x') returning id`)
+
+    const id = await leads.crearLead(
+      { nombre: 'Pedro', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'perdida', motivoPerdida: 'timing' }, usuarioId)
+    // Lo reflota Fabricio, no Kevin.
+    await leads.reflotarLead(id, otro.id, { fechaSesion: '2026-09-20' })
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-20' },
+    }, usuarioId)
+
+    await comisiones.guardarReglas(
+      { sobre: 'facturacion', closer: 10, setter: 0, repesca: 4, head: 0 }, usuarioId)
+    const l = await comisiones.liquidacion(rango)
+
+    expect(l.lineas.find((x) => x.rol === 'closer')?.quien).toBe('Kevin')
+    const repesca = l.lineas.find((x) => x.rol === 'repesca')
+    expect(repesca?.quien).toBe('Fabricio')
+    expect(repesca?.comision).toBe(200)   // 4% de 5000
+  })
+
+  it('el matching no publica una tasa sacada de cuatro llamadas', async () => {
+    const matching = await import('./matching')
+    for (let i = 0; i < 4; i++) {
+      const id = await leads.crearLead(
+        { nombre: `Lead ${i}`, closerId: closerKevin, industria: 'E-commerce', fechaSesion: '2026-09-10' },
+        usuarioId)
+      await resultado.cargarResultado(id, {
+        estado: 'asistio', resultado: i === 0 ? 'venta' : 'perdida',
+        motivoPerdida: i === 0 ? null : 'precio',
+        ...(i === 0 ? { venta: { importe: 1000, moneda: 'USD', fecha: '2026-09-10' } } : {}),
+      }, usuarioId)
+    }
+
+    const m = await matching.matriz('industria', rango)
+    const celda = m.celdas.find((c) => c.segmento === 'E-commerce')
+    expect(celda?.asistencias).toBe(4)
+    // 1 de 4 es 25%, y no se publica: con cuatro llamadas ese número se mueve
+    // veinticinco puntos con una venta más.
+    expect(celda?.tasa).toBeNull()
+    expect(celda?.confianza).toBe('ninguna')
+    expect(matching.loQueSeSabe(m)).toEqual([])
+  })
+
+  it('un lead sin fecha de reunión no entra a las métricas, pero se cuenta aparte', async () => {
+    await leads.crearLead({ nombre: 'Suelto', closerId: closerKevin }, usuarioId)
+
+    // No aparece en ninguna métrica…
+    expect((await metricas.metricas(rango, TODO)).medidas.agendadas).toBe(0)
+    // …pero no desaparece: se puede contar y listar para reclamarlo.
+    expect(await metricas.sinFechaDeReunion(TODO)).toBe(1)
+    expect((await leads.listarLeads(TODO, { sinFecha: true })).map((l) => l.nombre)).toEqual(['Suelto'])
   })
 
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {

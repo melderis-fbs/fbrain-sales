@@ -348,6 +348,8 @@ export type FiltrosDeLead = {
   hasta?: string
   soloAbiertos?: boolean
   soloSinCargar?: boolean
+  /** Los que todavía no tienen fecha de reunión: no entran a ninguna métrica. */
+  sinFecha?: boolean
 }
 
 export type LeadEnLista = {
@@ -430,6 +432,10 @@ export async function listarLeads(
   }
   if (filtros.desde) { valores.push(filtros.desde); condiciones.push(`l.fecha_sesion >= $${valores.length}`) }
   if (filtros.hasta) { valores.push(filtros.hasta); condiciones.push(`l.fecha_sesion <= $${valores.length}`) }
+  // Sin fecha de reunión el lead no entra a ninguna métrica: el embudo entero
+  // cuenta sobre las reuniones del período. Por eso se puede pedir la lista de
+  // los que quedaron sueltos, en vez de que desaparezcan en silencio.
+  if (filtros.sinFecha) condiciones.push('l.fecha_sesion is null')
   if (filtros.soloAbiertos) condiciones.push(`l.resultado in ('pendiente', 'seguimiento', 'sena')`)
   // Lo que la reunión ya pasó y nadie cargó. Es el trabajo pendiente del día.
   if (filtros.soloSinCargar) {

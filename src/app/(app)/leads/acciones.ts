@@ -214,6 +214,77 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
   refrescar(leadId)
 }
 
+/**
+ * Cargar el resultado sin salir del Tracker.
+ *
+ * Es el camino del closer que sale de una llamada y tiene otra en diez minutos.
+ * Pedirle que abra la ficha, encuentre una pestaña y complete un formulario
+ * largo es lo que hace que la carga quede «para después», y lo que queda para
+ * después no se carga: por eso el Dashboard del sistema anterior estaba siempre
+ * incompleto.
+ *
+ * Pide lo mínimo que hace que el número no mienta —una venta sin importe no se
+ * puede facturar, una pérdida sin motivo no se puede contar— y todo lo demás se
+ * completa en la ficha cuando haya tiempo.
+ */
+export async function cargarRapidoAccion(
+  _previo: string | null, datos: FormData,
+): Promise<string | null> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'cargarResultado')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  const estado = (texto(datos, 'estado') ?? undefined) as Estado | undefined
+  const resultado = (texto(datos, 'resultado') ?? undefined) as Resultado | undefined
+  const importe = numero(datos, 'importe')
+  const fecha = texto(datos, 'fecha')
+  const motivo = texto(datos, 'motivoPerdida')
+
+  if ((resultado === 'venta' || resultado === 'sena') && importe === null) {
+    return resultado === 'venta'
+      ? 'Poné el importe: una venta sin importe no se puede contar en facturación.'
+      : 'Poné el importe de la seña.'
+  }
+  if (resultado === 'perdida' && motivo === null) {
+    return 'Elegí por qué se perdió. Es lo que después dice dónde se pierde el equipo.'
+  }
+
+  const moneda = texto(datos, 'moneda') ?? 'USD'
+  const cuando = fecha ?? new Date().toISOString().slice(0, 10)
+
+  await cargarResultado(leadId, {
+    estado,
+    resultado,
+    // Si vino venta o seña, hubo oferta. No hace falta preguntarlo dos veces.
+    huboOferta: resultado === 'venta' || resultado === 'sena' ? true : undefined,
+    motivoPerdida: (motivo ?? null) as MotivoPerdida | null,
+    ...(resultado === 'venta' && importe !== null
+      ? { venta: { importe, moneda, fecha: cuando } } : {}),
+    ...(resultado === 'sena' && importe !== null
+      ? { sena: { importe, moneda, fecha: cuando } } : {}),
+  }, usuario.id)
+
+  refrescar(leadId)
+  return null
+}
+
+/** Ponerle fecha de reunión a un lead que quedó suelto, sin abrir la ficha. */
+export async function agendarRapidoAccion(datos: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'editarLead')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  await editarLead(leadId, {
+    fechaSesion: texto(datos, 'fechaSesion'),
+    horaSesion: texto(datos, 'horaSesion'),
+  }, usuario.id)
+  refrescar(leadId)
+}
+
 export async function registrarPagoAccion(datos: FormData): Promise<void> {
   const usuario = await exigirUsuario()
   exigir(usuario, 'editarDinero')

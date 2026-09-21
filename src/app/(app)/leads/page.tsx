@@ -39,6 +39,7 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
       desde: q.desde,
       hasta: q.hasta,
       soloAbiertos: q.abiertos === '1',
+      sinFecha: q.sinfecha === '1',
     }),
     catalogos(),
   ])
@@ -51,6 +52,15 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
                   bajada={`${abiertos} ${abiertos === 1 ? 'sigue abierto' : 'siguen abiertos'} · cada lead es una oportunidad de venta`}>
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
       </Encabezado>
+
+      {q.sinfecha === '1' ? (
+        <div className="aviso atencion">
+          Estos leads <strong>no tienen fecha de reunión</strong>, así que no entran a ninguna
+          métrica del Dashboard ni del Tracker. Se les pone fecha desde la pestaña Datos de cada
+          ficha, o de a varios en el{' '}
+          <Link href="/tracker" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>Tracker</Link>.
+        </div>
+      ) : null}
 
       <form className="filtros" method="get">
         <div className="campo" style={{ minWidth: 210 }}>

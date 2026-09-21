@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { metricas, apertura, porDia, sinCargar, DEFINICIONES } from '@/datos/metricas'
+import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion, DEFINICIONES } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
+import { CargaRapida } from '@/componentes/CargaRapida'
+import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
 } from '@/dominio/resultados'
@@ -39,7 +41,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
   const filtros = { closerId: q.closer ? Number(q.closer) : undefined }
 
-  const [datos, leads, dias, porCloser, pendientes, toques, cats] = await Promise.all([
+  const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats] = await Promise.all([
     metricas(r, alcance, filtros, monedaBase),
     listarLeads(alcance, {
       desde: r.desde, hasta: r.hasta,
@@ -49,6 +51,8 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     porDia(r, alcance, filtros),
     apertura('closer', r, alcance, filtros, monedaBase),
     sinCargar(alcance, hoy, 100),
+    sinFechaDeReunion(alcance),
+    listarLeads(alcance, { sinFecha: true }, 50),
     toquesDeHoy(alcance, hoy),
     catalogos(),
   ])
@@ -61,6 +65,13 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     for (const [k, v] of Object.entries({ ...q, ...cambio })) if (v) u.set(k, v)
     return `/tracker?${u.toString()}`
   }
+
+  // Lo que hay que cargar: la reunión ya fue y nadie dijo qué pasó. Va arriba
+  // de todo porque es el trabajo pendiente, no un dato de consulta.
+  const porCargar = leads.filter(
+    (l) => l.estado === 'agendado' && l.resultado === 'pendiente'
+      && l.fechaSesion !== null && l.fechaSesion <= hoy,
+  )
 
   // Agrupadas por día: un período de dos semanas en una sola tabla se vuelve
   // ilegible, y el corte por día es cómo se trabaja de verdad.
@@ -110,14 +121,90 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         <button type="submit" className="secundario">Filtrar</button>
       </form>
 
-      {pendientes.length > 0 && !soloPendientes ? (
+      {pendientes.length > porCargar.length ? (
         <div className="aviso atencion">
-          Hay <strong>{pendientes.length}</strong>{' '}
-          {pendientes.length === 1 ? 'reunión que ya pasó sin resultado cargado' :
-            'reuniones que ya pasaron sin resultado cargado'}.{' '}
+          Fuera de este período hay <strong>{pendientes.length - porCargar.length}</strong>{' '}
+          {pendientes.length - porCargar.length === 1
+            ? 'reunión más que ya pasó sin resultado cargado'
+            : 'reuniones más que ya pasaron sin resultado cargado'}.{' '}
           <Link href={con({ pendientes: '1', periodo: 'mes', dia: undefined })}
                 style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>Verlas →</Link>
         </div>
+      ) : null}
+
+      {sueltos > sinAgendar.length ? (
+        <div className="aviso atencion">
+          Hay <strong>{sueltos}</strong> leads sin fecha de reunión. No entran a ninguna métrica
+          hasta que la tengan.{' '}
+          <Link href="/leads?sinfecha=1" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
+            Verlos →
+          </Link>
+        </div>
+      ) : null}
+
+      {porCargar.length > 0 ? (
+        <Tarjeta titulo={`Cargar el resultado de la llamada (${porCargar.length})`}
+                 ayuda="Sale de una llamada y carga acá, sin abrir la ficha. El importe se pide sólo si hubo venta o seña; el motivo, sólo si se perdió.">
+          <div className="tabla-scroll">
+            <table className="tabla-carga">
+              <thead>
+                <tr><th>Hora</th><th>Lead</th><th>Closer</th><th>Qué pasó</th></tr>
+              </thead>
+              <tbody>
+                {porCargar.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                      {fechaCorta(l.fechaSesion)} {hora(l.horaSesion)}
+                    </td>
+                    <td>
+                      <Link href={`/leads/${l.id}`} style={{ fontWeight: 600 }}>{l.nombre}</Link>
+                      {l.empresa ? <div style={{ fontSize: 11.5, color: 'var(--gris)' }}>{l.empresa}</div> : null}
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
+                    <td>
+                      <CargaRapida leadId={l.id} estado={l.estado} resultado={l.resultado}
+                                   moneda={l.moneda} hoy={hoy} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="ayuda" style={{ marginTop: 10 }}>
+            Para el resto —próximo paso, observaciones, saldo de la seña, cobros— está la
+            pestaña <strong>Resultado</strong> de la ficha del lead.
+          </p>
+        </Tarjeta>
+      ) : null}
+
+      {sinAgendar.length > 0 ? (
+        <Tarjeta titulo={`Sin fecha de reunión (${sinAgendar.length})`}
+                 ayuda="Estos leads no entran a ninguna métrica: el embudo entero cuenta sobre las reuniones del período. Ponéles fecha y aparecen.">
+          <div className="tabla-scroll">
+            <table className="tabla-carga">
+              <thead><tr><th>Lead</th><th>Setter</th><th>Closer</th><th>Agendar</th></tr></thead>
+              <tbody>
+                {sinAgendar.map((l) => (
+                  <tr key={l.id}>
+                    <td><Link href={`/leads/${l.id}`} style={{ fontWeight: 600 }}>{l.nombre}</Link></td>
+                    <td style={{ fontSize: 12.5 }}>{l.setter ?? <span className="sindato">—</span>}</td>
+                    <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
+                    <td>
+                      <form action={agendarRapidoAccion} className="carga">
+                        <input type="hidden" name="leadId" value={l.id} />
+                        <label className="oculto" htmlFor={`f-${l.id}`}>Fecha</label>
+                        <input id={`f-${l.id}`} name="fechaSesion" type="date" required style={{ width: 150 }} />
+                        <label className="oculto" htmlFor={`h-${l.id}`}>Hora</label>
+                        <input id={`h-${l.id}`} name="horaSesion" type="time" style={{ width: 110 }} />
+                        <button type="submit" className="chico secundario">Agendar</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Tarjeta>
       ) : null}
 
       <div className="rejilla g4">

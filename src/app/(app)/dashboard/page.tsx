@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import {
-  metricas, apertura, objetivoDe, logradoDe, senasAbiertas, sinCargar, DEFINICIONES,
+  metricas, apertura, objetivoDe, logradoDe, senasAbiertas, sinCargar, sinFechaDeReunion, DEFINICIONES,
   NOMBRE_DE_OBJETIVO, type TipoDeObjetivo,
 } from '@/datos/metricas'
 import { pipelineDeSeguimientos } from '@/datos/seguimientos'
@@ -48,7 +48,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
     funnelId: q.funnel ? Number(q.funnel) : undefined,
   }
 
-  const [ahora, antes, objetivo, cats, porFuente, porMotivo, senas, pendientes, seguimientos] =
+  const [ahora, antes, objetivo, cats, porFuente, porMotivo, senas, pendientes, sueltos, seguimientos] =
     await Promise.all([
       metricas(r, alcance, filtros, monedaBase),
       metricas(previo, alcance, filtros, monedaBase),
@@ -58,6 +58,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
       apertura('motivo_perdida', r, alcance, filtros, monedaBase),
       senasAbiertas(alcance, hoy),
       sinCargar(alcance, hoy, 6),
+      sinFechaDeReunion(alcance),
       pipelineDeSeguimientos(alcance, hoy, monedaBase),
     ])
 
@@ -122,6 +123,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
           Hasta que se carguen, todos los números de abajo están incompletos.{' '}
           <Link href="/tracker?pendientes=1" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
             Cargarlas →
+          </Link>
+        </div>
+      ) : null}
+
+      {sueltos > 0 ? (
+        <div className="aviso atencion">
+          Hay <strong>{sueltos}</strong> {sueltos === 1 ? 'lead sin fecha de reunión' : 'leads sin fecha de reunión'}.
+          No entran a ninguno de los números de abajo: el embudo entero cuenta sobre las reuniones
+          del período.{' '}
+          <Link href="/tracker" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
+            Agendarlos →
           </Link>
         </div>
       ) : null}

@@ -4,63 +4,77 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { NOMBRE_DE_ROL, type Rol } from '@/dominio/roles'
 import { salirAccion } from '@/app/login/acciones'
+import { Iconos, type NombreDeIcono } from './Iconos'
 
 /**
  * La navegación.
  *
- * Cada entrada contesta una sola pregunta, y las que todavía no existen no se
- * muestran: prometer una pestaña vacía es peor que no tenerla.
+ * Una lista plana, sin títulos de grupo. Son trece entradas: agrupadas se leen
+ * más lento, porque hay que leer el grupo antes de encontrar el ítem.
  *
- * Agrupadas por el momento en que se usan. Un closer entra a la mañana al
- * Tracker y a Seguimientos; dirección entra al Dashboard. Que lo primero de la
- * lista sea lo primero del día ahorra un clic por persona por día.
+ * El orden es el del trabajo, no el alfabético ni el de importancia: primero lo
+ * que se mira todos los días, después el equipo, y la configuración al final
+ * porque se toca una vez por mes.
  */
-const ENTRADAS: { href: string; texto: string; grupo: string; roles?: Rol[] }[] = [
-  { href: '/dashboard', texto: 'Dashboard', grupo: 'El mes', roles: ['admin', 'direccion', 'head', 'coach'] },
-  { href: '/tracker', texto: 'Tracker', grupo: 'El mes' },
-
-  { href: '/leads', texto: 'Leads', grupo: 'El día' },
-  { href: '/seguimientos', texto: 'Seguimientos', grupo: 'El día' },
-  { href: '/llamadas', texto: 'Llamadas', grupo: 'El día' },
-
-  { href: '/closers', texto: 'Closers', grupo: 'El equipo', roles: ['admin', 'direccion', 'head', 'coach'] },
-  { href: '/setters', texto: 'Setters', grupo: 'El equipo', roles: ['admin', 'direccion', 'head'] },
-  { href: '/configuracion', texto: 'Configuración', grupo: 'El equipo', roles: ['admin', 'direccion', 'head'] },
+const ENTRADAS: { href: string; texto: string; icono: NombreDeIcono; roles?: Rol[] }[] = [
+  { href: '/dashboard', texto: 'Dashboard', icono: 'dashboard', roles: ['admin', 'direccion', 'head', 'coach'] },
+  { href: '/tracker', texto: 'Tracker Diario', icono: 'tracker' },
+  { href: '/leads', texto: 'Leads', icono: 'leads' },
+  { href: '/llamadas', texto: 'Llamadas', icono: 'llamadas' },
+  { href: '/analizador', texto: 'Analizador', icono: 'analizador' },
+  { href: '/closers', texto: 'Closers', icono: 'closers', roles: ['admin', 'direccion', 'head', 'coach'] },
+  { href: '/setters', texto: 'Setters', icono: 'setters', roles: ['admin', 'direccion', 'head'] },
+  { href: '/matching', texto: 'Matching', icono: 'matching', roles: ['admin', 'direccion', 'head', 'coach'] },
+  { href: '/seguimientos', texto: 'Seguimientos', icono: 'seguimientos' },
+  { href: '/metricas', texto: 'Métricas', icono: 'metricas', roles: ['admin', 'direccion', 'head', 'coach'] },
+  { href: '/casos', texto: 'Casos de Éxito', icono: 'casos' },
+  { href: '/comisiones', texto: 'Comisiones', icono: 'comisiones', roles: ['admin', 'direccion', 'head'] },
+  { href: '/configuracion', texto: 'Configuración', icono: 'configuracion', roles: ['admin', 'direccion', 'head'] },
 ]
 
 export function BarraLateral({ nombre, rol }: { nombre: string; rol: Rol }) {
   const ruta = usePathname()
-  const visibles = ENTRADAS.filter((e) => !e.roles || e.roles.includes(rol))
-  let grupoActual = ''
+  const Buscar = Iconos.buscar
+  const Salir = Iconos.salir
 
   return (
     <nav className="lateral">
       <div className="marca">
-        FOUNDERS
-        <small>Sales OS</small>
+        <span className="sello">F</span>
+        <span className="nombre">
+          Founders
+          <small>Sales OS</small>
+        </span>
       </div>
 
       <form className="buscador" action="/leads" method="get">
-        <input name="q" placeholder="Buscar un lead…" aria-label="Buscar un lead" />
+        <Buscar />
+        <input name="q" placeholder="Buscar..." aria-label="Buscar un lead" />
       </form>
 
-      {visibles.map((e) => {
-        const cabecera = e.grupo !== grupoActual ? e.grupo : null
-        grupoActual = e.grupo
-        const activo = ruta === e.href || ruta.startsWith(`${e.href}/`)
-        return (
-          <div key={e.href}>
-            {cabecera ? <div className="grupo">{cabecera}</div> : null}
-            <Link href={e.href} className={activo ? 'activo' : ''}>{e.texto}</Link>
-          </div>
-        )
-      })}
+      <div className="entradas">
+        {ENTRADAS.filter((e) => !e.roles || e.roles.includes(rol)).map((e) => {
+          const Icono = Iconos[e.icono]
+          const activo = ruta === e.href || ruta.startsWith(`${e.href}/`)
+          return (
+            <Link key={e.href} href={e.href} className={activo ? 'activo' : ''}
+                  aria-current={activo ? 'page' : undefined}>
+              <Icono />
+              {e.texto}
+            </Link>
+          )
+        })}
+      </div>
 
       <div className="pie">
-        <div className="quien">{nombre}</div>
-        <div>{NOMBRE_DE_ROL[rol]}</div>
-        <form action={salirAccion} style={{ marginTop: 6 }}>
-          <button type="submit" className="sutil">Salir</button>
+        <div>
+          <div className="quien">{nombre}</div>
+          <div className="rol">{NOMBRE_DE_ROL[rol]}</div>
+        </div>
+        <form action={salirAccion}>
+          <button type="submit" className="sutil" title="Salir" aria-label="Salir">
+            <Salir />
+          </button>
         </form>
       </div>
     </nav>
