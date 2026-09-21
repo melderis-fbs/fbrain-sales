@@ -23,7 +23,18 @@ create table if not exists ventas (
   borrado_en     timestamptz
 );
 create index if not exists idx_ventas_fecha on ventas(fecha) where borrado_en is null;
-create index if not exists idx_ventas_oport on ventas(oportunidad_id);
+-- Igual que en 0002: desde 0004 la plata cuelga del lead, y correr esta
+-- migración de nuevo no puede reventar contra una columna que ya no existe.
+do $indices$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'ventas' and column_name = 'oportunidad_id'
+  ) then
+    create index if not exists idx_ventas_oport on ventas(oportunidad_id);
+  end if;
+end
+$indices$;
 
 create table if not exists senias (
   id                  bigint generated always as identity primary key,
@@ -40,7 +51,16 @@ create table if not exists senias (
   creado_en           timestamptz not null default now(),
   borrado_en          timestamptz
 );
-create index if not exists idx_senias_oport  on senias(oportunidad_id);
+do $indices_senias$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'senias' and column_name = 'oportunidad_id'
+  ) then
+    create index if not exists idx_senias_oport on senias(oportunidad_id);
+  end if;
+end
+$indices_senias$;
 create index if not exists idx_senias_fecha  on senias(fecha) where borrado_en is null;
 create index if not exists idx_senias_vence  on senias(fecha_comprometida)
   where borrado_en is null and estado = 'abierta';

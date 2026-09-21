@@ -324,7 +324,8 @@ Dos cosas que se pasan por alto, y son las que hacen perder la tarde:
 
 **SQL Editor** → **New query** → pegá los archivos de
 `supabase/migrations/` en orden y **Run**. Son idempotentes: correrlos dos veces
-no rompe nada.
+no rompe nada, y correrlos sobre una base que ya tiene datos **mueve** las filas
+al modelo nuevo en vez de tirarlas.
 
 Tienen que quedar **32 tablas**, se ven en **Table Editor**.
 

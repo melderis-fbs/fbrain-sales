@@ -109,7 +109,20 @@ create table if not exists llamadas (
   asistio        boolean not null default true,
   creado_en      timestamptz not null default now()
 );
-create index if not exists idx_llamadas_oport on llamadas(oportunidad_id, numero);
+-- Este índice sólo tiene sentido mientras `llamadas` cuelgue de una
+-- oportunidad. Desde 0004 cuelga del lead, así que si esta migración se vuelve
+-- a correr después —y correrlas de nuevo tiene que ser inofensivo— la columna
+-- ya no está y crear el índice reventaría.
+do $indice$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'llamadas' and column_name = 'oportunidad_id'
+  ) then
+    create index if not exists idx_llamadas_oport on llamadas(oportunidad_id, numero);
+  end if;
+end
+$indice$;
 
 create table if not exists transcripciones (
   id          bigint generated always as identity primary key,
