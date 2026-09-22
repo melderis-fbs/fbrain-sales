@@ -50,7 +50,9 @@ export type EstadoDeAlta =
   | { tipo: 'duplicados'; mensaje: string
       duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string
                     /** Si el que pregunta lo puede abrir. Un closer no ve el lead de otro closer. */
-                    tuyo: boolean }[] }
+                    tuyo: boolean
+                    /** Y si no lo puede abrir, si es porque no es de nadie. */
+                    sinAsignar: boolean }[] }
   | null
 
 /**
@@ -114,6 +116,7 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
           cerrado: d.resultado === 'perdida' || d.resultado === 'no_calificado',
           resultado: NOMBRE_DE_RESULTADO[d.resultado] ?? d.resultado,
           tuyo: conAcceso[i] ?? false,
+          sinAsignar: d.sinAsignar,
         })),
       }
     }

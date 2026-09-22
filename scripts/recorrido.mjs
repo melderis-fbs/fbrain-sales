@@ -599,6 +599,29 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
               .includes(`Cliente Histórico ${marca}`),
             'y le aparece en su lista de leads')
 
+  // «Verlas →» tiene que llevar a las reuniones atrasadas, sean del mes que
+  // sean. Antes saltaba a un período fijo que podía no contenerlas: se
+  // clickeaba y no pasaba nada, o peor, la lista quedaba vacía.
+  await p.goto(`${RAIZ}/tracker`)
+  const avisoAtrasadas = '.contenido .aviso:has-text("Fuera de este período")'
+  comprobar(await p.locator(avisoAtrasadas).count() === 1,
+            'el Tracker avisa que hay una reunión atrasada fuera del período')
+  await p.locator(`${avisoAtrasadas} a:has-text("Verlas")`).click()
+  await esperar()
+  comprobar((await p.locator('.contenido').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'y «Verlas →» la muestra, aunque sea de otro mes')
+
+  await p.goto(`${RAIZ}/llamadas`)
+  const avisoLlamadas = '.contenido .aviso:has-text("Fuera de este período")'
+  if (await p.locator(avisoLlamadas).count() === 1) {
+    await p.locator(`${avisoLlamadas} a:has-text("Verlas")`).click()
+    await esperar()
+    comprobar((await p.locator('.contenido').textContent() ?? '')
+                .includes(`Cliente Histórico ${marca}`),
+              'y en Llamadas también')
+  }
+
   // Y vuelve a entrar dirección, que es con quien terminó todo lo demás.
   await p.locator('.lateral .pie button[type=submit]').click()
   await p.waitForURL('**/login')

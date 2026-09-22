@@ -81,6 +81,8 @@ export type PosibleDuplicado = {
   porque: 'email' | 'telefono' | 'nombre'
   resultado: Resultado
   creadoEn: string
+  /** Sin closer ni setter. No es «de otro»: es de nadie, y eso se dice distinto. */
+  sinAsignar: boolean
 }
 
 /**
@@ -101,9 +103,10 @@ export async function posiblesDuplicados(datos: DatosDeLead): Promise<PosibleDup
 
   const f = await filas<{
     id: number; nombre: string; email: string | null; telefono: string | null
-    creado_en: Date; porque: string; resultado: Resultado
+    creado_en: Date; porque: string; resultado: Resultado; sin_asignar: boolean
   }>(
     `select id, nombre, email, telefono, creado_en, resultado,
+            (closer_id is null and setter_id is null) as sin_asignar,
             case when $1::text is not null and email_pleg = $1 then 'email'
                  when $2::text is not null and right(telefono_pleg, 8) = $2 then 'telefono'
                  else 'nombre' end as porque
@@ -120,7 +123,7 @@ export async function posiblesDuplicados(datos: DatosDeLead): Promise<PosibleDup
   return f.map((x) => ({
     id: x.id, nombre: x.nombre, email: x.email, telefono: x.telefono,
     porque: x.porque as PosibleDuplicado['porque'], resultado: x.resultado,
-    creadoEn: x.creado_en.toISOString(),
+    creadoEn: x.creado_en.toISOString(), sinAsignar: x.sin_asignar,
   }))
 }
 

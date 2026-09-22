@@ -89,7 +89,9 @@ export function AltaDeLead({ catalogos, yo }: {
                   <td style={{ fontSize: 12.5 }}>{d.resultado}</td>
                   <td className="num">
                     {!d.tuyo ? (
-                      <span className="sindato">de otro · no lo ves</span>
+                      <span className="sindato">
+                        {d.sinAsignar ? 'sin asignar · pedí que te lo pasen' : 'de otro · no lo ves'}
+                      </span>
                     ) : d.cerrado ? (
                       <Link href={`/leads/${d.id}?pestana=resultado`} style={{ fontWeight: 650, color: 'var(--acento)' }}>
                         Reflotarlo →
@@ -107,9 +109,9 @@ export function AltaDeLead({ catalogos, yo }: {
             otra ficha: así no se parte la historia y queda registrado que la repesca la hiciste vos.
             Si es otra persona, seguí abajo.
             {estado.duplicados.some((d) => !d.tuyo) ? (
-              <> Los que dicen <em>«de otro»</em> están cargados a nombre de otra persona del equipo:
-              no los podés abrir. Si es el mismo cliente, hablalo con quien lo tiene antes de
-              crear otra ficha.</>
+              <> Los que no podés abrir están a nombre de otra persona del equipo, o sin asignar.
+              Si es el mismo cliente, pedí que te lo pasen en vez de crear otra ficha: si creás
+              otra, la historia queda partida en dos y ninguna de las dos está completa.</>
             ) : null}
           </p>
         </div>

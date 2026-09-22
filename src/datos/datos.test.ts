@@ -815,6 +815,52 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
   })
 
+  it('la migración devuelve a su dueño los leads que quedaron sueltos', async () => {
+    // Los que ya se habían cargado con el error: existen, pero el closer que
+    // los cargó no los ve. La migración 0008 se los devuelve usando `creado_por`,
+    // que es un dato que siempre estuvo guardado.
+    const { readFile } = await import('node:fs/promises')
+
+    const kevin = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email,nombre,rol,clave_hash) values ('k@k.com','Kevin','closer','x') returning id`)
+    await db.escribir('update closers set usuario_id = $1 where id = $2', [kevin.id, closerKevin],
+      { esperadas: 1 })
+
+    const suelto = await leads.crearLead({ nombre: 'Suelto', fechaSesion: '2026-09-03' }, kevin.id)
+    const deDireccion = await leads.crearLead({ nombre: 'De Dirección' }, usuarioId)
+    const comoKevin = { todo: false, closerId: closerKevin } as const
+    expect(await leads.puedeVerLead(suelto, comoKevin)).toBe(false)
+
+    await db.escribir(
+      await readFile('supabase/migrations/0008_leads_sin_dueno.sql', 'utf8'), [],
+      { esperadas: 'cualquiera' },
+    )
+
+    expect(await leads.puedeVerLead(suelto, comoKevin)).toBe(true)
+    // Y el closer inicial también, que es con el que se mide la reasignación.
+    const f = await db.fila<{ closer_inicial_id: number }>(
+      'select closer_inicial_id from leads where id = $1', [suelto])
+    expect(f?.closer_inicial_id).toBe(closerKevin)
+
+    // Lo que dirección dejó sin asignar a propósito no se toca: dirección ve
+    // la operación entera y no perdió nada.
+    const sigueSuelto = await db.fila<{ closer_id: number | null }>(
+      'select closer_id from leads where id = $1', [deDireccion])
+    expect(sigueSuelto?.closer_id).toBe(null)
+  })
+
+  it('los posibles duplicados dicen si son de otro o si no son de nadie', async () => {
+    // Para un closer no es lo mismo: uno se pide, el otro se habla con quien
+    // lo tiene. Decir «de otro» para un lead sin asignar manda a preguntarle a
+    // nadie.
+    await leads.crearLead({ nombre: 'Clarissa Persichini' }, usuarioId)
+    await leads.crearLead({ nombre: 'Clarissa Persichini', closerId: closerBraian }, usuarioId)
+
+    const encontrados = await leads.posiblesDuplicados({ nombre: 'clarissa persichini' })
+    expect(encontrados).toHaveLength(2)
+    expect(encontrados.map((d) => d.sinAsignar).sort()).toEqual([false, true])
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)
