@@ -337,14 +337,54 @@ await paso('el closer carga el resultado sin salir del Tracker', async () => {
   await foto('tracker-carga')
 })
 
+/** El valor de una celda del mini tablero, por su etiqueta EXACTA. */
+const miniValor = (etiqueta) => p.evaluate((e) => {
+  const celda = [...document.querySelectorAll('.contenido .mini')]
+    .find((x) => x.querySelector('.mini-etiqueta')?.textContent?.trim() === e)
+  return celda?.querySelector('.mini-numero')?.textContent?.trim() ?? null
+}, etiqueta)
+
 await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () => {
   await p.goto(`${RAIZ}/dashboard?periodo=mes`)
   const dash = await p.locator('.tarjeta:has-text("Asistencias") .numero').first().textContent()
   await p.goto(`${RAIZ}/tracker?periodo=mes`)
-  const track = await p.locator('.tarjeta:has-text("Asistencias") .numero').first().textContent()
-  comprobar(dash?.trim() === track?.trim(),
-            `asistencias: Dashboard ${dash?.trim()} · Tracker ${track?.trim()}`)
+  const track = await miniValor('Asistencias')
+  comprobar(dash?.trim() === track,
+            `asistencias: Dashboard ${dash?.trim()} · Tracker ${track}`)
   await foto('tracker')
+})
+
+await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', async () => {
+  await p.goto(`${RAIZ}/tracker?periodo=mes`)
+  const pedidas = [
+    'Llamadas agendadas', 'Asistencias', 'Asistencias válidas', 'No calificadas', 'No show',
+    'Canceladas', 'Reagendadas', 'Segundas llamadas', 'Asistencia a segunda', 'Ofertas hechas',
+    'Reservas', 'Cierres',
+    '% Asistencia', '% Asistencia válida', '% No calificadas', '% Canceladas',
+    '% Asistencia a segunda', '% Ofertas hechas', '% Cierre / asistencia',
+    '% Cierre / asist. válida', '% Cierre / oferta',
+    'Cash collected', 'Cash por agenda', 'Cash por asistencia',
+  ]
+  const faltan = []
+  for (const etiqueta of pedidas) if ((await miniValor(etiqueta)) === null) faltan.push(etiqueta)
+  comprobar(faltan.length === 0, `están las ${pedidas.length} medidas${faltan.length ? `; faltan: ${faltan.join(', ')}` : ''}`)
+
+  // Ninguna celda con un número solo: abajo de cada uno dice sobre qué se
+  // calcula, que es lo que separa «28%» de «28% de las asistencias».
+  const sinContra = await p.locator('.contenido .mini:not(:has(.mini-contra))').count()
+  comprobar(sinContra === 0, 'ningún número va solo: todos dicen sobre qué se calculan')
+
+  // Y el cierre sobre asistencia válida no puede ser menor que el cierre sobre
+  // asistencia: las válidas son un subconjunto.
+  // Los porcentajes salen en formato local: «66,7%». Leerlos con Number() a
+  // secas da NaN, y una comprobación que falla por eso no comprueba nada.
+  const aPct = (t) => (t === null || t === 'sin datos' ? null
+    : Number(t.replace('%', '').replace(/\./g, '').replace(',', '.')))
+  const sobreAsistencia = aPct(await miniValor('% Cierre / asistencia'))
+  const sobreValida = aPct(await miniValor('% Cierre / asist. válida'))
+  comprobar(sobreAsistencia === null || sobreValida === null || sobreValida >= sobreAsistencia,
+            `el cierre sobre asistencia válida (${sobreValida}%) no puede ser menor que sobre asistencia (${sobreAsistencia}%)`)
+  await foto('tablero')
 })
 
 await paso('las demás pantallas abren sin romperse', async () => {

@@ -861,6 +861,85 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(encontrados.map((d) => d.sinAsignar).sort()).toEqual([false, true])
   })
 
+  it('la asistencia válida separa al que no calificaba, y el cierre sobre ella es otro número', async () => {
+    // Cerrar 1 de 4 asistencias y cerrar 1 de 2 asistencias válidas es el mismo
+    // mes: la diferencia dice si el problema es del closer o del filtro, y se
+    // arreglan en lugares distintos.
+    await alta('Compró').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId))
+    await alta('Sigue').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'seguimiento' }, usuarioId))
+    await alta('No calificaba').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'no_calificado' }, usuarioId))
+    await alta('Tampoco').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'no_calificado' }, usuarioId))
+    await alta('Faltó').then((id) => resultado.cargarResultado(id, { estado: 'no_show' }, usuarioId))
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.agendadas).toBe(5)
+    expect(m.asistencias).toBe(4)
+    expect(m.noCalificadas).toBe(2)
+    expect(m.asistenciasValidas).toBe(2)
+
+    expect(m.asistenciaPct).toBe(80)            // 4 de 5 agendadas
+    expect(m.asistenciaValidaPct).toBe(40)      // 2 de 5 agendadas
+    expect(m.noCalificadasPct).toBe(50)         // 2 de 4 asistencias
+    expect(m.cierrePct).toBe(25)                // 1 de 4 asistencias
+    expect(m.cierreSobreValidaPct).toBe(50)     // 1 de 2 válidas
+  })
+
+  it('las segundas llamadas se cuentan aparte de las primeras', async () => {
+    await leads.crearLead({ nombre: 'Primera', closerId: closerKevin, fechaSesion: '2026-09-10' }, usuarioId)
+    const b = await leads.crearLead(
+      { nombre: 'Segunda B', closerId: closerKevin, fechaSesion: '2026-09-11', tipoSesion: 'segunda' }, usuarioId)
+    const c = await leads.crearLead(
+      { nombre: 'Segunda C', closerId: closerKevin, fechaSesion: '2026-09-12', tipoSesion: 'segunda' }, usuarioId)
+    await resultado.cargarResultado(b, { estado: 'asistio' }, usuarioId)
+    await resultado.cargarResultado(c, { estado: 'no_show' }, usuarioId)
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.segundas).toBe(2)
+    expect(m.segundasAsistidas).toBe(1)
+    expect(m.segundaAsistenciaPct).toBe(50)
+  })
+
+  it('el cash por reunión no se inventa cuando no hubo reuniones', async () => {
+    // Dividir por cero no da cero. «USD 0 por agenda» sin agendas es un número
+    // inventado, y un número inventado en un tablero se usa igual que uno real.
+    const vacio = (await metricas.metricas(
+      { desde: '2026-01-01', hasta: '2026-01-31', etiqueta: 'enero' }, TODO)).medidas
+    expect(vacio.cashPorAgenda).toBe(null)
+    expect(vacio.cashPorAsistencia).toBe(null)
+
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 6000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.registrarPago(id, { importe: 3000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+    await alta('No vino').then((x) => resultado.cargarResultado(x, { estado: 'no_show' }, usuarioId))
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.cashCollected).toBe(3000)
+    expect(m.cashPorAgenda).toBe(1500)      // 3000 ÷ 2 agendadas
+    expect(m.cashPorAsistencia).toBe(3000)  // 3000 ÷ 1 asistencia
+  })
+
+  it('cada medida del tablero tiene su definición escrita', async () => {
+    // El tablero muestra la fórmula al pasar el mouse. Una medida sin
+    // definición es una que después se discute en una reunión.
+    for (const clave of ['agendadas', 'asistencias', 'asistenciasValidas', 'noCalificadas',
+                         'noShows', 'cancelados', 'reagendados', 'segundas', 'segundasAsistidas',
+                         'ofertas', 'senas', 'ventas', 'cierrePct', 'asistenciaValidaPct',
+                         'noCalificadasPct', 'segundaAsistenciaPct', 'cierreSobreValidaPct',
+                         'cierreSobreOfertaPct', 'cashCollected', 'cashPorAgenda',
+                         'cashPorAsistencia', 'facturacion']) {
+      expect(metricas.DEFINICIONES[clave]?.formula).toBeTruthy()
+    }
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion, DEFINICIONES } from '@/datos/metricas'
+import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
-import { Numero, Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
+import { Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
 import { CargaRapida } from '@/componentes/CargaRapida'
+import { Tablero } from '@/componentes/Tablero'
 import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
@@ -222,20 +223,11 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         </Tarjeta>
       ) : null}
 
-      <div className="rejilla g4">
-        <Numero etiqueta="Agendadas" valor={m.agendadas} comoSeCalcula={DEFINICIONES.agendadas!.formula} />
-        <Numero etiqueta="Asistencias" valor={m.asistencias} contra={porcentaje(m.asistenciaPct)} />
-        <Numero etiqueta="No shows" valor={m.noShows} contra={porcentaje(m.noShowPct)} />
-        <Numero etiqueta="Ofertas" valor={m.ofertas} contra={`${porcentaje(m.ofertaPct)} de las asistencias`} />
-        <Numero etiqueta="Ventas" valor={m.ventas} contra={`${porcentaje(m.cierrePct)} de cierre`} />
-        <Numero etiqueta="Señas" valor={m.senas} contra={verPlata ? plata(m.senasImporte, monedaBase) : undefined} />
-        <Numero etiqueta="Sin cargar" valor={m.pendientesDeCargar}
-                contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
-        {verPlata ? (
-          <Numero etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} chico
-                  comoSeCalcula={DEFINICIONES.facturacion!.formula} />
-        ) : null}
-      </div>
+      <Tarjeta titulo={`El tablero · ${r.etiqueta}`}
+               ayuda="Sale del mismo módulo de métricas que el Dashboard: no hay dos cuentas, hay una. Pasá el mouse por cada número para ver de dónde sale."
+               accion={<Link href="/dashboard" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Ver el Dashboard →</Link>}>
+        <Tablero m={m} verPlata={verPlata} />
+      </Tarjeta>
 
       {toques.length > 0 ? (
         <Tarjeta titulo={`Seguimientos que tocan hoy (${toques.length})`}
