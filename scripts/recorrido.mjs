@@ -235,35 +235,57 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   await esperar()
 
   await p.goto(`${RAIZ}/seguimientos`)
-  // Cuántas tarjetas había antes de la nuestra: el recorrido puede correrse
-  // varias veces contra la misma base de pruebas.
-  const previas = {
-    enTotal: await p.locator('.columna .ficha').count() - 1,
-    enSegunda: await p.locator('.columna').nth(1).locator('.ficha').count(),
-  }
-  comprobar(await p.locator(`.columna .ficha:has-text("${OTRO}")`).count() === 1,
+  comprobar(await p.locator(`.contenido .ficha:has-text("${OTRO}")`).count() === 1,
             'apareció en el pipeline sin que nadie lo agregue a mano')
-  comprobar(await p.locator('.columna').count() === 12, 'las doce columnas están')
-  await foto('pipeline')
+  comprobar(await p.locator('.contenido .pista .nodo').count() === 12,
+            'la pista dibuja los doce toques')
 
-  await paso('registrar el toque mueve la tarjeta sola', async () => {
-    const primera = p.locator('.columna').first()
-    await primera.locator(`.ficha:has-text("${OTRO}") select`).selectOption('no_contesto')
-    await primera.locator(`.ficha:has-text("${OTRO}") button[type=submit]`).click()
+  const suya = () => p.locator(`.contenido .ficha:has-text("${OTRO}")`)
+  const progresoDe = async () => ({
+    hechos: await suya().locator('.progreso i.hecho').count(),
+    actual: await suya().locator('.progreso i.actual').count(),
+    total: await suya().locator('.progreso i').count(),
+  })
+
+  const antesDelToque = await progresoDe()
+  comprobar(antesDelToque.total === 12 && antesDelToque.hechos === 0 && antesDelToque.actual === 1,
+            'la tarjeta muestra el progreso sobre los 12 pasos, en el primero')
+  comprobar((await suya().textContent())?.includes('Toque 1 de 12'),
+            'y dice en qué toque va')
+
+  await paso('registrar el toque mueve el progreso de la tarjeta', async () => {
+    await suya().locator('select[name=estado]').selectOption('no_contesto')
+    await suya().locator('button[type=submit]').click()
     await esperar()
-    await esperarCuantos(`.columna:nth-child(2) .ficha`, previas.enSegunda + 1)
-    comprobar(await p.locator('.columna').nth(1).locator(`.ficha:has-text("${OTRO}")`).count() === 1,
-              'la tarjeta pasó sola al toque 2')
+    await p.waitForFunction(
+      (nombre) => {
+        const fichas = [...document.querySelectorAll('.contenido .ficha')]
+        const f = fichas.find((x) => x.textContent?.includes(nombre))
+        return f !== undefined && f.querySelectorAll('.progreso i.hecho').length === 1
+      },
+      OTRO, { timeout: 5000 },
+    ).catch(() => {})
+    const despues = await progresoDe()
+    comprobar(despues.hechos === 1 && despues.actual === 1,
+              'el paso 1 quedó marcado como hecho y el actual pasó al 2')
+    comprobar((await suya().textContent())?.includes('Toque 2 de 12'),
+              'y la tarjeta lo dice')
+    await foto('pipeline')
   })
 
   await paso('«no interesado» lo saca del pipeline y cierra el lead', async () => {
-    const segunda = p.locator('.columna').nth(1)
-    await segunda.locator(`.ficha:has-text("${OTRO}") select`).selectOption('no_interesado')
-    await segunda.locator(`.ficha:has-text("${OTRO}") button[type=submit]`).click()
+    await suya().locator('select[name=estado]').selectOption('no_interesado')
+    await suya().locator('button[type=submit]').click()
     await esperar()
-    await esperarCuantos('.columna .ficha', previas.enTotal)
-    comprobar(await p.locator(`.columna .ficha:has-text("${OTRO}")`).count() === 0,
-              'dejó de ocupar lugar en la grilla')
+    // `:has-text()` es de Playwright, no de querySelectorAll: acá se filtra
+    // por el texto a mano.
+    await p.waitForFunction(
+      (nombre) => ![...document.querySelectorAll('.contenido .ficha')]
+        .some((f) => f.textContent?.includes(nombre)),
+      OTRO, { timeout: 5000 },
+    ).catch(() => {})
+    comprobar(await p.locator(`.contenido .tanda .ficha:has-text("${OTRO}")`).count() === 0,
+              'dejó de ocupar lugar entre las tarjetas')
     comprobar(await p.locator(`.tarjeta:has-text("Fuera del pipeline") tr:has-text("${OTRO}")`).count() === 1,
               'y quedó listado por si hay que volver a meterlo')
   })

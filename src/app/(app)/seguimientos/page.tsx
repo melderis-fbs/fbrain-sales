@@ -4,6 +4,7 @@ import { alcanceDe } from '@/lib/permisos'
 import { pipelineDeSeguimientos, type Tarjeta as Ficha } from '@/datos/seguimientos'
 import { config } from '@/datos/catalogos'
 import { hoyEn } from '@/motor/periodos'
+import type { Toque, Urgencia } from '@/motor/toques'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
 import { ESTADOS_TOQUE, NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION } from '@/dominio/seguimientos'
 import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
@@ -12,10 +13,18 @@ import { registrarToqueAccion, volverAlPipelineAccion } from './acciones'
 /**
  * El pipeline de seguimientos.
  *
- * Doce columnas, una por toque, y cada tarjeta se mueve sola a la siguiente
- * cuando el closer registra qué pasó. La franja de color de la izquierda dice
- * si toca hoy, si está vencida o si todavía falta — y es lo único de color de
- * la pantalla, para que se pueda barrer con la vista.
+ * Dos vistas de lo mismo, y las dos hacen falta:
+ *
+ *  - LA PISTA arriba: los doce toques como una línea de tiempo, con cuánta
+ *    gente hay parada en cada uno. Contesta «dónde se traba la cadencia», que
+ *    es una pregunta de dirección.
+ *  - LAS TARJETAS abajo: un lead por tarjeta, con su progreso sobre los doce
+ *    pasos y el día que le toca. Contesta «qué hago ahora», que es la pregunta
+ *    del closer.
+ *
+ * Las tarjetas van ordenadas por URGENCIA, no por toque. Un tablero ordenado
+ * por etapa obliga a recorrer doce columnas para juntar el trabajo del día;
+ * ordenado por urgencia, el trabajo del día son las primeras tarjetas.
  *
  * Esto NO es una lista aparte de leads: es una vista de los leads que quedaron
  * en seguimiento. Si fuera una lista propia se desincronizaría —un lead ya
@@ -29,11 +38,21 @@ export default async function Seguimientos() {
   const monedaBase = await config<string>('moneda_base', 'USD')
 
   const { columnas, largos, fuera, resumen } = await pipelineDeSeguimientos(alcance, hoy, monedaBase)
+  const cadencia = columnas.map((c) => c.toque)
+  const activas = columnas.flatMap((c) => c.tarjetas)
+
+  // Por urgencia, que es el orden en que se trabaja.
+  const TANDAS: { urgencia: Urgencia; titulo: string; ayuda: string }[] = [
+    { urgencia: 'vencido', titulo: 'Vencidos', ayuda: 'El toque tenía que haberse hecho y no se hizo. Va primero.' },
+    { urgencia: 'hoy', titulo: 'Tocan hoy', ayuda: 'El trabajo del día.' },
+    { urgencia: 'proximo', titulo: 'En los próximos dos días', ayuda: 'Para preparar lo que viene.' },
+    { urgencia: 'espera', titulo: 'En espera', ayuda: 'Ya se tocaron: les falta para el siguiente.' },
+  ]
 
   return (
     <div className="apilado">
       <Encabezado kicker="Seguimientos" titulo="Pipeline de 12 toques"
-                  bajada="Cada toque cuenta desde el último toque real, no desde que el lead entró." />
+                  bajada="Cada toque se cuenta desde el último toque real, no desde que el lead entró." />
 
       <div className="rejilla g4">
         <Numero etiqueta="En cadencia" valor={resumen.enCadencia} />
@@ -48,6 +67,36 @@ export default async function Seguimientos() {
                 contra="de lo que sigue en cadencia · no es forecast" />
       </div>
 
+      <Tarjeta titulo="La cadencia"
+               ayuda="Cuánta gente hay parada en cada toque. Donde se amontona es donde la cadencia se traba.">
+        <div className="pista">
+          {columnas.map((c) => {
+            const vencidos = c.tarjetas.filter((t) => t.urgencia === 'vencido').length
+            const clases = [
+              'nodo',
+              c.tarjetas.length > 0 ? 'conGente' : '',
+              vencidos > 0 ? 'conVencidos' : '',
+            ].filter(Boolean).join(' ')
+            return (
+              <div key={c.toque.orden} className={clases}
+                   title={`${c.toque.nombre} · día ${c.toque.dias}`}>
+                <span className="bolita">{c.toque.orden}</span>
+                <span className="dia">DÍA {c.toque.dias}</span>
+                <span className={`cuantos ${c.tarjetas.length === 0 ? 'ninguno' : ''}`}>
+                  {c.tarjetas.length === 0 ? '—' : c.tarjetas.length}
+                  {vencidos > 0 ? <span style={{ color: 'var(--rojo)' }}> ({vencidos})</span> : null}
+                </span>
+                <span className="nombre-toque">{c.toque.nombre}</span>
+              </div>
+            )
+          })}
+        </div>
+        <p className="ayuda" style={{ marginTop: 12 }}>
+          El número grande de cada nodo es su orden; abajo, cuántos leads están parados ahí y
+          —entre paréntesis y en rojo— cuántos de esos están vencidos.
+        </p>
+      </Tarjeta>
+
       {resumen.enCadencia === 0 && largos.length === 0 ? (
         <Tarjeta>
           <Vacio>
@@ -55,60 +104,52 @@ export default async function Seguimientos() {
             como «Seguimiento» en su ficha.
           </Vacio>
         </Tarjeta>
-      ) : (
-        <div className="pipeline">
-          {columnas.map((c) => (
-            <div className="columna" key={c.toque.orden}>
-              <div className="cabeza">
-                <span className="n">Toque {c.toque.orden}</span>
-                <span className="dia">día {c.toque.dias}</span>
-              </div>
-              <div className="titulo">{c.toque.nombre}</div>
-              {c.tarjetas.length === 0 ? (
-                <div className="ninguna">—</div>
-              ) : (
-                c.tarjetas.map((t) => <FichaDeLead key={t.leadId} t={t} />)
-              )}
+      ) : null}
+
+      {TANDAS.map((tanda) => {
+        const suyas = activas
+          .filter((t) => t.urgencia === tanda.urgencia)
+          .sort((a, b) => b.atraso - a.atraso || a.nombre.localeCompare(b.nombre))
+        if (suyas.length === 0) return null
+        return (
+          <section className="tanda" key={tanda.urgencia}>
+            <h3>
+              {tanda.titulo}
+              <span className="cuenta">{suyas.length}</span>
+              <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--gris)' }}>{tanda.ayuda}</span>
+            </h3>
+            <div className="tarjetas">
+              {suyas.map((t) => <FichaDeLead key={t.leadId} t={t} cadencia={cadencia} />)}
             </div>
-          ))}
-        </div>
-      )}
+          </section>
+        )
+      })}
 
-      <div className="rejilla g2">
-        <Tarjeta titulo={`Seguimiento largo (${largos.length})`}
-                 ayuda="Pidieron que los llamemos en una fecha puntual. Salen de la cadencia y vuelven ese día.">
-          {largos.length === 0 ? (
-            <p className="ayuda">Ninguno.</p>
-          ) : (
-            <table>
-              <tbody>
-                {largos.map((t) => (
-                  <tr key={t.leadId}>
-                    <td><Link href={`/leads/${t.leadId}?pestana=seguimiento`} style={{ fontWeight: 600 }}>{t.nombre}</Link></td>
-                    <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{t.closer ?? '—'}</td>
-                    <td className="num" style={{ fontSize: 12.5 }}>{fechaCorta(t.fechaLarga)}</td>
-                    <td className="num">
-                      {t.urgencia === 'vencido' || t.urgencia === 'hoy'
-                        ? <Pildora color="acento">toca</Pildora>
-                        : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Tarjeta>
+      {largos.length > 0 ? (
+        <section className="tanda">
+          <h3>
+            Seguimiento largo
+            <span className="cuenta">{largos.length}</span>
+            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--gris)' }}>
+              Pidieron que los llamemos en una fecha puntual. Salen de la cadencia y vuelven ese día.
+            </span>
+          </h3>
+          <div className="tarjetas">
+            {largos.map((t) => <FichaDeLead key={t.leadId} t={t} cadencia={cadencia} />)}
+          </div>
+        </section>
+      ) : null}
 
+      {fuera.length > 0 ? (
         <Tarjeta titulo={`Fuera del pipeline (${fuera.length})`}
                  ayuda="Se fueron por «no interesado», porque agendaron, o porque se cerraron. Están acá por si hay que volver a meterlos.">
-          {fuera.length === 0 ? (
-            <p className="ayuda">Ninguno.</p>
-          ) : (
+          <div className="tabla-scroll">
             <table>
               <tbody>
                 {fuera.slice(0, 20).map((t) => (
                   <tr key={t.leadId}>
                     <td><Link href={`/leads/${t.leadId}`} style={{ fontWeight: 600 }}>{t.nombre}</Link></td>
+                    <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{t.closer ?? '—'}</td>
                     <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>
                       {t.ultimoEstado ? NOMBRE_DE_TOQUE[t.ultimoEstado] : NOMBRE_DE_SITUACION[t.situacion]}
                     </td>
@@ -122,75 +163,85 @@ export default async function Seguimientos() {
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
         </Tarjeta>
-      </div>
-
-      <Tarjeta titulo="Dónde se cae la cadencia"
-               ayuda="Cuántos hay parados en cada toque. Un toque donde se amontona todo es un toque que nadie hace.">
-        <div className="tabla-scroll">
-          <table>
-            <thead>
-              <tr><th>#</th><th>Toque</th><th className="num">En cadencia</th><th className="num">Vencidos</th></tr>
-            </thead>
-            <tbody>
-              {resumen.porToque.map((t) => (
-                <tr key={t.orden}>
-                  <td>{t.orden}</td>
-                  <td>{t.nombre}</td>
-                  <td className="num">{t.activos}</td>
-                  <td className="num">
-                    {t.vencidos > 0 ? <Pildora color="rojo">{t.vencidos}</Pildora> : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={2}>Total</td>
-                <td className="num">{resumen.enCadencia}</td>
-                <td className="num">{resumen.vencidos}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </Tarjeta>
+      ) : null}
     </div>
   )
 }
 
 /**
- * Una tarjeta del pipeline.
+ * Un lead dentro de la cadencia.
  *
- * El desplegable y el botón son un formulario propio: al registrar el toque, la
- * tarjeta se mueve sola a la columna siguiente y la fecha del próximo se cuenta
- * desde hoy.
+ * Lo que tiene que contestar sin que nadie haga clic: por dónde va, qué toque
+ * le toca, y qué día. Por eso la barra de progreso está antes que cualquier
+ * texto: doce segmentos, los hechos en negro y el actual resaltado.
  */
-function FichaDeLead({ t }: { t: Ficha }) {
+function FichaDeLead({ t, cadencia }: { t: Ficha; cadencia: Toque[] }) {
   const clase = t.urgencia === 'vencido' ? 'ficha vencida'
     : t.urgencia === 'hoy' ? 'ficha hoy'
     : t.urgencia === 'proximo' ? 'ficha proxima' : 'ficha'
+  const toque = cadencia.find((c) => c.orden === t.toque)
+  const largo = t.situacion === 'largo'
 
   return (
     <div className={clase}>
-      <Link href={`/leads/${t.leadId}?pestana=seguimiento`} className="nombre">{t.nombre}</Link>
-      <div className="meta">
-        {t.closer ?? 'sin closer'} · {fechaCorta(t.fecha)}
-        {t.atraso > 0 ? ` · ${t.atraso} ${t.atraso === 1 ? 'día' : 'días'} tarde` : ''}
-      </div>
-      {t.calidadNivel ? (
-        <div style={{ marginTop: 4 }}>
-          <Pildora color={COLOR_DE_CALIDAD[t.calidadNivel]}>{NOMBRE_DE_NIVEL[t.calidadNivel]}</Pildora>
+      <div className="entre" style={{ alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <Link href={`/leads/${t.leadId}?pestana=seguimiento`} className="nombre">{t.nombre}</Link>
+          <div className="meta">
+            {[t.empresa, t.closer ?? 'sin closer'].filter(Boolean).join(' · ')}
+          </div>
         </div>
-      ) : null}
+        {t.calidadNivel ? (
+          <Pildora color={COLOR_DE_CALIDAD[t.calidadNivel]}>{NOMBRE_DE_NIVEL[t.calidadNivel]}</Pildora>
+        ) : null}
+      </div>
+
+      {largo ? (
+        <div className="paso">
+          <span className="cual">Seguimiento largo</span>
+          <span className="cuando">vuelve el {fechaCorta(t.fechaLarga)}</span>
+        </div>
+      ) : (
+        <>
+          <div className="paso">
+            <span className="cual">
+              Toque {t.toque} de {cadencia.length}
+              {toque ? <span style={{ fontWeight: 400, color: 'var(--gris)' }}> · día {toque.dias}</span> : null}
+            </span>
+            <span className="cuando">
+              {t.atraso > 0
+                ? <strong style={{ color: 'var(--rojo)' }}>
+                    {t.atraso} {t.atraso === 1 ? 'día tarde' : 'días tarde'}
+                  </strong>
+                : t.atraso === 0 ? <strong style={{ color: 'var(--acento)' }}>toca hoy</strong>
+                : fechaCorta(t.fecha)}
+            </span>
+          </div>
+
+          <div className={`progreso ${t.urgencia === 'vencido' ? 'vencido' : ''}`}
+               role="img"
+               aria-label={`Toque ${t.toque} de ${cadencia.length}, ${t.toque - 1} hechos`}>
+            {cadencia.map((c) => (
+              <i key={c.orden}
+                 className={c.orden < t.toque ? 'hecho' : c.orden === t.toque ? 'actual' : ''} />
+            ))}
+          </div>
+
+          <div className="meta" style={{ marginTop: 6 }}>
+            {toque?.nombre ?? '—'}
+          </div>
+        </>
+      )}
 
       <form action={registrarToqueAccion} className="acciones">
         <input type="hidden" name="leadId" value={t.leadId} />
-        <select name="estado" defaultValue="no_contesto" aria-label={`Qué pasó con ${t.nombre}`}
-                style={{ flex: 1, minWidth: 0 }}>
+        <label className="oculto" htmlFor={`s-${t.leadId}`}>Qué pasó con {t.nombre}</label>
+        <select id={`s-${t.leadId}`} name="estado" defaultValue="no_contesto">
           {ESTADOS_TOQUE.map((e) => <option key={e} value={e}>{NOMBRE_DE_TOQUE[e]}</option>)}
         </select>
-        <button type="submit" className="chico" style={{ padding: '3px 9px', fontSize: 11.5 }}>✓</button>
+        <button type="submit" className="chico">Registrar</button>
       </form>
     </div>
   )

@@ -32,10 +32,19 @@ export function useCampos<T extends Record<string, string>>(iniciales: T, reinte
       const campo = elemento.elements.namedItem(nombre)
       if (campo instanceof HTMLSelectElement && campo.value !== valor) campo.value = valor
     }
-    // A propósito depende sólo del reintento: se repone cuando la acción
-    // volvió, no cada vez que alguien toca una tecla.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reintento])
+    // A propósito SIN lista de dependencias: corre después de cada render.
+    //
+    // Antes dependía sólo de `reintento`, y eso alcanzaba mientras la acción
+    // devolviera un error distinto cada vez. Con una acción que sale bien y
+    // devuelve lo mismo —dar de alta a alguien en Configuración, una persona
+    // tras otra— el estado de React y el DOM se separaban en silencio: React
+    // creía «setter» y el desplegable mostraba otra cosa, así que la segunda y
+    // la tercera persona se creaban con el rol equivocado sin que nadie viera
+    // un error. Un dato mal cargado sin mensaje es peor que un error.
+    //
+    // Correrlo siempre no cuesta nada: es un puñado de `<select>` y, si no hay
+    // diferencia, no toca el DOM.
+  })
 
   const campo = (nombre: keyof T & string) => ({
     name: nombre,
@@ -44,6 +53,10 @@ export function useCampos<T extends Record<string, string>>(iniciales: T, reinte
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setValores((v) => ({ ...v, [nombre]: e.target.value })),
   })
+
+  // `reintento` se sigue aceptando porque lo pasan las pantallas y documenta
+  // qué dispara la reposición, pero ya no gobierna cuándo se repone.
+  void reintento
 
   return { campo, valores, form }
 }
