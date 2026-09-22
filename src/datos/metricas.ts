@@ -3,6 +3,7 @@ import { fila, filas } from '@/lib/db'
 import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
 import { embudo, tasa, redondear, type Conteos, type Etapa } from '@/motor/embudo'
 import type { Rango } from '@/motor/periodos'
+import type { Resultado } from '@/dominio/resultados'
 
 /**
  * Las métricas. Todas. Definidas UNA vez.
@@ -509,6 +510,60 @@ export async function sinCargar(alcance: Alcance, hoy: string, limite = 50): Pro
   return f.map((x) => ({
     leadId: x.id, lead: x.nombre, closer: x.closer,
     fecha: x.fecha_sesion, dias: Number(x.dias),
+  }))
+}
+
+/**
+ * Leads cuya plata contradice su resultado.
+ *
+ * Un lead que dice «Perdido» con una venta activa suma a la facturación del mes
+ * igual que una venta real. El error es fácil de cometer —se carga la venta en
+ * el lead equivocado, o el cliente se arrepiente— y era imposible de encontrar:
+ * el embudo ya no lo mostraba y el número seguía inflado.
+ *
+ * Que el tablero sepa decir cuáles son es la diferencia entre un número que se
+ * corrige y un número en el que se deja de confiar.
+ */
+export type PlataFantasma = {
+  leadId: number
+  lead: string
+  closer: string | null
+  resultado: Resultado
+  que: 'venta' | 'sena'
+  importe: number
+  moneda: string
+  fecha: string
+}
+
+export async function plataFantasma(alcance: Alcance, limite = 20): Promise<PlataFantasma[]> {
+  if (sinEquipoAsignado(alcance)) return []
+  const valores: unknown[] = []
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
+  if (alc.parametro !== null) valores.push(alc.parametro)
+  valores.push(limite)
+
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, l.resultado, c.nombre as closer,
+            'venta' as que, v.importe, v.moneda, v.fecha
+       from ventas v
+       join leads l on l.id = v.lead_id and l.borrado_en is null
+       left join closers c on c.id = l.closer_id
+      where v.borrado_en is null and l.resultado <> 'venta' and ${alc.condicion}
+     union all
+     select l.id, l.nombre, l.resultado, c.nombre as closer,
+            'sena' as que, s.importe, s.moneda, s.fecha
+       from senias s
+       join leads l on l.id = s.lead_id and l.borrado_en is null
+       left join closers c on c.id = l.closer_id
+      where s.borrado_en is null and s.estado <> 'convertida'
+        and l.resultado in ('perdida', 'no_calificado') and ${alc.condicion}
+     order by fecha desc
+     limit $${valores.length}`,
+    valores,
+  )
+  return f.map((x) => ({
+    leadId: x.id, lead: x.nombre, closer: x.closer, resultado: x.resultado as Resultado,
+    que: x.que as 'venta' | 'sena', importe: Number(x.importe), moneda: x.moneda, fecha: x.fecha,
   }))
 }
 

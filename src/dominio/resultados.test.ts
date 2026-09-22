@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { sigueAbierto, COLOR_DE_RESULTADO, COLOR_DE_ESTADO, RESULTADOS, ESTADOS } from './resultados'
+import {
+  sigueAbierto, plataQueNoCuadra, COLOR_DE_RESULTADO, COLOR_DE_ESTADO, RESULTADOS, ESTADOS,
+} from './resultados'
 import { PUEDE, ROLES } from './roles'
 
 describe('la seña', () => {
@@ -81,5 +83,36 @@ describe('permisos', () => {
   it('el coach no borra nada', () => {
     expect(PUEDE.coach.borrarLead).toBe(false)
     expect(PUEDE.coach.restaurarLead).toBe(false)
+  })
+})
+
+describe('la plata que no cuadra con el resultado', () => {
+  it('una venta en un lead que dice cualquier otra cosa está inflando la facturación', () => {
+    // Es el error que estuvo vivo: corregir el resultado sacaba el lead del
+    // embudo y dejaba la plata contando en el mes.
+    expect(plataQueNoCuadra('perdida', { venta: 5000, sena: 0 })).toBe('venta')
+    expect(plataQueNoCuadra('pendiente', { venta: 5000, sena: 0 })).toBe('venta')
+    expect(plataQueNoCuadra('venta', { venta: 5000, sena: 0 })).toBe(null)
+  })
+
+  it('una seña convive con un lead abierto: eso no es un error', () => {
+    // La seña NO cierra el lead. Avisar acá sería avisar de lo normal, y un
+    // aviso que salta siempre deja de leerse.
+    for (const r of ['pendiente', 'seguimiento', 'sena'] as const) {
+      expect(plataQueNoCuadra(r, { venta: 0, sena: 1000 })).toBe(null)
+    }
+  })
+
+  it('una seña en un lead cerrado en falso sí lo es', () => {
+    expect(plataQueNoCuadra('perdida', { venta: 0, sena: 1000 })).toBe('sena')
+    expect(plataQueNoCuadra('no_calificado', { venta: 0, sena: 1000 })).toBe('sena')
+  })
+
+  it('sin plata cargada no hay nada que avisar, diga lo que diga el resultado', () => {
+    for (const r of RESULTADOS) expect(plataQueNoCuadra(r, { venta: 0, sena: 0 })).toBe(null)
+  })
+
+  it('la venta manda sobre la seña: lo que infla la facturación se avisa primero', () => {
+    expect(plataQueNoCuadra('perdida', { venta: 5000, sena: 1000 })).toBe('venta')
   })
 })

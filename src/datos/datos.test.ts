@@ -647,6 +647,128 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(0)
   })
 
+  it('corregir el resultado NO saca la venta: hay que anularla, y entonces sí sale del mes', async () => {
+    // Ésta es la prueba de un error que estuvo vivo: cargar una venta por
+    // equivocación y después corregir el resultado a «perdida» sacaba el lead
+    // del embudo pero dejaba la plata contando en la facturación del mes, para
+    // siempre y sin forma de arreglarlo.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.registrarPago(id, { importe: 2000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+
+    await resultado.cargarResultado(id, { resultado: 'perdida', motivoPerdida: 'precio' }, usuarioId)
+
+    // El embudo ya no la cuenta como venta...
+    const conError = (await metricas.metricas(rango, TODO)).medidas
+    expect(conError.ventas).toBe(0)
+    // ...pero la plata sigue ahí. Esto es el error, y el tablero lo sabe decir.
+    expect(conError.facturacion).toBe(5000)
+    expect(conError.cashCollected).toBe(2000)
+
+    const [fantasma] = await metricas.plataFantasma(TODO)
+    expect(fantasma?.lead).toBe('María')
+    expect(fantasma?.que).toBe('venta')
+    expect(fantasma?.importe).toBe(5000)
+
+    await resultado.anularVenta(id, usuarioId, 'Se cargó en el lead equivocado')
+
+    const limpio = (await metricas.metricas(rango, TODO)).medidas
+    expect(limpio.facturacion).toBe(0)
+    // El cobro se va con la venta: si no, el cash seguiría contando plata de
+    // algo que ya no existe.
+    expect(limpio.cashCollected).toBe(0)
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+
+    // Y no se borró: queda quién la anuló y por qué.
+    const anulada = (await cambios.historialDelLead(id)).find((h) => h.campo === 'venta: anulada')
+    expect(anulada?.anterior).toBe('USD 5000')
+    expect(anulada?.motivo).toBe('Se cargó en el lead equivocado')
+  })
+
+  it('anular una venta sin motivo no se hace', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await expect(resultado.anularVenta(id, usuarioId, '  ')).rejects.toThrow(/por qué/i)
+    expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(5000)
+  })
+
+  it('anular la venta de un lead que todavía dice «venta» lo deja pendiente, no mintiendo', async () => {
+    // Un lead que dice «Venta» sin venta es el mismo error dado vuelta.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await resultado.anularVenta(id, usuarioId, 'El cliente se arrepintió antes de pagar')
+
+    const lead = await leads.verLead(id)
+    expect(lead?.resultado).toBe('pendiente')
+    expect(lead?.venta).toBe(null)
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+  })
+
+  it('anular la venta devuelve la seña que se había convertido en ella', async () => {
+    // La seña se había convertido y su importe era el primer pago de la venta.
+    // Si la venta se anula y la seña no vuelve, esa plata desaparece de los dos
+    // lados: no era una venta y tampoco un compromiso abierto.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
+
+    await resultado.anularVenta(id, usuarioId, 'Se cargó en el lead equivocado')
+
+    const abiertas = await metricas.senasAbiertas(TODO, '2026-09-15')
+    expect(abiertas.map((s) => s.importe)).toEqual([1000])
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.facturacion).toBe(0)
+    expect(m.cashCollected).toBe(0)
+  })
+
+  it('una seña ya convertida no se anula por su lado: lo que se anula es la venta', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await expect(resultado.anularSena(id, usuarioId, 'Error')).rejects.toThrow(/venta/i)
+  })
+
+  it('una seña en un lead perdido es plata que no cuadra, y se puede anular', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    // Una seña con el lead abierto es normal: no es un descuadre.
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+
+    await resultado.cargarResultado(id, { resultado: 'perdida', motivoPerdida: 'precio' }, usuarioId)
+    const [fantasma] = await metricas.plataFantasma(TODO)
+    expect(fantasma?.que).toBe('sena')
+
+    await resultado.anularSena(id, usuarioId, 'Nunca llegó a transferir')
+    expect(await metricas.senasAbiertas(TODO, '2026-09-15')).toEqual([])
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

@@ -100,3 +100,25 @@ export const NOMBRE_DE_MOTIVO: Record<MotivoPerdida, string> = {
 export function sigueAbierto(resultado: Resultado): boolean {
   return resultado === 'pendiente' || resultado === 'seguimiento' || resultado === 'sena'
 }
+
+/**
+ * ¿La plata cargada contradice el resultado?
+ *
+ * Existe porque faltaba y la falta era cara: cargar una venta por error y
+ * después corregir el resultado a «Perdido» sacaba el lead del embudo pero
+ * dejaba la venta. La facturación del mes seguía contando plata que no entró, y
+ * el número no se podía arreglar desde ningún lado.
+ *
+ * Una seña convertida ya es una venta: no cuenta acá, se mira la venta.
+ */
+export function plataQueNoCuadra(
+  resultado: Resultado,
+  plata: { venta: number; sena: number },
+): 'venta' | 'sena' | null {
+  if (plata.venta > 0 && resultado !== 'venta') return 'venta'
+  // Una seña convive con «pendiente», «seguimiento» y «seña». Con un lead
+  // cerrado en falso, no: o la seña se perdió y hay que anularla, o el lead
+  // no está perdido.
+  if (plata.sena > 0 && (resultado === 'perdida' || resultado === 'no_calificado')) return 'sena'
+  return null
+}

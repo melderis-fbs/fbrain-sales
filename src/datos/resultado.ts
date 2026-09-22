@@ -177,3 +177,113 @@ export async function registrarPago(
                     anterior: null, nuevo: `${datos.moneda} ${datos.importe}` }], usuarioId, cx)
   })
 }
+
+// ── Anular plata cargada por error ──────────────────────────────────────────
+
+/**
+ * Anular una venta cargada por error.
+ *
+ * Hacía falta y no estaba, y la falta era cara: cambiar el resultado de «venta»
+ * a «perdida» sacaba el lead del embudo pero DEJABA la fila en `ventas`. La
+ * facturación del mes seguía contando plata que no entró, para siempre, y no
+ * había forma de sacarla desde la aplicación.
+ *
+ * Se anula, no se borra: queda con `borrado_en` y en el historial con su
+ * motivo, porque plata que aparece y desaparece de la facturación es
+ * exactamente lo que hay que poder explicar tres meses después.
+ *
+ * Tres cosas se van con ella, y ninguna es opcional:
+ *  - los COBROS, o el cash collected seguiría contando plata de algo que ya no
+ *    existe;
+ *  - la conversión de la SEÑA, que vuelve a estar abierta como estaba antes;
+ *  - el RESULTADO del lead si decía «venta», que queda pendiente. Un lead que
+ *    dice «Venta» sin venta es el mismo error dado vuelta.
+ */
+export async function anularVenta(leadId: number, usuarioId: number, motivo: string): Promise<void> {
+  const razon = oNulo(motivo)
+  if (razon === null) {
+    throw new Error('Poné por qué se anula: plata que desaparece de la facturación hay que poder explicarla.')
+  }
+
+  const venta = await fila<{ id: number; importe: number; moneda: string; resultado: Resultado }>(
+    `select v.id, v.importe, v.moneda, l.resultado
+       from ventas v join leads l on l.id = v.lead_id
+      where v.lead_id = $1 and v.borrado_en is null
+      order by v.fecha desc, v.id desc limit 1`,
+    [leadId],
+  )
+  if (!venta) throw new Error('Este lead no tiene ninguna venta cargada.')
+
+  await enTransaccion(async (cx) => {
+    await escribir('update ventas set borrado_en = now() where id = $1', [venta.id],
+      { esperadas: 1, cliente: cx })
+    await escribir(
+      'update pagos set borrado_en = now() where venta_id = $1 and borrado_en is null',
+      [venta.id], { esperadas: 'cualquiera', cliente: cx },
+    )
+    await escribir(
+      `update senias set estado = 'abierta', venta_id = null
+        where venta_id = $1 and estado = 'convertida'`,
+      [venta.id], { esperadas: 'cualquiera', cliente: cx },
+    )
+
+    const cambios: Cambio[] = [{
+      entidad: 'venta', entidadId: leadId, campo: 'anulada',
+      anterior: `${venta.moneda} ${venta.importe}`, nuevo: null, motivo: razon,
+    }]
+    if (venta.resultado === 'venta') {
+      await escribir(
+        `update leads set resultado = 'pendiente', actualizado_en = now() where id = $1`,
+        [leadId], { esperadas: 1, cliente: cx },
+      )
+      cambios.push({ entidad: 'lead', entidadId: leadId, campo: 'resultado',
+                     anterior: 'venta', nuevo: 'pendiente', motivo: razon })
+    }
+    await anotar(cambios, usuarioId, cx)
+  })
+}
+
+/**
+ * Anular una seña cargada por error. Mismo criterio: sale de los números y
+ * queda el rastro.
+ *
+ * Una seña ya convertida no se toca por acá: esa plata hoy es una venta, y lo
+ * que hay que anular es la venta.
+ */
+export async function anularSena(leadId: number, usuarioId: number, motivo: string): Promise<void> {
+  const razon = oNulo(motivo)
+  if (razon === null) throw new Error('Poné por qué se anula.')
+
+  const sena = await fila<{ id: number; importe: number; moneda: string; resultado: Resultado }>(
+    `select s.id, s.importe, s.moneda, l.resultado
+       from senias s join leads l on l.id = s.lead_id
+      where s.lead_id = $1 and s.borrado_en is null and s.estado <> 'convertida'
+      order by s.fecha desc, s.id desc limit 1`,
+    [leadId],
+  )
+  if (!sena) {
+    throw new Error(
+      'Este lead no tiene ninguna seña abierta. Si la seña ya se convirtió en venta, ' +
+      'lo que hay que anular es la venta.',
+    )
+  }
+
+  await enTransaccion(async (cx) => {
+    await escribir('update senias set borrado_en = now() where id = $1', [sena.id],
+      { esperadas: 1, cliente: cx })
+
+    const cambios: Cambio[] = [{
+      entidad: 'sena', entidadId: leadId, campo: 'anulada',
+      anterior: `${sena.moneda} ${sena.importe}`, nuevo: null, motivo: razon,
+    }]
+    if (sena.resultado === 'sena') {
+      await escribir(
+        `update leads set resultado = 'pendiente', actualizado_en = now() where id = $1`,
+        [leadId], { esperadas: 1, cliente: cx },
+      )
+      cambios.push({ entidad: 'lead', entidadId: leadId, campo: 'resultado',
+                     anterior: 'sena', nuevo: 'pendiente', motivo: razon })
+    }
+    await anotar(cambios, usuarioId, cx)
+  })
+}

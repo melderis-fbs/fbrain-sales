@@ -9,7 +9,7 @@ import {
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
-import { cargarResultado, registrarPago } from '@/datos/resultado'
+import { cargarResultado, registrarPago, anularVenta, anularSena } from '@/datos/resultado'
 import { guardarCalificacion, congelarQuality } from '@/datos/calificacion'
 import { agregarNota, borrarNota } from '@/datos/notas'
 import { marcarSeguimientoLargo } from '@/datos/seguimientos'
@@ -37,6 +37,9 @@ function refrescar(leadId: number) {
   revalidatePath('/tracker')
   revalidatePath('/dashboard')
   revalidatePath('/seguimientos')
+  // La plata que se carga acá es la que se cuenta allá.
+  revalidatePath('/metricas')
+  revalidatePath('/comisiones')
 }
 
 // ── Alta ────────────────────────────────────────────────────────────────────
@@ -304,6 +307,45 @@ export async function registrarPagoAccion(datos: FormData): Promise<void> {
     nCuota: numero(datos, 'nCuota'),
   }, usuario.id)
   refrescar(leadId)
+}
+
+// ── Anular plata cargada por error ──────────────────────────────────────────
+
+/**
+ * Sacar de los números una venta o una seña que no existió.
+ *
+ * Es la tercera forma de «cargué mal». Las otras dos ya estaban: si el dato del
+ * lead está mal se corrige en Datos, y si el lead no debería existir se da de
+ * baja. Faltaba ésta, y era la cara: corregir el resultado de «venta» a
+ * «perdida» sacaba el lead del embudo pero dejaba la plata contando en la
+ * facturación del mes, sin forma de sacarla.
+ *
+ * La pide quien puede tocar la plata, con motivo. No la borra: la anula, y
+ * queda en el historial con quién y por qué.
+ */
+export async function anularPlataAccion(
+  _previo: string | null, datos: FormData,
+): Promise<string | null> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'editarDinero')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  const motivo = texto(datos, 'motivo')
+  if (motivo === null) {
+    return 'Poné por qué se anula. Plata que desaparece de la facturación hay que poder explicarla.'
+  }
+
+  try {
+    if (texto(datos, 'que') === 'sena') await anularSena(leadId, usuario.id, motivo)
+    else await anularVenta(leadId, usuario.id, motivo)
+  } catch (e) {
+    return e instanceof Error ? e.message : 'No se pudo anular.'
+  }
+
+  refrescar(leadId)
+  return null
 }
 
 // ── Repesca ─────────────────────────────────────────────────────────────────

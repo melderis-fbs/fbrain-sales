@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import {
-  metricas, apertura, objetivoDe, logradoDe, senasAbiertas, sinCargar, sinFechaDeReunion, DEFINICIONES,
+  metricas, apertura, objetivoDe, logradoDe, senasAbiertas, sinCargar, sinFechaDeReunion,
+  plataFantasma, DEFINICIONES,
   NOMBRE_DE_OBJETIVO, type TipoDeObjetivo,
 } from '@/datos/metricas'
 import { pipelineDeSeguimientos } from '@/datos/seguimientos'
@@ -10,6 +11,7 @@ import { catalogos, config } from '@/datos/catalogos'
 import { rango, rangoAnterior, hoyEn, variacion, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { ritmo, diasHabilesTranscurridos } from '@/motor/objetivo'
 import { Numero, Tarjeta, Encabezado, plata, porcentaje, fechaCorta } from '@/componentes/Piezas'
+import { NOMBRE_DE_RESULTADO } from '@/dominio/resultados'
 import { Embudo } from '@/componentes/Embudo'
 import { Objetivo } from '@/componentes/Objetivo'
 import { NOMBRE_DE_MOTIVO, type MotivoPerdida } from '@/dominio/resultados'
@@ -48,7 +50,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
     funnelId: q.funnel ? Number(q.funnel) : undefined,
   }
 
-  const [ahora, antes, objetivo, cats, porFuente, porMotivo, senas, pendientes, sueltos, seguimientos] =
+  const [ahora, antes, objetivo, cats, porFuente, porMotivo, senas, pendientes, sueltos, seguimientos,
+         fantasmas] =
     await Promise.all([
       metricas(r, alcance, filtros, monedaBase),
       metricas(previo, alcance, filtros, monedaBase),
@@ -60,6 +63,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
       sinCargar(alcance, hoy, 6),
       sinFechaDeReunion(alcance),
       pipelineDeSeguimientos(alcance, hoy, monedaBase),
+      plataFantasma(alcance),
     ])
 
   const m = ahora.medidas
@@ -106,6 +110,30 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
         ))}
         <button type="submit" className="secundario">Filtrar</button>
       </form>
+
+      {verPlata && fantasmas.length > 0 ? (
+        <div className="aviso problema">
+          <strong>
+            {fantasmas.length === 1
+              ? 'Hay un lead cuya plata contradice su resultado.'
+              : `Hay ${fantasmas.length} leads cuya plata contradice su resultado.`}
+          </strong>{' '}
+          Está contando en los números de abajo aunque el lead diga otra cosa. Suele ser una venta
+          cargada en el lead equivocado: se anula desde su ficha y sale del mes.
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {fantasmas.map((f) => (
+              <li key={`${f.que}-${f.leadId}-${f.fecha}`}>
+                <Link href={`/leads/${f.leadId}`}
+                      style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
+                  {f.lead}
+                </Link>{' '}
+                dice «{NOMBRE_DE_RESULTADO[f.resultado]}» y tiene {f.que === 'venta' ? 'una venta' : 'una seña'} de{' '}
+                {plata(f.importe, f.moneda)} del {fechaCorta(f.fecha)}.
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {m.otrasMonedas.length > 0 ? (
         <div className="aviso atencion">

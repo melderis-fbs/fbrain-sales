@@ -482,6 +482,63 @@ await paso('un lead con una venta no se da de baja a la ligera', async () => {
             'avisa que tiene una venta y que la baja la saca de los números')
 })
 
+await paso('una venta cargada por error se puede sacar de la facturación', async () => {
+  // El error que estuvo vivo: corregir el resultado a «Perdido» sacaba el lead
+  // del embudo pero dejaba la plata contando en la facturación del mes.
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Venta Mal Cargada ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const errada = p.url().match(/leads\/(\d+)/)?.[1]
+
+  await p.locator('.contenido .botonera .accion:has-text("Venta")').click()
+  await p.fill('.contenido .confirmar input[name=importe]', '9900')
+  await p.locator('.contenido .confirmar button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(700)
+
+  // El closer se da cuenta y corrige el resultado.
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  await p.locator('.contenido .botonera .accion:has-text("Perdido")').click()
+  await p.selectOption('.contenido .confirmar select[name=motivoPerdida]', 'precio')
+  await p.locator('.contenido .confirmar button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(700)
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  const alerta = await p.locator('.contenido .aviso.problema').first().textContent()
+  comprobar((alerta ?? '').includes('9.900') || (alerta ?? '').includes('9900'),
+            'la ficha avisa que la plata contradice el resultado, y dice cuánta')
+
+  await p.goto(`${RAIZ}/dashboard`)
+  comprobar((await p.locator('.contenido').textContent())?.includes(`Venta Mal Cargada ${marca}`),
+            'y el Dashboard lo nombra en vez de dejar el número inflado en silencio')
+  await foto('plata-que-no-cuadra')
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  await p.locator('.contenido .aviso.problema button:has-text("Anular la venta")').click()
+  comprobar(await p.locator('.contenido #motivo-anular').count() === 1,
+            'pide el motivo antes de anular')
+  await p.fill('.contenido #motivo-anular', 'Se cargó en el lead equivocado')
+  await p.locator('.contenido .aviso.problema button:has-text("Sí, anular")').click()
+  await esperar()
+  await p.waitForTimeout(900)
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  comprobar(await p.locator('.contenido .aviso.problema').count() === 0,
+            'anulada, el aviso desaparece')
+
+  await p.goto(`${RAIZ}/dashboard`)
+  comprobar(!(await p.locator('.contenido').textContent())?.includes(`Venta Mal Cargada ${marca}`),
+            'y el Dashboard deja de reclamarlo')
+
+  await p.goto(`${RAIZ}/leads/${errada}?pestana=historial`)
+  comprobar((await p.locator('.contenido').textContent())?.includes('Se cargó en el lead equivocado'),
+            'no se borró nada: queda en el historial quién la anuló y por qué')
+})
+
 await paso('un caso de éxito se carga y queda listo para mandar', async () => {
   await p.goto(`${RAIZ}/casos`)
   await p.fill(enLaPantalla('#titulo'), `De 5k a 30k ${marca}`)
