@@ -44,7 +44,7 @@ export function Llamadas({ leadId, llamadas, hoy }: { leadId: number; llamadas: 
                             : <span className="sindato">sin transcripción</span>}
                     </td>
                     <td className="num">
-                      <Link href={`/llamadas/${l.id}`}
+                      <Link href={`/analizador/${l.id}`}
                             style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Abrir →</Link>
                     </td>
                   </tr>

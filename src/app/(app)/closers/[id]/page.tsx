@@ -198,7 +198,7 @@ export default async function FichaDeCloser({
               <tbody>
                 {analisis.map((a) => (
                   <tr key={a.id}>
-                    <td><Link href={`/llamadas/${a.llamadaId}`}>{a.lead}</Link></td>
+                    <td><Link href={`/analizador/${a.llamadaId}`}>{a.lead}</Link></td>
                     <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{fechaCorta(a.fecha)}</td>
                     <td className="num">
                       {a.score === null ? <span className="sindato">{a.estado}</span>

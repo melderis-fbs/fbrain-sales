@@ -245,8 +245,8 @@ supabase/        Las migraciones.
 | **Dashboard** | Cómo viene el mes, contra el anterior y contra el objetivo |
 | **Tracker Diario** | La planilla del equipo. **Acá el closer carga el resultado de la llamada sin abrir la ficha** |
 | **Leads** | Una fila por persona. La ficha tiene pestañas porque se completa en momentos distintos y por personas distintas |
-| **Llamadas** | Qué se grabó, qué transcripción falta, qué está analizado |
-| **Analizador** | Las notas, la rúbrica a la vista y los playbooks |
+| **Llamadas** | La pantalla del closer: sus reuniones, y **entrar a una llamada** para prepararla y cargar qué pasó, sin abrir la ficha entera |
+| **Analizador** | Cómo estuvieron esas llamadas: las notas, la rúbrica a la vista y los playbooks |
 | **Closers / Setters** | El equipo, con el cierre puesto en contexto |
 | **Matching** | Qué closer cierra mejor qué tipo de lead, y con cuánta confianza |
 | **Seguimientos** | El pipeline de 12 toques, con la tarjeta que se mueve sola |
@@ -263,6 +263,15 @@ silencio: el Tracker los reclama en su propia tarjeta, con un campo para
 ponerles fecha ahí mismo, y el Dashboard avisa cuántos hay. Un lead que no
 aparece en ninguna pantalla no es un lead prolijo, es un lead perdido — y quien
 lo cargó cree que está.
+
+**Llamadas y Analizador se dividen por trabajo, no por entidad.** Las dos
+mostraban listas de llamadas y ninguna servía para lo que el closer hace todo el
+día. Ahora Llamadas es suya —qué tengo hoy, qué averiguó el setter, qué pasó— y
+el Analizador es sobre la calidad de esas llamadas. Entrar a una llamada no abre
+la ficha del lead: abre una pantalla con la preparación, el formulario de
+resultado y las notas en un solo scroll. Todo escribe sobre **el mismo lead**,
+así que lo que el closer carga ahí aparece en el Tracker, en el Dashboard y en
+la ficha sin que nadie sincronice nada.
 
 **El resultado se carga donde el closer está**, no donde el modelo de datos
 querría. Sale de una llamada, entra al Tracker y carga en la misma fila: qué
@@ -444,8 +453,19 @@ El plan completo está en [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PL
 
 ### Para que el analizador funcione
 
-Hace falta `ANTHROPIC_API_KEY` en el entorno. Sin ella, el resto de la
-aplicación anda igual y el analizador lo dice en pantalla en vez de fallar con
-un error genérico. El gasto de cada llamada al modelo queda anotado en
-`llamadas_modelo`, con sus tokens y su costo: un sistema que llama a un modelo
-por cada llamada de ventas se vuelve caro sin que nadie se entere.
+Hace falta `ANTHROPIC_API_KEY`:
+
+1. Sacá una clave en [console.anthropic.com](https://console.anthropic.com) →
+   **API keys** → **Create key**. Empieza con `sk-ant-`.
+2. En Vercel: el proyecto → **Settings** → **Environment Variables**. Nombre
+   `ANTHROPIC_API_KEY`, valor la clave, marcá los tres entornos.
+3. **Redeployá.** Las variables se leen al construir: el deploy que ya estaba
+   hecho no se entera.
+
+En local va en `.env.local`. Sin la clave, el resto de la aplicación anda igual
+y **el Analizador lo dice en pantalla con estos mismos pasos**, en vez de fallar
+con un error genérico que obliga a leer logs.
+
+El gasto de cada llamada al modelo queda anotado en `llamadas_modelo`, con sus
+tokens y su costo: un sistema que llama a un modelo por cada llamada de ventas
+se vuelve caro sin que nadie se entere.

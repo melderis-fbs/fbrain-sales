@@ -345,7 +345,7 @@ await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () =>
 })
 
 await paso('las demás pantallas abren sin romperse', async () => {
-  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas',
+  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas', `/llamadas/${leadId}`,
                       '/analizador', '/analizador?pestana=rubrica', '/analizador?pestana=playbooks',
                       '/metricas', '/matching', '/matching?por=industria', '/matching?por=fuente',
                       '/casos', '/comisiones', '/leads?sinfecha=1',
@@ -365,6 +365,29 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('matching')
   await p.goto(`${RAIZ}/comisiones`)
   await foto('comisiones')
+})
+
+await paso('el closer entra a la llamada sin abrir la ficha entera', async () => {
+  await p.goto(`${RAIZ}/llamadas`)
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Para cargar")').count() > 0,
+            'Llamadas abre con lo que hay que cargar, no con una lista de consulta')
+
+  await p.goto(`${RAIZ}/llamadas/${leadId}`)
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Antes de la llamada")').count() === 1,
+            'la llamada muestra lo que averiguó el setter')
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Cargar el resultado")').count() === 1,
+            'y el formulario de resultado en el mismo scroll')
+  comprobar(await p.locator('.contenido textarea[name=texto]').count() === 1,
+            'con las notas a mano')
+
+  // Lo que se carga acá escribe sobre el MISMO lead, no sobre una copia.
+  await p.fill('.contenido textarea[name=texto]', `Nota desde la llamada ${marca}`)
+  await p.locator('.contenido form:has(textarea[name=texto]) button[type=submit]').click()
+  await esperar()
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=notas`)
+  comprobar((await p.locator('.contenido').textContent())?.includes(`Nota desde la llamada ${marca}`),
+            'y aparece en la ficha completa: es la misma tarjeta')
+  await foto('llamada-closer')
 })
 
 await paso('un caso de éxito se carga y queda listo para mandar', async () => {

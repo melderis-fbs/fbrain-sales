@@ -2,11 +2,13 @@ import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import { listarAnalisis, distribucion, modeloVigente } from '@/datos/analisis'
+import { listarLlamadas } from '@/datos/llamadas'
 import { todosLosPlaybooks } from '@/datos/playbooks'
 import { catalogos } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, Barra, Vacio, fechaCorta } from '@/componentes/Piezas'
 import { comoSeLee, DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES } from '@/dominio/rubrica'
+import { SinClave } from '@/componentes/SinClave'
 import { guardarPlaybookAccion } from '../llamadas/acciones'
 
 type Busqueda = Promise<Record<string, string | undefined>>
@@ -37,8 +39,10 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
   const cual = PESTANAS.find((p) => p.clave === q.pestana)?.clave ?? 'analizadas'
   const closerId = q.closer ? Number(q.closer) : undefined
 
-  const [analisis, tramos, cats, modelo, playbooks] = await Promise.all([
+  const [analisis, esperando, tramos, cats, modelo, playbooks] = await Promise.all([
     listarAnalisis(alcance, { closerId, desde: r.desde, hasta: r.hasta }, 200),
+    listarLlamadas(alcance, { closerId, desde: r.desde, hasta: r.hasta,
+                              conTranscripcion: true, sinAnalizar: true }, 100),
     distribucion(r.desde, r.hasta, closerId),
     catalogos(),
     modeloVigente(),
@@ -54,8 +58,10 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
     <div className="apilado">
       <Encabezado kicker="Analizador" titulo={`Llamadas analizadas · ${r.etiqueta}`}
                   bajada="La nota no la pone el modelo: la calcula el motor sobre los niveles que el modelo cita.">
-        <Link className="boton secundario" href="/llamadas">Ver todas las llamadas</Link>
+        <Link className="boton secundario" href="/llamadas">Ir a Llamadas</Link>
       </Encabezado>
+
+      <SinClave />
 
       <nav className="pestanas">
         {PESTANAS.map((p) => (
@@ -91,9 +97,36 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
                     contra={promedio === null ? undefined : comoSeLee(promedio)} />
             <Numero etiqueta="Buenas o mejores" valor={conNota.filter((a) => (a.score ?? 0) >= 7).length}
                     contra="de 7 para arriba" />
-            <Numero etiqueta="Modelo de scoring" valor={modelo.version} chico
-                    contra="con el que se calcularon las notas vigentes" />
+            <Numero etiqueta="Esperando análisis" valor={esperando.length}
+                    contra={esperando.length > 0 ? 'tienen transcripción cargada' : 'ninguna pendiente'} />
           </div>
+
+          {esperando.length > 0 ? (
+            <Tarjeta titulo={`Con transcripción, sin analizar (${esperando.length})`}
+                     ayuda="Ya tienen el texto cargado: falta pasarlas por el analizador.">
+              <div className="tabla-scroll">
+                <table>
+                  <thead><tr><th>Fecha</th><th>Lead</th><th>Closer</th><th>#</th><th></th></tr></thead>
+                  <tbody>
+                    {esperando.map((l) => (
+                      <tr key={l.id}>
+                        <td style={{ fontSize: 12.5 }}>{fechaCorta(l.fecha)}</td>
+                        <td><Link href={`/llamadas/${l.leadId}`} style={{ fontWeight: 600 }}>{l.lead}</Link></td>
+                        <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">—</span>}</td>
+                        <td style={{ fontSize: 12.5 }}>{l.numero}</td>
+                        <td className="num">
+                          <Link href={`/analizador/${l.id}`}
+                                style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>
+                            Analizar →
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Tarjeta>
+          ) : null}
 
           {total > 0 ? (
             <Tarjeta titulo="Distribución de las notas"
@@ -141,7 +174,7 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
                               </Pildora>}
                         </td>
                         <td className="num">
-                          <Link href={`/llamadas/${a.llamadaId}`}
+                          <Link href={`/analizador/${a.llamadaId}`}
                                 style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Abrir →</Link>
                         </td>
                       </tr>
