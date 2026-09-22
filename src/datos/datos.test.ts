@@ -595,6 +595,58 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(cuenta?.sinVincular).toBe(false)
   })
 
+  it('dar de baja un lead lo saca de todo, pero no borra nada', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+    const llamadas = await import('./llamadas')
+    await llamadas.crearLlamada(id, { fecha: '2026-09-10' })
+
+    await leads.borrarLead(id, usuarioId, 'Duplicado')
+
+    // Sale de las listas, de las métricas y del pipeline de seguimientos.
+    expect(await leads.listarLeads(TODO)).toEqual([])
+    expect((await metricas.metricas(rango, TODO)).medidas.agendadas).toBe(0)
+    expect((await seguimientos.seguimientoDelLead(id, '2026-09-15'))?.situacion).toBe('fuera')
+
+    // Pero la fila sigue estando, con todo lo que tenía colgado.
+    const cuelga = await leads.loQueCuelgaDelLead(id)
+    expect(cuelga.llamadas).toBe(1)
+
+    const [deBaja] = await leads.listarBorrados(TODO)
+    expect(deBaja?.nombre).toBe('María')
+    expect(deBaja?.motivo).toBe('Duplicado')
+    expect(deBaja?.porQuien).toBe('Test')
+
+    // Y se puede volver a poner en juego.
+    await leads.restaurarLead(id, usuarioId)
+    expect((await leads.listarLeads(TODO)).map((l) => l.nombre)).toEqual(['María'])
+    expect(await leads.listarBorrados(TODO)).toEqual([])
+  })
+
+  it('una baja sin motivo no se guarda', async () => {
+    const id = await alta('María')
+    await expect(leads.borrarLead(id, usuarioId, '   ')).rejects.toThrow(/motivo/i)
+    expect(await leads.listarLeads(TODO)).toHaveLength(1)
+  })
+
+  it('la plata de un lead dado de baja sale de los números', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(5000)
+
+    // Es justamente por esto que un setter no puede dar de baja un lead con
+    // venta: la facturación del mes cambia y él no la ve.
+    const cuelga = await leads.loQueCuelgaDelLead(id)
+    expect(cuelga.tieneVenta).toBe(true)
+    expect(cuelga.importe).toBe(5000)
+
+    await leads.borrarLead(id, usuarioId, 'Se cargó en el lead equivocado')
+    expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(0)
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

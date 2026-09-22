@@ -442,6 +442,46 @@ await paso('desde Mis Llamadas se entra a la ficha del lead', async () => {
   await foto('mis-llamadas')
 })
 
+await paso('dar de baja un lead lo saca de las listas, y se puede volver a poner', async () => {
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Duplicado ${marca}`)
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const duplicado = p.url().match(/leads\/(\d+)/)?.[1]
+
+  await p.goto(`${RAIZ}/leads/${duplicado}?pestana=datos`)
+  await p.locator('.contenido button:has-text("Dar de baja este lead")').click()
+  comprobar(await p.locator('.contenido #motivo-baja').count() === 1,
+            'pide el motivo antes de dar de baja')
+  await p.fill('.contenido #motivo-baja', 'Cargado dos veces')
+  await p.locator('.contenido button:has-text("Sí, dar de baja")').click()
+  await p.waitForURL(/leads\?baja=1/, { timeout: 10000 }).catch(() => {})
+
+  await p.goto(`${RAIZ}/leads`)
+  comprobar(!(await p.locator('.contenido table').textContent())?.includes(`Duplicado ${marca}`),
+            'sale de la lista de activos')
+
+  await p.goto(`${RAIZ}/leads?baja=1`)
+  const enBajas = await p.locator(`.contenido tr:has-text("Duplicado ${marca}")`).textContent()
+  comprobar((enBajas ?? '').includes('Cargado dos veces'),
+            'y queda en «dados de baja» con quién y por qué')
+
+  await p.locator(`.contenido tr:has-text("Duplicado ${marca}") button:has-text("Volver a ponerlo")`).click()
+  await esperar()
+  await p.waitForTimeout(800)
+  await p.goto(`${RAIZ}/leads`)
+  comprobar((await p.locator('.contenido table').textContent())?.includes(`Duplicado ${marca}`),
+            'y dirección lo puede volver a poner en juego')
+  await foto('bajas')
+})
+
+await paso('un lead con una venta no se da de baja a la ligera', async () => {
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=datos`)
+  const aviso = await p.locator('.contenido .tarjeta:has-text("Dar de baja")').textContent()
+  comprobar((aviso ?? '').includes('venta cargada'),
+            'avisa que tiene una venta y que la baja la saca de los números')
+})
+
 await paso('un caso de éxito se carga y queda listo para mandar', async () => {
   await p.goto(`${RAIZ}/casos`)
   await p.fill(enLaPantalla('#titulo'), `De 5k a 30k ${marca}`)

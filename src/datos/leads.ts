@@ -605,13 +605,155 @@ export async function exigirAccesoAlLead(leadId: number, alcance: Alcance): Prom
   if (!(await puedeVerLead(leadId, alcance))) throw new Error('No tenés acceso a ese lead.')
 }
 
-export async function borrarLead(leadId: number, usuarioId: number, motivo: string | null): Promise<void> {
+/**
+ * Qué cuelga de un lead.
+ *
+ * Se consulta antes de dar de baja, para poder decir qué se está llevando
+ * puesto. «¿Seguro?» sin decir qué hay adentro no es una pregunta: es un
+ * trámite que todo el mundo aprueba sin leer.
+ */
+export type LoQueCuelga = {
+  llamadas: number
+  notas: number
+  seguimientos: number
+  /** Si hay plata cargada, la baja deja de ser una corrección y pasa a ser otra cosa. */
+  tieneVenta: boolean
+  tieneSena: boolean
+  importe: number
+  moneda: string
+}
+
+export async function loQueCuelgaDelLead(leadId: number): Promise<LoQueCuelga> {
+  const f = await fila<Record<string, any>>(
+    `select (select count(*) from llamadas where lead_id = $1)                       as llamadas,
+            (select count(*) from notas where lead_id = $1)                          as notas,
+            (select count(*) from seguimiento_interacciones where lead_id = $1)      as seguimientos,
+            (select count(*) from ventas where lead_id = $1 and borrado_en is null)  as ventas,
+            (select count(*) from senias where lead_id = $1 and borrado_en is null)  as senas,
+            coalesce((select sum(importe) from ventas
+                       where lead_id = $1 and borrado_en is null), 0)                as importe,
+            (select moneda from leads where id = $1)                                 as moneda`,
+    [leadId],
+  )
+  return {
+    llamadas: Number(f?.llamadas ?? 0),
+    notas: Number(f?.notas ?? 0),
+    seguimientos: Number(f?.seguimientos ?? 0),
+    tieneVenta: Number(f?.ventas ?? 0) > 0,
+    tieneSena: Number(f?.senas ?? 0) > 0,
+    importe: Number(f?.importe ?? 0),
+    moneda: f?.moneda ?? 'USD',
+  }
+}
+
+/**
+ * Dar de baja un lead.
+ *
+ * NO lo borra: le pone `borrado_en`, y todas las consultas ya filtran por eso.
+ * Un borrado de verdad se llevaría además sus llamadas, sus notas y su
+ * historial, y eso no se puede deshacer cuando alguien se equivoca de fila.
+ *
+ * El motivo es obligatorio. Una baja sin motivo, tres meses después, es un lead
+ * que desapareció y nadie sabe por qué: queda la sospecha de que se perdió
+ * información, que es peor que el lead de menos.
+ */
+export async function borrarLead(leadId: number, usuarioId: number, motivo: string): Promise<void> {
+  const razon = oNulo(motivo)
+  if (razon === null) throw new Error('Poné por qué se da de baja. Sin motivo, dentro de tres meses esto es un lead que desapareció.')
+
   await enTransaccion(async (cx: PoolClient) => {
     await escribir(
       'update leads set borrado_en = now() where id = $1 and borrado_en is null',
       [leadId], { esperadas: 1, cliente: cx },
     )
+    // Si estaba en la cadencia, sale: perseguir a alguien dado de baja es el
+    // tipo de error que hace que el equipo deje de confiar en el pipeline.
+    await escribir(
+      `update seguimiento_estado set situacion = 'fuera', salio_en = current_date, actualizado_en = now()
+        where lead_id = $1 and situacion <> 'fuera'`,
+      [leadId], { esperadas: 'cualquiera', cliente: cx },
+    )
     await anotar([{ entidad: 'lead', entidadId: leadId, campo: 'baja',
-                    anterior: 'activo', nuevo: 'dado de baja', motivo }], usuarioId, cx)
+                    anterior: 'activo', nuevo: 'dado de baja', motivo: razon }], usuarioId, cx)
   })
+}
+
+/** Volver a ponerlo en juego. Lo que estaba cargado sigue estando. */
+export async function restaurarLead(leadId: number, usuarioId: number): Promise<void> {
+  await enTransaccion(async (cx: PoolClient) => {
+    await escribir(
+      'update leads set borrado_en = null, actualizado_en = now() where id = $1 and borrado_en is not null',
+      [leadId], { esperadas: 1, cliente: cx },
+    )
+    await anotar([{ entidad: 'lead', entidadId: leadId, campo: 'baja',
+                    anterior: 'dado de baja', nuevo: 'activo' }], usuarioId, cx)
+  })
+}
+
+export type LeadDeBaja = {
+  id: number
+  nombre: string
+  empresa: string | null
+  closer: string | null
+  setter: string | null
+  resultado: Resultado
+  fechaSesion: string | null
+  borradoEn: string
+  /** Quién lo dio de baja y por qué, del historial. */
+  porQuien: string | null
+  motivo: string | null
+}
+
+/**
+ * Los leads dados de baja.
+ *
+ * Existen en una pantalla porque, si no, «dado de baja» y «se perdió» se ven
+ * igual. Poder mirarlos es lo que hace que dar de baja sea una corrección y no
+ * una apuesta.
+ */
+export async function listarBorrados(alcance: Alcance, limite = 100): Promise<LeadDeBaja[]> {
+  if (sinEquipoAsignado(alcance)) return []
+
+  const valores: unknown[] = []
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
+  if (alc.parametro !== null) valores.push(alc.parametro)
+  valores.push(limite)
+
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, l.empresa, l.resultado, l.fecha_sesion, l.borrado_en,
+            c.nombre as closer, s.nombre as setter,
+            b.usuario as por_quien, b.motivo
+       from leads l
+       left join closers c on c.id = l.closer_id
+       left join setters s on s.id = l.setter_id
+       left join lateral (
+            select u.nombre as usuario, x.motivo
+              from cambios x left join usuarios u on u.id = x.usuario_id
+             where x.entidad = 'lead' and x.entidad_id = l.id
+               and x.campo = 'baja' and x.valor_nuevo = 'dado de baja'
+             order by x.creado_en desc limit 1
+       ) b on true
+      where l.borrado_en is not null and ${alc.condicion}
+      order by l.borrado_en desc
+      limit $${valores.length}`,
+    valores,
+  )
+
+  return f.map((x) => ({
+    id: x.id, nombre: x.nombre, empresa: x.empresa, closer: x.closer, setter: x.setter,
+    resultado: x.resultado, fechaSesion: x.fecha_sesion,
+    borradoEn: x.borrado_en.toISOString(),
+    porQuien: x.por_quien, motivo: x.motivo,
+  }))
+}
+
+/** ¿Este usuario puede tocar este lead, aunque esté dado de baja? */
+export async function puedeVerLeadDeBaja(leadId: number, alcance: Alcance): Promise<boolean> {
+  if (alcance.todo) {
+    return (await fila('select 1 from leads where id = $1', [leadId])) !== null
+  }
+  if ('nada' in alcance) return false
+  const columna = 'setterId' in alcance ? 'setter_id' : 'closer_id'
+  const valor = 'setterId' in alcance ? alcance.setterId : alcance.closerId
+  return (await fila(`select 1 from leads where id = $1 and ${columna} = $2`, [leadId, valor])) !== null
 }

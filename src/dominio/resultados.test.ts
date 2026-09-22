@@ -58,4 +58,27 @@ describe('permisos', () => {
   it('un setter no carga resultados de venta', () => {
     expect(PUEDE.setter.cargarResultado).toBe(false)
   })
+
+  it('el setter y el closer dan de baja lo suyo, pero no lo restauran', () => {
+    // Si el que se equivocó pudiera deshacerlo solo, el error no dejaría
+    // rastro. El punto de que la baja sea reversible es que el error se vea.
+    for (const rol of ['setter', 'closer'] as const) {
+      expect(PUEDE[rol].borrarLead).toBe(true)
+      expect(PUEDE[rol].restaurarLead).toBe(false)
+    }
+    expect(PUEDE.direccion.restaurarLead).toBe(true)
+  })
+
+  it('dar de baja un lead con plata necesita permiso sobre la plata', () => {
+    // La regla vive en la acción, pero se apoya en esto: quien no puede tocar
+    // importes tampoco puede hacerlos desaparecer dando de baja el lead.
+    expect(PUEDE.setter.editarDinero).toBe(false)
+    expect(PUEDE.closer.editarDinero).toBe(false)
+    expect(PUEDE.head.editarDinero).toBe(true)
+  })
+
+  it('el coach no borra nada', () => {
+    expect(PUEDE.coach.borrarLead).toBe(false)
+    expect(PUEDE.coach.restaurarLead).toBe(false)
+  })
 })

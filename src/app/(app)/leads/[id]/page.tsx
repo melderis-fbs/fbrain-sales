@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { verLead, puedeVerLead } from '@/datos/leads'
+import { verLead, puedeVerLead, loQueCuelgaDelLead } from '@/datos/leads'
 import { calificacionDelLead, recalcularCalidad } from '@/datos/calificacion'
 import { notasDelLead } from '@/datos/notas'
 import { llamadasDelLead } from '@/datos/llamadas'
@@ -125,7 +125,11 @@ export default async function FichaDeLead({
         <Resultado lead={lead} closers={(await catalogos()).closers} hoy={hoy} verPlata={verPlata}
                    puedeReasignar={puede(usuario, 'reasignarCloser')} />
       ) : null}
-      {cual === 'datos' ? <Datos lead={lead} catalogos={await catalogos()} /> : null}
+      {cual === 'datos' ? (
+        <Datos lead={lead} catalogos={await catalogos()} cuelga={await loQueCuelgaDelLead(leadId)}
+               puedeBorrar={puede(usuario, 'borrarLead')}
+               puedeConPlata={puede(usuario, 'editarDinero')} />
+      ) : null}
       {cual === 'historial' ? <Historial lineas={await historialDelLead(leadId)} /> : null}
     </div>
   )

@@ -1,6 +1,7 @@
-import type { Lead } from '@/datos/leads'
+import type { Lead, LoQueCuelga } from '@/datos/leads'
 import type { Opcion } from '@/datos/catalogos'
 import { Tarjeta } from '../Piezas'
+import { DarDeBaja } from '../DarDeBaja'
 import { editarLeadAccion } from '@/app/(app)/leads/acciones'
 import { TIPOS_SESION, NOMBRE_DE_TIPO } from '@/dominio/resultados'
 
@@ -12,9 +13,12 @@ import { TIPOS_SESION, NOMBRE_DE_TIPO } from '@/dominio/resultados'
  * que tiene un lead son la misma lista. Nada se borra y se vuelve a crear:
  * cambia el campo y queda el histórico.
  */
-export function Datos({ lead, catalogos }: {
+export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
   lead: Lead
   catalogos: { fuentes: Opcion[]; funnels: Opcion[]; setters: Opcion[] }
+  cuelga: LoQueCuelga
+  puedeBorrar: boolean
+  puedeConPlata: boolean
 }) {
   return (
     <div style={{ maxWidth: 820 }}>
@@ -92,6 +96,17 @@ export function Datos({ lead, catalogos }: {
           <button type="submit">Guardar los cambios</button>
         </Tarjeta>
       </form>
+
+      {puedeBorrar ? (
+        <>
+          <div style={{ height: 10 }} />
+          <Tarjeta titulo="Dar de baja"
+                   ayuda="Para un duplicado, una prueba o algo cargado por error. Nada se borra: se puede volver a poner en juego.">
+            <DarDeBaja leadId={lead.id} nombre={lead.nombre} cuelga={cuelga}
+                       puedeConPlata={puedeConPlata} />
+          </Tarjeta>
+        </>
+      ) : null}
     </div>
   )
 }

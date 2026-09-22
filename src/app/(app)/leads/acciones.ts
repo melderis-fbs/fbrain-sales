@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, exigir } from '@/lib/permisos'
+import { alcanceDe, exigir, puede } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
-  exigirAccesoAlLead, type DatosDeLead, type ClaveEditable,
+  exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
+  type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
 import { cargarResultado, registrarPago } from '@/datos/resultado'
 import { guardarCalificacion, congelarQuality } from '@/datos/calificacion'
@@ -362,5 +363,65 @@ export async function seguimientoLargoAccion(datos: FormData): Promise<void> {
   if (fecha === null) throw new Error('Un seguimiento largo necesita la fecha en la que hay que volver.')
 
   await marcarSeguimientoLargo(leadId, fecha, usuario.id, texto(datos, 'nota'))
+  refrescar(leadId)
+}
+
+// ── Dar de baja ─────────────────────────────────────────────────────────────
+
+/**
+ * Dar de baja un lead.
+ *
+ * No borra nada: le pone fecha de baja y desaparece de las listas y de las
+ * métricas. Sus llamadas, sus notas y su historial quedan, y se puede volver a
+ * poner en juego.
+ *
+ * El freno que importa: si tiene una VENTA o una SEÑA cargada, sólo lo da de
+ * baja quien puede tocar la plata. Un lead vendido que desaparece se lleva esa
+ * venta de la facturación del mes, y el que lo dio de baja se entera cuando
+ * alguien pregunta por qué no cierran los números.
+ */
+export async function borrarLeadAccion(_previo: string | null, datos: FormData): Promise<string | null> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'borrarLead')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  const motivo = texto(datos, 'motivo')
+  if (motivo === null) {
+    return 'Poné por qué se da de baja. Sin motivo, dentro de tres meses esto es un lead que desapareció y nadie sabe qué pasó.'
+  }
+
+  const cuelga = await loQueCuelgaDelLead(leadId)
+  if ((cuelga.tieneVenta || cuelga.tieneSena) && !puede(usuario, 'editarDinero')) {
+    return cuelga.tieneVenta
+      ? `Este lead tiene una venta cargada, así que darlo de baja la saca de la facturación. ` +
+        `Eso lo hace dirección. Si el resultado está mal, corregilo desde la ficha.`
+      : `Este lead tiene una seña cargada. Darlo de baja la saca de los números, y eso lo hace ` +
+        `dirección. Si el resultado está mal, corregilo desde la ficha.`
+  }
+
+  await borrarLead(leadId, usuario.id, motivo)
+  refrescar(leadId)
+  redirect('/leads?baja=1')
+}
+
+/**
+ * Volver a poner en juego un lead dado de baja.
+ *
+ * Sólo lo hace quien ve la operación entera. Si el que se equivocó pudiera
+ * deshacerlo solo, un error no dejaría rastro — y el punto de que esto sea
+ * reversible es que el error se vea, no que se tape.
+ */
+export async function restaurarLeadAccion(datos: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'restaurarLead')
+
+  const leadId = Number(datos.get('leadId'))
+  if (!(await puedeVerLeadDeBaja(leadId, alcanceDe(usuario)))) {
+    throw new Error('No tenés acceso a ese lead.')
+  }
+
+  await restaurarLead(leadId, usuario.id)
   refrescar(leadId)
 }

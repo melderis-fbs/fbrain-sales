@@ -133,6 +133,20 @@ cada cambio deja quién, cuándo, de qué a qué y por qué en la tabla `cambios
 reasignar, el **closer inicial no se pisa nunca**: sin él no se puede atribuir el
 cierre más adelante.
 
+**Dar de baja tampoco borra.** Un duplicado, una prueba o algo cargado por error
+sale de las listas y de las métricas, pero la fila queda con sus llamadas, sus
+notas y su historial, y se puede volver a poner en juego. Tres reglas alrededor:
+
+- **El motivo es obligatorio.** Una baja sin motivo, tres meses después, es un
+  lead que desapareció y nadie sabe por qué — y eso deja la sospecha de que se
+  perdió información, que es peor que el lead de menos.
+- **Un lead con venta o seña sólo lo da de baja quien puede tocar la plata.**
+  Darlo de baja saca esa venta de la facturación del mes; el que lo hizo se
+  enteraría cuando alguien pregunte por qué no cierran los números.
+- **Quien da de baja no restaura.** Lo vuelve a poner en juego dirección. Si el
+  que se equivocó pudiera deshacerlo solo, el error no dejaría rastro, y el
+  punto de que esto sea reversible es que el error se vea.
+
 ### 7 · Un número nunca va solo
 
 Cero y «sin datos» son cosas distintas. `tasa()` devuelve `null` cuando el

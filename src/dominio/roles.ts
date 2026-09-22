@@ -21,6 +21,8 @@ export const NOMBRE_DE_ROL: Record<Rol, string> = {
 export type Permiso =
   | 'verTodo'          // la operación entera, no sólo lo propio
   | 'editarLead'
+  | 'borrarLead'       // dar de baja. Nada se borra de verdad: se puede restaurar
+  | 'restaurarLead'
   | 'reasignarCloser'
   | 'cargarResultado'
   | 'editarDinero'
@@ -28,13 +30,16 @@ export type Permiso =
   | 'configurar'
 
 export const PUEDE: Record<Rol, Record<Permiso, boolean>> = {
-  admin:     { verTodo: true,  editarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
-  direccion: { verTodo: true,  editarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
-  head:      { verTodo: true,  editarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
-  closer:    { verTodo: false, editarLead: true,  reasignarCloser: false, cargarResultado: true,  editarDinero: false, verDinero: true,  configurar: false },
-  setter:    { verTodo: false, editarLead: true,  reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
+  admin:     { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
+  direccion: { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
+  head:      { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
+  // El closer y el setter dan de baja lo suyo: un duplicado, una prueba, un
+  // lead cargado mal. No restauran: si se dieron de baja algo por error, lo
+  // vuelve a poner quien tiene la vista completa —si no, un error se tapa solo.
+  closer:    { verTodo: false, editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: true,  editarDinero: false, verDinero: true,  configurar: false },
+  setter:    { verTodo: false, editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
   // El coach mira llamadas y da feedback. No toca la operación ni la plata.
-  coach:     { verTodo: true,  editarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
+  coach:     { verTodo: true,  editarLead: false, borrarLead: false, restaurarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
 }
 
 /** A dónde manda el home de cada rol. Cada uno abre en la pregunta que le toca. */
