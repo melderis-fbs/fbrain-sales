@@ -21,7 +21,17 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
  * reponerlos a mano, y por eso esto devuelve un `form` para colgar del
  * formulario.
  */
-export function useCampos<T extends Record<string, string>>(iniciales: T, reintento?: unknown) {
+export function useCampos<T extends Record<string, string>>(
+  iniciales: T,
+  reintento?: unknown,
+  /**
+   * Prefijo para los `id`. Hace falta cuando hay dos formularios en la misma
+   * pantalla con campos que se llaman igual: dos `id="email"` es HTML inválido
+   * y, peor, la etiqueta de uno termina apuntando al campo del otro — así que
+   * tocar «Email» pone el foco en el formulario equivocado.
+   */
+  prefijo?: string,
+) {
   const [valores, setValores] = useState<T>(iniciales)
   const form = useRef<HTMLFormElement>(null)
 
@@ -48,7 +58,7 @@ export function useCampos<T extends Record<string, string>>(iniciales: T, reinte
 
   const campo = (nombre: keyof T & string) => ({
     name: nombre,
-    id: nombre,
+    id: prefijo ? `${prefijo}-${nombre}` : nombre,
     value: valores[nombre] ?? '',
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setValores((v) => ({ ...v, [nombre]: e.target.value })),

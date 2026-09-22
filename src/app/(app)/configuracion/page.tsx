@@ -39,7 +39,7 @@ export default async function Configuracion() {
       <Encabezado kicker="Configuración" titulo="Las variables del negocio"
                   bajada="Todo lo que está acá se cambia sin tocar código ni esperar un deploy." />
 
-      <Equipo personas={personas} yo={usuario.id} />
+      <Equipo personas={personas.personas} figuras={personas.figuras} yo={usuario.id} />
 
       <div className="rejilla g2">
         <Tarjeta titulo="Fuentes">

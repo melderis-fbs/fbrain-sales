@@ -550,6 +550,51 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await leads.listarLeads(TODO, { sinFecha: true })).map((l) => l.nombre)).toEqual(['Suelto'])
   })
 
+  it('una figura comercial se puede pasar de una cuenta a otra', async () => {
+    const personas = await import('./personas')
+
+    // El caso real: Kevin cambia de email. Se le crea la cuenta nueva y la
+    // figura sigue atada a la vieja, así que entra y no ve ningún lead.
+    const vieja = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email, nombre, rol, clave_hash)
+       values ('kevinpavon@x.com','Kevin','closer','x') returning id`)
+    const nueva = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email, nombre, rol, clave_hash)
+       values ('admisiones@x.com','Kevin','closer','x') returning id`)
+    await db.escribir('update closers set usuario_id = $1 where id = $2', [vieja.id, closerKevin])
+
+    const antes = await personas.equipo()
+    const cuentaNueva = antes.personas.find((p) => p.email === 'admisiones@x.com')
+    expect(cuentaNueva?.sinVincular).toBe(true)
+    expect(cuentaNueva?.figuraId).toBeNull()
+
+    // Atarle la figura a la cuenta nueva la suelta de la vieja: es la misma
+    // persona con otro email, no dos closers.
+    await db.escribir('update closers set usuario_id = null where usuario_id = $1', [nueva.id],
+      { esperadas: 'cualquiera' })
+    await db.escribir('update closers set usuario_id = $1, activo = true where id = $2',
+      [nueva.id, closerKevin])
+
+    const despues = await personas.equipo()
+    expect(despues.personas.find((p) => p.email === 'admisiones@x.com')?.figuraId).toBe(closerKevin)
+    expect(despues.personas.find((p) => p.email === 'kevinpavon@x.com')?.figuraId).toBeNull()
+    // La figura sigue siendo UNA: no se duplicó el closer.
+    expect(despues.figuras.filter((f) => f.tipo === 'closer' && f.nombre === 'Kevin')).toHaveLength(1)
+  })
+
+  it('una cuenta desactivada no reclama figura comercial', async () => {
+    const personas = await import('./personas')
+    const u = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email, nombre, rol, clave_hash, activo)
+       values ('afuera@x.com','Se Fue','closer','x', false) returning id`)
+
+    const equipo = await personas.equipo()
+    const cuenta = equipo.personas.find((p) => p.usuarioId === u.id)
+    // No ve leads, pero tampoco entra: avisar de eso es ruido que tapa el
+    // aviso que sí importa.
+    expect(cuenta?.sinVincular).toBe(false)
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)
