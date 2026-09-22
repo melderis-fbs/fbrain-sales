@@ -81,6 +81,24 @@ export type Medidas = {
   cierreSobreValidaPct: number | null
 
   // La plata, por su propia fecha.
+  /**
+   * Ventas CERRADAS en el período, por fecha de venta.
+   *
+   * No es lo mismo que `ventas`, y confundirlas es lo que hace que la pantalla
+   * diga «0 cierres» al lado de «USD 4.000 facturados»:
+   *
+   *   ventas          de las reuniones DE ESTE PERÍODO, cuántas terminaron en
+   *                   venta. Es el numerador del % de cierre, y por eso no
+   *                   puede pasar de 100%.
+   *   ventasCerradas  cuántas ventas se firmaron en este período, venga la
+   *                   reunión del mes que venga. Es lo que un closer quiere
+   *                   decir con «este mes vendí dos».
+   *
+   * Una reunión de agosto que se cierra en septiembre es asistencia de agosto
+   * y venta cerrada de septiembre. Las dos cosas son ciertas y se muestran por
+   * separado, con el nombre puesto.
+   */
+  ventasCerradas: number
   facturacion: number
   cashCollected: number
   senasImporte: number
@@ -130,6 +148,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   cierreSobreOfertaPct: { nombre: '% Cierre / oferta', formula: 'Ventas ÷ ofertas hechas.', universo: 'reunión' },
   cashPorAgenda:{ nombre: 'Cash por agenda', formula: 'Cash collected del período ÷ agendadas del período. No es un porcentaje: es plata por reunión, y los dos números salen de universos distintos.', universo: 'mezcla' },
   cashPorAsistencia: { nombre: 'Cash por asistencia', formula: 'Cash collected del período ÷ asistencias del período. Tampoco es un porcentaje.', universo: 'mezcla' },
+  ventasCerradas: { nombre: 'Ventas cerradas', formula: 'Ventas con fecha de venta en el período, venga la reunión del mes que venga. No es el numerador del cierre.', universo: 'venta' },
   facturacion:  { nombre: 'Facturación', formula: 'Suma de las ventas con fecha de venta en el período.', universo: 'venta' },
   cashCollected:{ nombre: 'Cash collected', formula: 'Suma de los pagos cobrados con fecha en el período. La seña convertida entra acá, una sola vez.', universo: 'cobro' },
   senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas del período. No es facturación ni cash.', universo: 'reunión' },
@@ -261,6 +280,7 @@ export async function metricas(
       segundaAsistenciaPct: tasa(n('segundas_asistidas'), n('segundas')),
       cierreSobreValidaPct: tasa(conteo.ventas, n('asistencias_validas')),
 
+      ventasCerradas: factura.cantidad,
       facturacion: factura.total,
       cashCollected: cash.total,
       senasImporte: Number(sena?.importe ?? 0),
@@ -344,6 +364,7 @@ function vacio(moneda: string): Medidas {
     senaPct: null, cierrePct: null, cierreSobreOfertaPct: null,
     asistenciaValidaPct: null, noCalificadasPct: null, segundaAsistenciaPct: null,
     cierreSobreValidaPct: null,
+    ventasCerradas: 0,
     facturacion: 0, cashCollected: 0, senasImporte: 0, ticketPromedio: null, valorEnJuego: 0,
     cashPorAgenda: null, cashPorAsistencia: null,
     moneda, otrasMonedas: [],
@@ -627,6 +648,123 @@ export async function plataFantasma(alcance: Alcance, limite = 20): Promise<Plat
     leadId: x.id, lead: x.nombre, closer: x.closer, resultado: x.resultado as Resultado,
     que: x.que as 'venta' | 'sena', importe: Number(x.importe), moneda: x.moneda, fecha: x.fecha,
   }))
+}
+
+/**
+ * El recorrido del mes de cada closer.
+ *
+ * La pregunta que el equipo hace todos los días —«¿cómo viene cada uno?»— y
+ * que hasta ahora había que armar mirando cuatro pantallas.
+ *
+ * Trae las dos mitades y las nombra, porque son universos distintos y
+ * mezclarlas es lo que hacía que la pantalla dijera «0 cierres · USD 4.000»:
+ *
+ *   lo que AGENDÓ y ATENDIÓ   sobre las reuniones que le cayeron en el período
+ *   lo que CERRÓ              sobre las ventas que firmó en el período
+ *
+ * El % de cierre sale de la primera mitad, contra las asistencias de esas
+ * mismas reuniones: así no puede pasar de 100%.
+ */
+export type RecorridoDeCloser = {
+  id: number | null
+  nombre: string
+  // Las reuniones del período.
+  agendadas: number
+  asistencias: number
+  ofertas: number
+  /** De esas reuniones, cuántas terminaron en venta. Numerador del cierre. */
+  cerradas: number
+  asistenciaPct: number | null
+  cierrePct: number | null
+  // La plata, por su propia fecha.
+  /** Ventas firmadas en el período, venga la reunión de donde venga. */
+  ventasDelMes: number
+  facturacion: number
+  cash: number
+  /** Reuniones que ya pasaron y no tienen resultado: su número está incompleto. */
+  sinCargar: number
+}
+
+export async function recorridoPorCloser(
+  rango: Rango,
+  alcance: Alcance,
+  hoy: string,
+  monedaBase = 'USD',
+): Promise<RecorridoDeCloser[]> {
+  if (sinEquipoAsignado(alcance)) return []
+
+  const d = donde(rango, alcance, {})
+  const reuniones = await filas<Record<string, any>>(
+    `select c.id, c.nombre,
+            count(*)                                          as agendadas,
+            count(*) filter (where l.estado = 'asistio')      as asistencias,
+            count(*) filter (where l.hubo_oferta)             as ofertas,
+            count(*) filter (where l.resultado = 'venta')     as cerradas,
+            count(*) filter (where l.estado = 'agendado' and l.resultado = 'pendiente'
+                               and l.fecha_sesion <= $${d.valores.length + 1}) as sin_cargar
+       from leads l left join closers c on c.id = l.closer_id
+      where ${d.sql}
+      group by 1, 2`,
+    [...d.valores, hoy],
+  )
+
+  // La plata va por su propia fecha, así que es otra consulta: la reunión pudo
+  // ser en agosto y la venta en septiembre.
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 4)
+  const valoresPlata: unknown[] = [rango.desde, rango.hasta, monedaBase]
+  if (alc.parametro !== null) valoresPlata.push(alc.parametro)
+
+  const [ventas, cobros] = await Promise.all([
+    filas<Record<string, any>>(
+      `select c.id, count(*) as cantidad, coalesce(sum(v.importe), 0) as importe
+         from ventas v
+         join leads l on l.id = v.lead_id and l.borrado_en is null
+         left join closers c on c.id = l.closer_id
+        where v.borrado_en is null and v.fecha between $1 and $2 and v.moneda = $3 and ${alc.condicion}
+        group by 1`, valoresPlata),
+    filas<Record<string, any>>(
+      `select c.id, coalesce(sum(p.importe), 0) as importe
+         from pagos p
+         join ventas v on v.id = p.venta_id and v.borrado_en is null
+         join leads l on l.id = v.lead_id and l.borrado_en is null
+         left join closers c on c.id = l.closer_id
+        where p.borrado_en is null and p.estado = 'cobrado'
+          and p.fecha between $1 and $2 and p.moneda = $3 and ${alc.condicion}
+        group by 1`, valoresPlata),
+  ])
+
+  const clave = (id: unknown) => (id === null ? 'sin' : String(id))
+  const porVenta = new Map(ventas.map((x) => [clave(x.id), x]))
+  const porCobro = new Map(cobros.map((x) => [clave(x.id), x]))
+
+  // Un closer que este mes no tuvo reuniones pero cobró una venta vieja tiene
+  // que aparecer igual: si no, su cash no está en ningún lado.
+  const todos = new Map<string, { id: number | null; nombre: string }>()
+  for (const r of reuniones) todos.set(clave(r.id), { id: r.id === null ? null : Number(r.id), nombre: r.nombre ?? 'Sin closer' })
+  for (const v of [...ventas, ...cobros]) {
+    if (!todos.has(clave(v.id))) todos.set(clave(v.id), { id: v.id === null ? null : Number(v.id), nombre: 'Sin closer' })
+  }
+
+  const porReunion = new Map(reuniones.map((x) => [clave(x.id), x]))
+
+  return [...todos.entries()].map(([k, quien]) => {
+    const r = porReunion.get(k)
+    const agendadas = Number(r?.agendadas ?? 0)
+    const asistencias = Number(r?.asistencias ?? 0)
+    const cerradas = Number(r?.cerradas ?? 0)
+    return {
+      id: quien.id,
+      nombre: r?.nombre ?? quien.nombre,
+      agendadas, asistencias, cerradas,
+      ofertas: Number(r?.ofertas ?? 0),
+      asistenciaPct: tasa(asistencias, agendadas),
+      cierrePct: tasa(cerradas, asistencias),
+      ventasDelMes: Number(porVenta.get(k)?.cantidad ?? 0),
+      facturacion: Number(porVenta.get(k)?.importe ?? 0),
+      cash: Number(porCobro.get(k)?.importe ?? 0),
+      sinCargar: Number(r?.sin_cargar ?? 0),
+    }
+  }).sort((a, b) => b.facturacion - a.facturacion || b.agendadas - a.agendadas)
 }
 
 export { redondear }

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion } from '@/datos/metricas'
+import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
@@ -9,6 +9,8 @@ import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
 import { CargaRapida } from '@/componentes/CargaRapida'
 import { Tablero } from '@/componentes/Tablero'
+import { LoDeHoy } from '@/componentes/LoDeHoy'
+import { RecorridoDelMes } from '@/componentes/RecorridoDelMes'
 import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
@@ -35,7 +37,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
   const alcance = alcanceDe(usuario)
 
   const hoy = hoyEn()
-  const periodo = (q.periodo ?? 'hoy') as NombreDePeriodo
+  const periodo = (q.periodo ?? 'mes') as NombreDePeriodo
   // Un rango a mano gana sobre el período. Hace falta para cargar un histórico
   // —«todas las llamadas del mes pasado»— y para que «Verlas →» pueda mostrar
   // reuniones atrasadas de cualquier fecha, que es lo que el aviso promete.
@@ -49,7 +51,12 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
   const filtros = { closerId: q.closer ? Number(q.closer) : undefined }
 
-  const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats] = await Promise.all([
+  // «Hoy» es un bloque fijo: lo que está pasando en comercial ahora no depende
+  // del período que se esté mirando abajo.
+  const deHoy = { desde: hoy, hasta: hoy, etiqueta: 'hoy' }
+
+  const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats,
+         agendaDeHoy, hoyMetricas, recorrido] = await Promise.all([
     metricas(r, alcance, filtros, monedaBase),
     listarLeads(alcance, {
       desde: r.desde, hasta: r.hasta,
@@ -63,10 +70,16 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     listarLeads(alcance, { sinFecha: true }, 50),
     toquesDeHoy(alcance, hoy),
     catalogos(),
+    listarLeads(alcance, { desde: hoy, hasta: hoy, closerId: filtros.closerId }, 60),
+    metricas(deHoy, alcance, filtros, monedaBase),
+    recorridoPorCloser(r, alcance, hoy, monedaBase),
   ])
 
   const m = datos.medidas
   const verPlata = puede(usuario, 'verDinero')
+  // La hora local, para saber qué reunión de hoy ya pasó.
+  const ahora = new Date().toLocaleTimeString('es-AR', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })
 
   const con = (cambio: Record<string, string | undefined>) => {
     const u = new URLSearchParams()
@@ -89,6 +102,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
   // Agrupadas por día: un período de dos semanas en una sola tabla se vuelve
   // ilegible, y el corte por día es cómo se trabaja de verdad.
+  const atrasadas = pendientes.length - porCargar.length
   const porFecha = new Map<string, typeof leads>()
   for (const l of leads) {
     const clave = l.fechaSesion ?? 'sin fecha'
@@ -101,6 +115,13 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                   bajada="La planilla del equipo: lo que hay agendado, qué pasó y qué falta cargar.">
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
       </Encabezado>
+
+      <Tarjeta titulo="Ahora" ayuda="La agenda de hoy, en orden. Lo que ya pasó y nadie cargó está primero y se carga desde acá.">
+        <LoDeHoy leads={agendaDeHoy} hoy={hoy} ahora={ahora}
+                 cerradoHoy={hoyMetricas.medidas.facturacion} moneda={monedaBase} verPlata={verPlata} />
+      </Tarjeta>
+
+      <div className="titulo-seccion">El mes</div>
 
       <div className="entre">
         <div className="chips">
@@ -136,25 +157,23 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         <button type="submit" className="secundario">Filtrar</button>
       </form>
 
-      {pendientes.length > porCargar.length ? (
-        <div className="aviso atencion">
-          Fuera de este período hay <strong>{pendientes.length - porCargar.length}</strong>{' '}
-          {pendientes.length - porCargar.length === 1
-            ? 'reunión más que ya pasó sin resultado cargado'
-            : 'reuniones más que ya pasaron sin resultado cargado'}.{' '}
-          <Link href={con({ pendientes: '1', dia: undefined, periodo: undefined,
-                            desde: masVieja ?? undefined, hasta: hoy })}
-                style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>Verlas →</Link>
-        </div>
-      ) : null}
-
-      {sueltos > sinAgendar.length ? (
-        <div className="aviso atencion">
-          Hay <strong>{sueltos}</strong> leads sin fecha de reunión. No entran a ninguna métrica
-          hasta que la tengan.{' '}
-          <Link href="/leads?sinfecha=1" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
-            Verlos →
-          </Link>
+      {/* Un solo renglón de pendientes. Antes eran dos avisos apilados arriba de
+          todo; un tablero que saluda con dos alertas amarillas todos los días
+          enseña a saltearlas, y entonces la que importa tampoco se lee. */}
+      {atrasadas > 0 || sueltos > 0 ? (
+        <div className="pendiente">
+          <span className="pendiente-que">Pendiente</span>
+          {atrasadas > 0 ? (
+            <Link href={con({ pendientes: '1', dia: undefined, periodo: undefined,
+                              desde: masVieja ?? undefined, hasta: hoy })}>
+              {atrasadas} {atrasadas === 1 ? 'reunión sin cargar' : 'reuniones sin cargar'} →
+            </Link>
+          ) : null}
+          {sueltos > 0 ? (
+            <Link href="/leads?sinfecha=1">
+              {sueltos} {sueltos === 1 ? 'lead sin fecha' : 'leads sin fecha'} →
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
@@ -223,11 +242,19 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         </Tarjeta>
       ) : null}
 
-      <Tarjeta titulo={`El tablero · ${r.etiqueta}`}
-               ayuda="Sale del mismo módulo de métricas que el Dashboard: no hay dos cuentas, hay una. Pasá el mouse por cada número para ver de dónde sale."
+      <Tarjeta titulo={`El recorrido de cada closer · ${r.etiqueta}`}
                accion={<Link href="/dashboard" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Ver el Dashboard →</Link>}>
-        <Tablero m={m} verPlata={verPlata} />
+        <RecorridoDelMes filas={recorrido} etiqueta={r.etiqueta} verPlata={verPlata}
+                         soloUno={!alcance.todo} />
       </Tarjeta>
+
+      {/* Las 24 medidas siguen estando, pero no adelante: son para analizar, no
+          para trabajar, y adelante tapaban lo que sí hay que mirar todos los
+          días. */}
+      <details className="tarjeta desplegable">
+        <summary>Todas las métricas de {r.etiqueta}</summary>
+        <div style={{ marginTop: 12 }}><Tablero m={m} verPlata={verPlata} /></div>
+      </details>
 
       {toques.length > 0 ? (
         <Tarjeta titulo={`Seguimientos que tocan hoy (${toques.length})`}
