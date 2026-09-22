@@ -64,6 +64,13 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
       </Encabezado>
 
+      {q.ajeno ? (
+        <div className="aviso dato">
+          <strong>Se creó «{q.ajeno}»</strong>, pero quedó asignado a otra persona, así que no
+          aparece en tu lista. No se perdió: lo ve quien lo tenga asignado y dirección.
+        </div>
+      ) : null}
+
       {q.sinfecha === '1' ? (
         <div className="aviso atencion">
           Estos leads <strong>no tienen fecha de reunión</strong>, así que no entran a ninguna

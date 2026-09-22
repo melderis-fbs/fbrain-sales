@@ -57,3 +57,17 @@ describe('el alcance de una cuenta', () => {
     expect(sinEquipoAsignado(alcanceDe(cuenta({ rol: 'direccion' })))).toBe(false)
   })
 })
+
+describe('una cuenta cuya figura comercial está desactivada', () => {
+  it('queda sin alcance, igual que una sin vincular', () => {
+    // Es el caso que tuvo bloqueado a un closer días enteros: la sesión sólo
+    // toma la figura si está ACTIVA, así que desactivarla lo deja sin ver nada
+    // —y hasta ahora el alta le creaba leads que no iba a ver nunca—.
+    const sinFigura = alcanceDe({
+      id: 1, email: 'b@b.com', nombre: 'Braian', rol: 'closer', closerId: null, setterId: null,
+    })
+    expect(sinEquipoAsignado(sinFigura)).toBe(true)
+    // Y sin alcance no hay a quién asignarle el lead: no se inventa un dueño.
+    expect(asignarAQuienCarga(sinFigura, { closerId: null, setterId: null }).closerId).toBe(null)
+  })
+})

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, asignarAQuienCarga, exigir, puede } from '@/lib/permisos'
+import { alcanceDe, asignarAQuienCarga, exigir, puede, sinEquipoAsignado } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
@@ -93,9 +93,27 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   }
   if (lead.nombre === '') return { tipo: 'error', mensaje: 'El lead necesita un nombre.' }
 
+  const alcance = alcanceDe(usuario)
+
+  // Una cuenta sin figura comercial vinculada no tiene dónde poner el lead.
+  //
+  // Antes lo creaba igual: quedaba sin dueño, la persona rebotaba a una lista
+  // vacía sin un solo mensaje, y volvía a intentar. Así se acumulaban
+  // duplicados que nadie veía. Crear algo que quien lo crea no va a poder ver
+  // nunca es peor que no crearlo: mejor decirlo, y decir cómo se arregla.
+  if (sinEquipoAsignado(alcance)) {
+    return {
+      tipo: 'error',
+      mensaje:
+        `Tu cuenta no está vinculada a ninguna figura de ${usuario.rol === 'setter' ? 'setter' : 'closer'}, ` +
+        `así que el lead quedaría sin dueño y no lo verías nunca más. No se creó nada. ` +
+        `Dirección lo resuelve en Configuración → El equipo: vinculá la cuenta y, si la figura ` +
+        `está desactivada, volvé a activarla.`,
+    }
+  }
+
   // El lead que carga un closer es suyo; el que carga un setter, suyo. Sin
   // esto quedaba sin dueño y desaparecía de su pantalla — ver `asignarAQuienCarga`.
-  const alcance = alcanceDe(usuario)
   const suyo = asignarAQuienCarga(alcance, lead)
 
   if (datos.get('confirmado') !== '1') {
@@ -129,9 +147,10 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   revalidatePath('/leads')
   revalidatePath('/tracker')
 
-  // Si aun así quedó fuera de su alcance —dirección puede asignárselo a
-  // cualquiera— no lo mandamos a una ficha que le va a dar «no encontrado».
-  if (!(await puedeVerLead(id, alcance))) redirect('/leads')
+  // Si quedó fuera de su alcance —dirección puede asignárselo a cualquiera— no
+  // lo mandamos a una ficha que le va a dar «no encontrado»; pero tampoco lo
+  // dejamos en una lista donde no está, sin explicación.
+  if (!(await puedeVerLead(id, alcance))) redirect(`/leads?ajeno=${encodeURIComponent(lead.nombre)}`)
   redirect(`/leads/${id}`)
 }
 
