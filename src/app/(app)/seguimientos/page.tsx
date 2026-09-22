@@ -188,7 +188,7 @@ function FichaDeLead({ t, cadencia }: { t: Ficha; cadencia: Toque[] }) {
     <div className={clase}>
       <div className="entre" style={{ alignItems: 'flex-start', gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <Link href={`/leads/${t.leadId}?pestana=seguimiento`} className="nombre">{t.nombre}</Link>
+          <Link href={`/leads/${t.leadId}?pestana=seguimiento&volver=seguimientos`} className="nombre">{t.nombre}</Link>
           <div className="meta">
             {[t.empresa, t.closer ?? 'sin closer'].filter(Boolean).join(' · ')}
           </div>

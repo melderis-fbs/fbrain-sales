@@ -160,6 +160,7 @@ h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; color: var(--negro); }
 .rejilla.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 .rejilla.g3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .rejilla.g4 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.rejilla.g6 { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
 
 /* Los números grandes son negros. Siempre. */
 .numero {
@@ -407,3 +408,84 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
+
+/* ── La acción del closer ───────────────────────────────────────────────── */
+
+.acciones-closer {
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  border-radius: var(--radio); padding: 14px;
+}
+.botonera { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; }
+.botonera .accion {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 16px 10px; border-radius: var(--radio-chico);
+  background: var(--blanco); border: 1.5px solid var(--borde);
+  font-size: 13.5px; font-weight: 650; color: var(--gris); cursor: pointer;
+}
+.botonera .accion svg { width: 22px; height: 22px; }
+.botonera .accion:hover { background: var(--blanco); border-color: var(--gris-claro); color: var(--negro); }
+.botonera .accion.verde  { color: var(--verde);  border-color: #DDEAE3; }
+.botonera .accion.acento { color: var(--acento); border-color: var(--acento-borde); }
+.botonera .accion.ambar  { color: var(--ambar);  border-color: #EDE4D0; }
+.botonera .accion.rojo   { color: var(--rojo);   border-color: #EEDCDA; }
+.botonera .accion.gris   { color: var(--gris);   border-color: var(--borde); }
+.botonera .accion.verde:hover,  .botonera .accion.verde.elegida  { background: var(--verde-suave);  border-color: var(--verde); }
+.botonera .accion.acento:hover, .botonera .accion.acento.elegida { background: var(--acento-suave); border-color: var(--acento); }
+.botonera .accion.ambar:hover,  .botonera .accion.ambar.elegida  { background: var(--ambar-suave);  border-color: var(--ambar); }
+.botonera .accion.rojo:hover,   .botonera .accion.rojo.elegida   { background: var(--rojo-suave);   border-color: var(--rojo); }
+.botonera .accion.gris:hover,   .botonera .accion.gris.elegida   { background: var(--gris-fondo);   border-color: var(--gris); }
+.botonera .accion.elegida { box-shadow: 0 0 0 3px rgba(17,17,17,.06); }
+/* El que ya está cargado se marca con un tilde en la esquina, y se puede
+ * volver a tocar: corregir un resultado mal cargado tiene que ser tan fácil
+ * como cargarlo. */
+.botonera .accion { position: relative; }
+.botonera .accion.puesta::after {
+  content: '✓'; position: absolute; top: 7px; right: 9px; font-size: 12px; line-height: 1;
+}
+
+.confirmar {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--acento-borde);
+}
+
+/* ── La cabecera de una ficha ───────────────────────────────────────────── */
+
+.cabecera-ficha {
+  background: var(--blanco); border: 1px solid var(--borde); border-radius: var(--radio);
+  padding: 16px; box-shadow: var(--sombra);
+}
+.cabecera-ficha .arriba { display: flex; align-items: flex-start; gap: 14px; }
+.cabecera-ficha .iniciales {
+  width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px;
+  background: var(--negro); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px; letter-spacing: -.02em;
+}
+.cabecera-ficha h1 { margin: 0; }
+.cabecera-ficha .contacto {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 5px;
+  font-size: 13px; color: var(--gris);
+}
+.cabecera-ficha .contacto span { display: inline-flex; align-items: center; gap: 5px; }
+.cabecera-ficha .contacto svg { width: 15px; height: 15px; color: var(--gris-claro); }
+.cabecera-ficha .cifras {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--borde);
+}
+
+/* Las pestañas con su cuenta al lado. */
+.pestanas a .cuenta-pestana { color: var(--gris-claro); font-weight: 600; }
+.pestanas a.activo .cuenta-pestana { color: var(--gris); }
+
+/* El enlace de volver: arriba de todo y chiquito, como una miga de pan. */
+.volver {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; color: var(--gris);
+  align-self: flex-start;
+}
+.volver:hover { color: var(--negro); text-decoration: none; }
+.volver svg { width: 16px; height: 16px; }
+
+/* Las pestañas con ícono. */
+.pestanas a { display: inline-flex; align-items: center; gap: 7px; }
+.pestanas a svg { width: 16px; height: 16px; color: var(--gris-claro); }
+.pestanas a.activo svg { color: var(--negro); }

@@ -245,7 +245,7 @@ supabase/        Las migraciones.
 | **Dashboard** | Cómo viene el mes, contra el anterior y contra el objetivo |
 | **Tracker Diario** | La planilla del equipo. **Acá el closer carga el resultado de la llamada sin abrir la ficha** |
 | **Leads** | Una fila por persona. La ficha tiene pestañas porque se completa en momentos distintos y por personas distintas |
-| **Llamadas** | La pantalla del closer: sus reuniones, y **entrar a una llamada** para prepararla y cargar qué pasó, sin abrir la ficha entera |
+| **Llamadas** | «Mis llamadas»: las reuniones del período, cómo fue cada una, y el nombre del lead abre su ficha para cargar |
 | **Analizador** | Cómo estuvieron esas llamadas: las notas, la rúbrica a la vista y los playbooks |
 | **Closers / Setters** | El equipo, con el cierre puesto en contexto |
 | **Matching** | Qué closer cierra mejor qué tipo de lead, y con cuánta confianza |
@@ -263,6 +263,14 @@ silencio: el Tracker los reclama en su propia tarjeta, con un campo para
 ponerles fecha ahí mismo, y el Dashboard avisa cuántos hay. Un lead que no
 aparece en ninguna pantalla no es un lead prolijo, es un lead perdido — y quien
 lo cargó cree que está.
+
+**La ficha del lead es la pantalla de carga del closer.** Arriba, quién es y
+cómo viene; en el medio, **cinco botones** con lo que puede pasar —Venta, Seña,
+Seguimiento, No Show, Perdido—; abajo, en pestañas, lo que se completa en otro
+momento. Los botones que no necesitan nada más guardan de una; los que sí —una
+venta sin importe no se puede facturar, una pérdida sin motivo no se puede
+contar— abren el campo que falta **y nada más que ése**. La diferencia entre
+pedir un dato y pedir un formulario es si se carga o no.
 
 **Llamadas y Analizador se dividen por trabajo, no por entidad.** Las dos
 mostraban listas de llamadas y ninguna servía para lo que el closer hace todo el

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, exigir } from '@/lib/permisos'
 import { exigirAccesoAlLead } from '@/datos/leads'
-import { crearLlamada, guardarTranscripcion, verLlamada } from '@/datos/llamadas'
+import { crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead } from '@/datos/llamadas'
 import { guardarPlaybook } from '@/datos/playbooks'
 import { analizarLlamada } from '@/ia/correr'
 import { recalcular } from '@/datos/analisis'
@@ -43,6 +43,31 @@ export async function crearLlamadaAccion(datos: FormData): Promise<void> {
  * se pega. Automatizarlo es una integración más; poder analizar la llamada de
  * ayer es hoy.
  */
+/**
+ * Abrir la transcripción de un lead, creando la llamada si hace falta.
+ *
+ * Antes había que «registrar la llamada» y recién después subir el texto. Ese
+ * paso no aporta nada: si hay una reunión cargada, la llamada existió. Pedirlo
+ * es la clase de fricción que hace que las transcripciones no se suban, y sin
+ * transcripciones el analizador no existe.
+ */
+export async function abrirTranscripcionAccion(datos: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'cargarResultado')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  const existentes = await llamadasDelLead(leadId)
+  const llamadaId = existentes[0]?.id ?? await crearLlamada(leadId, {
+    fecha: texto(datos, 'fecha'),
+    tipoSesion: (texto(datos, 'tipoSesion') ?? 'primera') as TipoSesion,
+  })
+
+  revalidatePath('/llamadas')
+  redirect(`/analizador/${llamadaId}`)
+}
+
 export async function subirTranscripcionAccion(
   _previo: string | null, datos: FormData,
 ): Promise<string | null> {

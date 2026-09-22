@@ -50,7 +50,7 @@ export default async function Llamada({ params }: { params: Promise<{ id: string
                   titulo={llamada.lead}
                   bajada={`${fechaCorta(llamada.fecha)} · ${llamada.closer ?? 'sin closer'}` +
                           (llamada.duracionSeg ? ` · ${Math.round(llamada.duracionSeg / 60)} min` : '')}>
-        <Link className="boton secundario" href={`/llamadas/${llamada.leadId}`}>Ir a la llamada</Link>
+        <Link className="boton secundario" href={`/leads/${llamada.leadId}`}>Ir al lead</Link>
         <Link className="boton secundario" href={`/leads/${llamada.leadId}`}>Ver la ficha</Link>
       </Encabezado>
 

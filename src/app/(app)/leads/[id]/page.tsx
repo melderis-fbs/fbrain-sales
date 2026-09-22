@@ -10,7 +10,9 @@ import { seguimientoDelLead, interaccionesDelLead, toques } from '@/datos/seguim
 import { historialDelLead } from '@/datos/cambios'
 import { catalogos } from '@/datos/catalogos'
 import { hoyEn } from '@/motor/periodos'
-import { Encabezado, Pildora } from '@/componentes/Piezas'
+import { Iconos, type NombreDeIcono } from '@/componentes/Iconos'
+import { CabeceraDeLead } from '@/componentes/CabeceraDeLead'
+import { AccionDelCloser } from '@/componentes/AccionDelCloser'
 import { Resumen } from '@/componentes/ficha/Resumen'
 import { Calificacion } from '@/componentes/ficha/Calificacion'
 import { Resultado } from '@/componentes/ficha/Resultado'
@@ -19,35 +21,26 @@ import { Llamadas } from '@/componentes/ficha/Llamadas'
 import { Notas } from '@/componentes/ficha/Notas'
 import { Datos } from '@/componentes/ficha/Datos'
 import { Historial } from '@/componentes/ficha/Historial'
-import { NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO } from '@/dominio/resultados'
 
-const PESTANAS = [
-  { clave: 'resumen', texto: 'Resumen' },
-  { clave: 'calificacion', texto: 'Calificación' },
-  { clave: 'resultado', texto: 'Resultado' },
-  { clave: 'seguimiento', texto: 'Seguimiento' },
-  { clave: 'llamadas', texto: 'Llamadas' },
-  { clave: 'notas', texto: 'Notas' },
-  { clave: 'datos', texto: 'Datos' },
-  { clave: 'historial', texto: 'Historial' },
-] as const
-
-type Busqueda = Promise<{ pestana?: string }>
+type Busqueda = Promise<{ pestana?: string; volver?: string }>
 
 /**
  * La ficha del lead.
  *
- * En pestañas porque se completa en momentos distintos y por personas
- * distintas: el setter carga la calificación antes, el closer el resultado el
- * día de la reunión, y las notas las escribe cualquiera cuando pasa algo.
- * Un único formulario largo pide todo a la vez a alguien que sólo sabe una
- * parte, y lo que sale de ahí son campos completados por completar.
+ * Arriba, lo que hace falta saber; abajo, en pestañas, lo que se completa en
+ * momentos distintos y por personas distintas.
+ *
+ * En el medio, la ACCIÓN DEL CLOSER: cinco botones con lo que puede pasar. Es
+ * lo que hace que el resultado se cargue al colgar y no «después» — y lo que se
+ * carga después no se carga, que es cómo el tablero termina siempre incompleto.
+ * El formulario largo sigue existiendo, en su pestaña, para lo que la acción
+ * rápida no cubre: el próximo paso, los cobros, el saldo de una seña.
  */
 export default async function FichaDeLead({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Busqueda }) {
   const { id } = await params
-  const { pestana } = await searchParams
+  const { pestana, volver } = await searchParams
   const leadId = Number(id)
   if (!Number.isInteger(leadId)) notFound()
 
@@ -58,63 +51,82 @@ export default async function FichaDeLead({
   const lead = await verLead(leadId)
   if (!lead) notFound()
 
-  const cual = (PESTANAS.find((p) => p.clave === pestana)?.clave ?? 'resumen') as typeof PESTANAS[number]['clave']
   const hoy = hoyEn()
   const verPlata = puede(usuario, 'verDinero')
 
+  const [calidad, respuestas, notas, llamadas, seguimiento, interacciones] = await Promise.all([
+    recalcularCalidad(leadId),
+    calificacionDelLead(leadId),
+    notasDelLead(leadId),
+    llamadasDelLead(leadId),
+    seguimientoDelLead(leadId, hoy),
+    interaccionesDelLead(leadId),
+  ])
+
+  const PESTANAS: { clave: string; texto: string; icono: NombreDeIcono; cuenta?: number }[] = [
+    { clave: 'resumen', texto: 'Resumen', icono: 'dashboard' },
+    { clave: 'calificacion', texto: 'Calificación', icono: 'setters' },
+    { clave: 'llamadas', texto: 'Llamadas', icono: 'llamadas', cuenta: llamadas.length },
+    { clave: 'seguimiento', texto: 'Seguimiento', icono: 'seguimientos', cuenta: interacciones.length },
+    { clave: 'notas', texto: 'Notas', icono: 'casos', cuenta: notas.length },
+    { clave: 'resultado', texto: 'Resultado', icono: 'comisiones' },
+    { clave: 'datos', texto: 'Datos', icono: 'configuracion' },
+    { clave: 'historial', texto: 'Historial', icono: 'metricas' },
+  ]
+
+  const cual = PESTANAS.find((p) => p.clave === pestana)?.clave ?? 'resumen'
+  const Volver = Iconos.volver
+  const aDonde = volver === 'llamadas' ? { href: '/llamadas', texto: 'Volver a Llamadas' }
+    : volver === 'tracker' ? { href: '/tracker', texto: 'Volver al Tracker' }
+    : volver === 'seguimientos' ? { href: '/seguimientos', texto: 'Volver a Seguimientos' }
+    : { href: '/leads', texto: 'Volver a Leads' }
+
   return (
     <div className="apilado">
-      <Encabezado kicker={lead.empresa ?? 'Lead'} titulo={lead.nombre}
-                  bajada={[lead.email, lead.telefono].filter(Boolean).join(' · ') || undefined}>
-        <Pildora color={COLOR_DE_ESTADO[lead.estado]}>{NOMBRE_DE_ESTADO[lead.estado]}</Pildora>
-        <Pildora color={COLOR_DE_RESULTADO[lead.resultado]}>{NOMBRE_DE_RESULTADO[lead.resultado]}</Pildora>
-        {lead.ciclo > 1 ? <Pildora color="acento">Ciclo {lead.ciclo}</Pildora> : null}
-      </Encabezado>
+      <Link href={aDonde.href} className="volver">
+        <Volver />{aDonde.texto}
+      </Link>
+
+      <CabeceraDeLead lead={lead} calidad={calidad} />
+
+      {puede(usuario, 'cargarResultado') ? (
+        <AccionDelCloser leadId={leadId} moneda={lead.moneda} hoy={hoy}
+                         resultadoActual={lead.resultado} />
+      ) : null}
 
       <nav className="pestanas">
-        {PESTANAS.map((p) => (
-          <Link key={p.clave} href={`/leads/${leadId}?pestana=${p.clave}`}
-                className={cual === p.clave ? 'activo' : ''}>{p.texto}</Link>
-        ))}
+        {PESTANAS.map((p) => {
+          const Icono = Iconos[p.icono]
+          const parametros = new URLSearchParams({ pestana: p.clave })
+          if (volver) parametros.set('volver', volver)
+          return (
+            <Link key={p.clave} href={`/leads/${leadId}?${parametros}`}
+                  className={cual === p.clave ? 'activo' : ''}>
+              <Icono />
+              {p.texto}
+              {p.cuenta !== undefined ? <span className="cuenta-pestana"> ({p.cuenta})</span> : null}
+            </Link>
+          )
+        })}
       </nav>
 
-      {cual === 'resumen' ? await panelResumen() : null}
-      {cual === 'calificacion' ? await panelCalificacion() : null}
-      {cual === 'resultado' ? await panelResultado() : null}
-      {cual === 'seguimiento' ? await panelSeguimiento() : null}
-      {cual === 'llamadas' ? <Llamadas leadId={leadId} llamadas={await llamadasDelLead(leadId)} hoy={hoy} /> : null}
-      {cual === 'notas' ? <Notas leadId={leadId} notas={await notasDelLead(leadId)} usuarioId={usuario.id} /> : null}
-      {cual === 'datos' ? <Datos lead={lead!} catalogos={await catalogos()} /> : null}
+      {cual === 'resumen' ? (
+        <Resumen lead={lead} calidad={calidad} respuestas={respuestas} notas={notas}
+                 seguimiento={seguimiento} verPlata={verPlata} />
+      ) : null}
+      {cual === 'calificacion' ? <Calificacion leadId={leadId} respuestas={respuestas} /> : null}
+      {cual === 'llamadas' ? <Llamadas leadId={leadId} llamadas={llamadas} hoy={hoy} /> : null}
+      {cual === 'seguimiento' ? (
+        <Seguimiento leadId={leadId} estado={seguimiento} interacciones={interacciones}
+                     cadencia={await toques()} />
+      ) : null}
+      {cual === 'notas' ? <Notas leadId={leadId} notas={notas} usuarioId={usuario.id} /> : null}
+      {cual === 'resultado' ? (
+        <Resultado lead={lead} closers={(await catalogos()).closers} hoy={hoy} verPlata={verPlata}
+                   puedeReasignar={puede(usuario, 'reasignarCloser')} />
+      ) : null}
+      {cual === 'datos' ? <Datos lead={lead} catalogos={await catalogos()} /> : null}
       {cual === 'historial' ? <Historial lineas={await historialDelLead(leadId)} /> : null}
     </div>
   )
-
-  async function panelResumen() {
-    const [calidad, seguimiento] = await Promise.all([
-      recalcularCalidad(leadId),
-      seguimientoDelLead(leadId, hoy),
-    ])
-    return <Resumen lead={lead!} calidad={calidad} seguimiento={seguimiento} verPlata={verPlata} />
-  }
-
-  async function panelCalificacion() {
-    return <Calificacion leadId={leadId} respuestas={await calificacionDelLead(leadId)} />
-  }
-
-  async function panelResultado() {
-    const cats = await catalogos()
-    return (
-      <Resultado lead={lead!} closers={cats.closers} hoy={hoy} verPlata={verPlata}
-                 puedeReasignar={puede(usuario, 'reasignarCloser')} />
-    )
-  }
-
-  async function panelSeguimiento() {
-    const [estado, interacciones, cadencia] = await Promise.all([
-      seguimientoDelLead(leadId, hoy),
-      interaccionesDelLead(leadId),
-      toques(),
-    ])
-    return <Seguimiento leadId={leadId} estado={estado} interacciones={interacciones} cadencia={cadencia} />
-  }
 }

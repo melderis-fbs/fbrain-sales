@@ -371,6 +371,11 @@ export type LeadEnLista = {
   calidadScore: number | null
   calidadNivel: NivelDeCalidad | null
   llamadas: number
+  /** La última llamada registrada, para poder subirle la transcripción. */
+  llamadaId: number | null
+  tieneTranscripcion: boolean
+  /** La nota de la última llamada analizada. */
+  notaLlamada: number | null
   creadoEn: string
 }
 
@@ -379,8 +384,21 @@ const SELECT_LISTA = `
          l.proximo_contacto, l.valor_potencial, l.moneda, l.creado_en,
          fu.nombre as fuente, fn.nombre as funnel, s.nombre as setter, c.nombre as closer,
          q.score as calidad_score, q.nivel as calidad_nivel,
-         (select count(*) from llamadas x where x.lead_id = l.id) as llamadas
+         (select count(*) from llamadas x where x.lead_id = l.id) as llamadas,
+         ll.id as llamada_id, ll.tiene_transcripcion, ll.score as nota_llamada
     from leads l
+    left join lateral (
+         select x.id,
+                exists (select 1 from transcripciones t where t.llamada_id = x.id) as tiene_transcripcion,
+                (select cs.score from call_scores cs
+                   join analisis a on a.id = cs.analisis_id
+                  where a.llamada_id = x.id and cs.vigente
+                  order by cs.creado_en desc limit 1) as score
+           from llamadas x
+          where x.lead_id = l.id
+          order by x.fecha desc nulls last, x.id desc
+          limit 1
+    ) ll on true
     left join fuentes fu on fu.id = l.fuente_id
     left join funnels fn on fn.id = l.funnel_id
     left join setters s  on s.id  = l.setter_id
@@ -400,6 +418,9 @@ function aLeadEnLista(x: Record<string, any>): LeadEnLista {
     calidadScore: x.calidad_score === null || x.calidad_score === undefined ? null : Number(x.calidad_score),
     calidadNivel: x.calidad_nivel ?? null,
     llamadas: Number(x.llamadas),
+    llamadaId: x.llamada_id ?? null,
+    tieneTranscripcion: x.tiene_transcripcion ?? false,
+    notaLlamada: x.nota_llamada === null || x.nota_llamada === undefined ? null : Number(x.nota_llamada),
     creadoEn: x.creado_en.toISOString(),
   }
 }

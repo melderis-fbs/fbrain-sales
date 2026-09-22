@@ -308,7 +308,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                         <td className="num">{l.valorPotencial ? plata(l.valorPotencial, l.moneda) : '—'}</td>
                       ) : null}
                       <td className="num">
-                        <Link href={`/llamadas/${l.id}`}
+                        <Link href={`/leads/${l.id}?volver=tracker`}
                               style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>
                           {l.estado === 'agendado' && l.resultado === 'pendiente' ? 'Cargar →' : 'Abrir →'}
                         </Link>

@@ -158,8 +158,11 @@ await paso('el setter completa la calificación y sale el Lead Quality', async (
   comprobar(/Lead Quality \d+/.test(aviso ?? ''), `el quality salió: ${aviso?.trim()}`)
 
   await p.goto(`${RAIZ}/leads/${leadId}`)
-  comprobar(await p.locator('.tarjeta:has-text("Lead Quality") .numero').count() > 0,
-            'y se ve en el resumen con el detalle de cada aporte')
+  comprobar((await p.locator('.cabecera-ficha').textContent())?.includes('Lead Quality'),
+            'y el número queda en la cabecera de la ficha')
+  comprobar((await p.locator('.contenido .tarjeta:has-text("Lo que averiguó el setter")').textContent())
+              ?.includes('Sí, sin problema'),
+            'con el detalle de lo que contestó, para leerlo antes de la llamada')
   await foto('calificacion')
 })
 
@@ -345,7 +348,7 @@ await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () =>
 })
 
 await paso('las demás pantallas abren sin romperse', async () => {
-  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas', `/llamadas/${leadId}`,
+  for (const ruta of ['/leads', '/closers', '/setters', '/llamadas',
                       '/analizador', '/analizador?pestana=rubrica', '/analizador?pestana=playbooks',
                       '/metricas', '/matching', '/matching?por=industria', '/matching?por=fuente',
                       '/casos', '/comisiones', '/leads?sinfecha=1',
@@ -367,27 +370,76 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('comisiones')
 })
 
-await paso('el closer entra a la llamada sin abrir la ficha entera', async () => {
-  await p.goto(`${RAIZ}/llamadas`)
-  comprobar(await p.locator('.contenido .tarjeta:has-text("Para cargar")').count() > 0,
-            'Llamadas abre con lo que hay que cargar, no con una lista de consulta')
+await paso('el closer carga con un toque desde la ficha', async () => {
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Un Toque ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const unToque = p.url().match(/leads\/(\d+)/)?.[1]
 
-  await p.goto(`${RAIZ}/llamadas/${leadId}`)
-  comprobar(await p.locator('.contenido .tarjeta:has-text("Antes de la llamada")').count() === 1,
-            'la llamada muestra lo que averiguó el setter')
-  comprobar(await p.locator('.contenido .tarjeta:has-text("Cargar el resultado")').count() === 1,
-            'y el formulario de resultado en el mismo scroll')
-  comprobar(await p.locator('.contenido textarea[name=texto]').count() === 1,
-            'con las notas a mano')
+  comprobar(await p.locator('.contenido .acciones-closer').count() === 1,
+            'la ficha abre con la acción del closer a la vista')
+  comprobar(await p.locator('.contenido .botonera .accion').count() === 5,
+            'con los cinco resultados posibles')
 
-  // Lo que se carga acá escribe sobre el MISMO lead, no sobre una copia.
-  await p.fill('.contenido textarea[name=texto]', `Nota desde la llamada ${marca}`)
-  await p.locator('.contenido form:has(textarea[name=texto]) button[type=submit]').click()
+  // «No Show» no necesita nada más: un toque y queda cargado.
+  await p.locator('.contenido .botonera .accion:has-text("No Show")').click()
+  await p.locator('.contenido .confirmar button[type=submit]').click()
   await esperar()
-  await p.goto(`${RAIZ}/leads/${leadId}?pestana=notas`)
-  comprobar((await p.locator('.contenido').textContent())?.includes(`Nota desde la llamada ${marca}`),
-            'y aparece en la ficha completa: es la misma tarjeta')
-  await foto('llamada-closer')
+  await p.waitForTimeout(700)
+  comprobar((await p.locator('.cabecera-ficha').textContent())?.includes('No show'),
+            'No Show se carga con un toque, sin pedir nada')
+
+  // La venta sí pide el importe, y sólo el importe.
+  await p.goto(`${RAIZ}/leads/${unToque}`)
+  await p.locator('.contenido .botonera .accion:has-text("Venta")').click()
+  comprobar(await p.locator('.contenido .confirmar input[name=importe]').count() === 1,
+            'al elegir Venta pide el importe')
+  comprobar(await p.locator('.contenido .confirmar select[name=motivoPerdida]').count() === 0,
+            'y no pide el motivo de pérdida, que no viene al caso')
+  await p.fill('.contenido .confirmar input[name=importe]', '3500')
+  await p.locator('.contenido .confirmar button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(700)
+  comprobar((await p.locator('.cabecera-ficha').textContent())?.includes('Venta'),
+            'y la venta queda cargada desde la misma pantalla')
+  await foto('ficha-lead')
+
+  // Perdido pide el motivo: sin él, el número de «por qué se pierde» no existe.
+  await p.goto(`${RAIZ}/leads/${unToque}`)
+  await p.locator('.contenido .botonera .accion:has-text("Perdido")').click()
+  comprobar(await p.locator('.contenido .confirmar select[name=motivoPerdida]').count() === 1,
+            'al elegir Perdido pide el motivo')
+})
+
+await paso('desde Mis Llamadas se entra a la ficha del lead', async () => {
+  await p.goto(`${RAIZ}/llamadas`)
+  comprobar((await p.locator('.contenido h1').textContent())?.includes('Mis llamadas'),
+            'Llamadas es la pantalla del closer')
+  comprobar(await p.locator('.contenido .tarjeta:has-text("Call score")').count() === 1,
+            'con el resumen de cómo le fue')
+  const primera = p.locator(`.contenido table a:has-text("Un Toque ${marca}")`).first()
+  await primera.click()
+  await p.waitForURL(/leads\/\d+/)
+  comprobar(await p.locator('.contenido .acciones-closer').count() === 1,
+            'y tocar el nombre abre la ficha con las acciones')
+  comprobar((await p.locator('.contenido .volver').textContent())?.includes('Volver a Llamadas'),
+            'con el camino de vuelta a donde estaba')
+  // Subir una transcripción no tiene que obligar a «registrar la llamada»
+  // antes: si la reunión está cargada, la llamada existió.
+  await p.goto(`${RAIZ}/llamadas`)
+  const subir = p.locator('.contenido table form button:has-text("Subir")').first()
+  if (await subir.count() > 0) {
+    await subir.click()
+    await p.waitForURL(/analizador\/\d+/, { timeout: 10000 }).catch(() => {})
+    comprobar(/analizador\/\d+/.test(p.url()),
+              'el botón Subir crea la llamada sola y abre la transcripción')
+    comprobar(await p.locator('.contenido textarea[name=texto]').count() === 1,
+              'con el campo para pegarla')
+  }
+  await foto('mis-llamadas')
 })
 
 await paso('un caso de éxito se carga y queda listo para mandar', async () => {

@@ -111,7 +111,7 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
                     {esperando.map((l) => (
                       <tr key={l.id}>
                         <td style={{ fontSize: 12.5 }}>{fechaCorta(l.fecha)}</td>
-                        <td><Link href={`/llamadas/${l.leadId}`} style={{ fontWeight: 600 }}>{l.lead}</Link></td>
+                        <td><Link href={`/leads/${l.leadId}`} style={{ fontWeight: 600 }}>{l.lead}</Link></td>
                         <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">—</span>}</td>
                         <td style={{ fontSize: 12.5 }}>{l.numero}</td>
                         <td className="num">
