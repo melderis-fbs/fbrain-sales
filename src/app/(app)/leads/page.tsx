@@ -60,6 +60,7 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
         {puede(usuario, 'borrarLead') ? (
           <Link className="boton secundario" href="/leads?baja=1">Dados de baja</Link>
         ) : null}
+        <Link className="boton secundario" href="/leads/importar">Cargar histórico</Link>
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
       </Encabezado>
 

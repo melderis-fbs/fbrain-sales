@@ -234,6 +234,11 @@ export function AltaDeLead({ catalogos, yo }: {
         )}
         <Link className="boton secundario" href="/leads">Cancelar</Link>
       </div>
+
+      <p className="ayuda" style={{ marginTop: 10 }}>
+        ¿Vas a cargar muchos de una vez? <Link href="/leads/importar" style={{ fontWeight: 650 }}>
+        Pegá la planilla</Link> en vez de llenar este formulario una vez por lead.
+      </p>
     </form>
   )
 }

@@ -672,6 +672,77 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
   await foto('closer-carga-historico')
 })
 
+await paso('el histórico de un mes entra pegando la planilla', async () => {
+  // Cargar un mes de a un formulario por vez no se hace: se abandona a la
+  // mitad y el tablero queda con la mitad de los datos.
+  await p.goto(`${RAIZ}/leads/importar`)
+  const planilla = [
+    'Cliente\tMail\tFecha de la reunión\tCloser\tFuente\tAsistió\tResultado\tMonto\tCobrado',
+    `Importada Una ${marca}\tuna${marca}@ej.com\t04/07/2026\tKevin\tMeta Ads\tSí\tVendido\tUSD 3.500\t1.500`,
+    `Importada Dos ${marca}\tdos${marca}@ej.com\t05/07/2026\tKevin\tMeta Ads\tNo show\t\t\t`,
+    `Importada Tres ${marca}\ttres${marca}@ej.com\t06/07/2026\tKevin\tInstagram\tAsistió\tPerdido\t\t`,
+    `Importada Mala ${marca}\tmala${marca}@ej.com\t31/02/2026\tKevin\tMeta Ads\tAsistió\t\t\t`,
+  ].join('\n')
+  await p.fill('.contenido textarea', planilla)
+  await p.click('.contenido button:has-text("Ver cómo queda")')
+  await esperar()
+  await p.waitForTimeout(900)
+
+  comprobar(await p.locator('.contenido tbody tr').count() === 4,
+            'la vista previa muestra las cuatro filas antes de escribir nada')
+  const laMala = await p.locator(`.contenido tr:has-text("Importada Mala ${marca}")`).textContent()
+  comprobar((laMala ?? '').includes('31/02/2026'),
+            'y marca la fila con la fecha imposible, diciendo cuál es y cómo se escribe')
+  const laDeInstagram = await p.locator(`.contenido tr:has-text("Importada Tres ${marca}")`).textContent()
+  comprobar((laDeInstagram ?? '').includes('Instagram'),
+            'una fuente que no existe avisa pero no frena la fila')
+  comprobar((await p.locator('.contenido .aviso').first().textContent() ?? '').includes('3 filas listas'),
+            'y dice cuántas van a entrar')
+  await foto('importar-vista')
+
+  // Hasta acá no se escribió nada.
+  await p.goto(`${RAIZ}/leads`)
+  comprobar(!(await p.locator('.contenido table').textContent())?.includes(`Importada Una ${marca}`),
+            'la vista previa no escribió nada: hay que confirmar')
+
+  await p.goto(`${RAIZ}/leads/importar`)
+  await p.fill('.contenido textarea', planilla)
+  await p.click('.contenido button:has-text("Ver cómo queda")')
+  await esperar()
+  await p.waitForTimeout(900)
+  await p.click('.contenido button:has-text("Importar 3")')
+  await esperar()
+  await p.waitForTimeout(1500)
+  comprobar((await p.locator('.contenido .aviso.dato').first().textContent() ?? '').includes('3 leads'),
+            'confirmando, entran las tres buenas')
+
+  // Y quedan contadas como si las hubiera cargado el closer a mano.
+  await p.goto(`${RAIZ}/tracker?desde=2026-07-01&hasta=2026-07-31`)
+  await esperar()
+  const leer = async (e) => p.evaluate((x) => {
+    const c = [...document.querySelectorAll('.contenido .mini')]
+      .find((m) => m.querySelector('.mini-etiqueta')?.textContent?.trim() === x)
+    return c?.querySelector('.mini-numero')?.textContent?.trim() ?? null
+  }, e)
+  comprobar(await leer('Llamadas agendadas') === '3' && await leer('Asistencias') === '2'
+            && await leer('No show') === '1' && await leer('Cierres') === '1',
+            'el tablero de julio las cuenta: 3 agendadas, 2 asistencias, 1 no show, 1 cierre')
+  comprobar(await leer('Facturación') === 'USD 3.500' && await leer('Cash collected') === 'USD 1.500',
+            'con su facturación y su cash, que es lo que el formulario de a uno no carga')
+
+  // Volver a pegar la misma planilla no duplica: es el camino normal después
+  // de corregir las filas malas.
+  await p.goto(`${RAIZ}/leads/importar`)
+  await p.fill('.contenido textarea', planilla)
+  await p.click('.contenido button:has-text("Ver cómo queda")')
+  await esperar()
+  await p.waitForTimeout(900)
+  const aviso = await p.locator('.contenido .aviso').first().textContent()
+  comprobar((aviso ?? '').includes('0 filas listas') || (aviso ?? '').includes('No hay ninguna fila'),
+            'y volver a pegarla entera no vuelve a cargar nada')
+  await foto('importar-repetida')
+})
+
 await b.close()
 
 console.log(`\n${'─'.repeat(60)}`)

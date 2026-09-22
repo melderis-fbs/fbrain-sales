@@ -11,6 +11,9 @@ import {
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
 import { cargarResultado, registrarPago, anularVenta, anularSena } from '@/datos/resultado'
+import { leerPlanilla, type FilaLeida } from '@/dominio/importacion'
+import { yaCargados, importar, type YaEstaba, type ReporteDeImportacion } from '@/datos/importar'
+import { catalogos, config } from '@/datos/catalogos'
 import { guardarCalificacion, congelarQuality } from '@/datos/calificacion'
 import { agregarNota, borrarNota } from '@/datos/notas'
 import { marcarSeguimientoLargo } from '@/datos/seguimientos'
@@ -369,6 +372,81 @@ export async function anularPlataAccion(
 
   refrescar(leadId)
   return null
+}
+
+// ── Cargar el histórico de una planilla ─────────────────────────────────────
+
+export type EstadoDeImportacion =
+  | { tipo: 'error'; mensaje: string }
+  | { tipo: 'vista'
+      filas: (FilaLeida & { yaEstaba: YaEstaba | null })[]
+      columnasIgnoradas: string[]
+      listas: number; conError: number; repetidas: number }
+  | { tipo: 'hecho'; reporte: ReporteDeImportacion }
+  | null
+
+/**
+ * Leer la planilla y, recién en el segundo paso, escribirla.
+ *
+ * Nunca importa en el primer envío, aunque no haya un solo error. Una
+ * importación que escribe sesenta filas sin que nadie haya visto cómo quedaron
+ * interpretadas es la forma más rápida de meter datos falsos en el tablero, y
+ * un dato falso adentro cuesta mucho más que uno que faltó.
+ *
+ * El texto pegado vuelve en el mismo formulario y se relee igual, así que no
+ * hace falta guardar nada entre los dos pasos.
+ */
+export async function importarAccion(
+  _previo: EstadoDeImportacion, datos: FormData,
+): Promise<EstadoDeImportacion> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'editarLead')
+
+  const pegado = String(datos.get('planilla') ?? '')
+  if (pegado.trim() === '') return { tipo: 'error', mensaje: 'Pegá la planilla en el cuadro de arriba.' }
+
+  const alcance = alcanceDe(usuario)
+  const cats = await catalogos()
+  const lectura = leerPlanilla(pegado, cats, {
+    closerId: !alcance.todo && 'closerId' in alcance ? alcance.closerId : null,
+    setterId: !alcance.todo && 'setterId' in alcance ? alcance.setterId : null,
+  }, await config<string>('moneda_base', 'USD'))
+
+  if (lectura.problema !== null) return { tipo: 'error', mensaje: lectura.problema }
+  if (lectura.filas.length === 0) return { tipo: 'error', mensaje: 'La planilla tiene encabezados pero ninguna fila.' }
+
+  const repetidas = await yaCargados(lectura.filas)
+  const crearRepetidas = datos.get('repetidas') === '1'
+  const conMarca = lectura.filas.map((f, i) => ({ ...f, yaEstaba: repetidas[i] ?? null }))
+
+  const entra = (f: (typeof conMarca)[number]) =>
+    f.errores.length === 0 && (f.yaEstaba === null || crearRepetidas)
+
+  if (datos.get('confirmado') !== '1') {
+    return {
+      tipo: 'vista',
+      filas: conMarca,
+      columnasIgnoradas: lectura.columnasIgnoradas,
+      listas: conMarca.filter(entra).length,
+      conError: conMarca.filter((f) => f.errores.length > 0).length,
+      repetidas: conMarca.filter((f) => f.yaEstaba !== null).length,
+    }
+  }
+
+  const aImportar = conMarca.filter(entra)
+  if (aImportar.length === 0) {
+    return { tipo: 'error', mensaje: 'No quedó ninguna fila para importar. Corregí los errores de arriba y volvé a pegarla.' }
+  }
+
+  const reporte = await importar(aImportar, usuario.id)
+  reporte.salteadas = conMarca.length - aImportar.length
+
+  revalidatePath('/leads')
+  revalidatePath('/tracker')
+  revalidatePath('/dashboard')
+  revalidatePath('/llamadas')
+  revalidatePath('/metricas')
+  return { tipo: 'hecho', reporte }
 }
 
 // ── Repesca ─────────────────────────────────────────────────────────────────

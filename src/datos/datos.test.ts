@@ -940,6 +940,86 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     }
   })
 
+  it('una planilla pegada entra entera: el lead, lo que pasó, la venta y el cobro', async () => {
+    // Cargar un mes de a un formulario por vez no se hace: se abandona a la
+    // mitad y el tablero queda con la mitad de los datos, que es peor que con
+    // ninguno porque igual se mira.
+    const { leerPlanilla } = await import('@/dominio/importacion')
+    const importar = await import('./importar')
+
+    const lectura = leerPlanilla([
+      'Nombre\tEmail\tFecha\tCloser\tEstado\tResultado\tImporte\tCobrado',
+      'María Fernández\tmaria@ej.com\t10/09/2026\tKevin\tAsistió\tVenta\t5.000\t2.000',
+      'Pedro Gómez\tpedro@ej.com\t11/09/2026\tKevin\tNo show\t\t\t',
+      'Ana López\t\t12/09/2026\tKevin\tAsistió\tPerdido\t\t',
+    ].join('\n'), {
+      fuentes: [], funnels: [], setters: [], closers: [{ id: closerKevin, nombre: 'Kevin' }],
+    })
+    expect(lectura.problema).toBe(null)
+    expect(lectura.filas.every((f) => f.errores.length === 0)).toBe(true)
+
+    const reporte = await importar.importar(lectura.filas, usuarioId)
+    expect(reporte.importadas).toBe(3)
+    expect(reporte.fallidas).toEqual([])
+
+    // Y quedan contados como si los hubiera cargado el closer a mano.
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.agendadas).toBe(3)
+    expect(m.asistencias).toBe(2)
+    expect(m.noShows).toBe(1)
+    expect(m.ventas).toBe(1)
+    expect(m.facturacion).toBe(5000)
+    expect(m.cashCollected).toBe(2000)
+
+    // Con dueño: si no, el closer que los importó no los volvería a ver.
+    expect(await leads.listarLeads({ todo: false, closerId: closerKevin })).toHaveLength(3)
+  })
+
+  it('volver a pegar la misma planilla no duplica nada', async () => {
+    // Es el camino normal después de corregir tres filas, no un caso raro.
+    const { leerPlanilla } = await import('@/dominio/importacion')
+    const importar = await import('./importar')
+    const cats = { fuentes: [], funnels: [], setters: [], closers: [{ id: closerKevin, nombre: 'Kevin' }] }
+    const texto = [
+      'Nombre\tEmail\tFecha\tCloser',
+      'María Fernández\tmaria@ej.com\t10/09/2026\tKevin',
+      'Pedro Gómez\tpedro@ej.com\t11/09/2026\tKevin',
+    ].join('\n')
+
+    await importar.importar(leerPlanilla(texto, cats).filas, usuarioId)
+
+    const otraVez = leerPlanilla(texto, cats).filas
+    const repetidas = await importar.yaCargados(otraVez)
+    expect(repetidas.map((r) => r?.porque)).toEqual(['email', 'email'])
+    expect(repetidas[0]?.nombre).toBe('María Fernández')
+
+    // Y si se importan sólo las que no estaban, no entra ninguna de nuevo.
+    const nuevas = otraVez.filter((_, i) => repetidas[i] === null)
+    const reporte = await importar.importar(nuevas, usuarioId)
+    expect(reporte.importadas).toBe(0)
+    expect(await leads.listarLeads(TODO)).toHaveLength(2)
+  })
+
+  it('una fila que la planilla trae mal no arrastra a las demás', async () => {
+    const { leerPlanilla } = await import('@/dominio/importacion')
+    const importar = await import('./importar')
+    const lectura = leerPlanilla([
+      'Nombre\tFecha\tCloser\tResultado\tImporte',
+      'Buena\t10/09/2026\tKevin\tVenta\t1000',
+      'Mala\t31/02/2026\tKevin\t\t',
+      'Sin closer\t10/09/2026\tBriann\t\t',
+    ].join('\n'), {
+      fuentes: [], funnels: [], setters: [], closers: [{ id: closerKevin, nombre: 'Kevin' }],
+    })
+
+    const buenas = lectura.filas.filter((f) => f.errores.length === 0)
+    expect(buenas.map((f) => f.nombre)).toEqual(['Buena'])
+
+    const reporte = await importar.importar(buenas, usuarioId)
+    expect(reporte.importadas).toBe(1)
+    expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(1000)
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)
