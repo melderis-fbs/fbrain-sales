@@ -2,7 +2,7 @@ import 'server-only'
 import type { PoolClient } from 'pg'
 import { escribir, fila, filas, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
-import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
+import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { anotar } from './cambios'
 import { comoViene, fechaDelToque, toqueSiguiente, type Toque, type Urgencia } from '@/motor/toques'
 import { sacaDelPipeline, type EstadoToque, type Situacion } from '@/dominio/seguimientos'
@@ -194,11 +194,10 @@ export type Tarjeta = {
 }
 
 async function tarjetas(alcance: Alcance, hoy: string, situaciones: Situacion[]): Promise<Tarjeta[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const valores: unknown[] = [situaciones]
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 2)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 2)
+  valores.push(...alc.parametros)
 
   const f = await filas<Record<string, any>>(
     `select se.lead_id, se.toque_actual, se.desde, se.ingreso_en, se.situacion, se.fecha_larga,

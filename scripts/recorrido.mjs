@@ -643,10 +643,10 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
   // sean. Antes saltaba a un período fijo que podía no contenerlas: se
   // clickeaba y no pasaba nada, o peor, la lista quedaba vacía.
   await p.goto(`${RAIZ}/tracker`)
-  const avisoAtrasadas = '.contenido .aviso:has-text("Fuera de este período")'
-  comprobar(await p.locator(avisoAtrasadas).count() === 1,
-            'el Tracker avisa que hay una reunión atrasada fuera del período')
-  await p.locator(`${avisoAtrasadas} a:has-text("Verlas")`).click()
+  const avisoAtrasadas = '.contenido .pendiente'
+  comprobar(await p.locator(`${avisoAtrasadas} a:has-text("sin cargar")`).count() === 1,
+            'el Tracker avisa, en un solo renglón, que hay una reunión atrasada')
+  await p.locator(`${avisoAtrasadas} a:has-text("sin cargar")`).click()
   await esperar()
   comprobar((await p.locator('.contenido').textContent() ?? '')
               .includes(`Cliente Histórico ${marca}`),

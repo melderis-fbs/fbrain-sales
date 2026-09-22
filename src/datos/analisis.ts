@@ -1,7 +1,7 @@
 import 'server-only'
 import type { PoolClient } from 'pg'
 import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
-import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
+import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { puntuar, type Modelo, type NivelAsignado, type Puntaje } from '@/motor/scoring'
 import {
   DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES, TOPE_DE_BONIFICACIONES, NIVEL_A_NOTA,
@@ -422,12 +422,11 @@ export async function listarAnalisis(
   filtros: { closerId?: number; desde?: string; hasta?: string } = {},
   limite = 100,
 ): Promise<AnalisisEnLista[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const valores: unknown[] = []
   const condiciones: string[] = []
-  const alc = condicionDeAlcance(alcance, { closer: 'll.closer_id', setter: 'l.setter_id' }, 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'll.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 1)
+  valores.push(...alc.parametros)
   condiciones.push(alc.condicion)
   if (filtros.closerId !== undefined) { valores.push(filtros.closerId); condiciones.push(`ll.closer_id = $${valores.length}`) }
   if (filtros.desde) { valores.push(filtros.desde); condiciones.push(`ll.fecha >= $${valores.length}`) }

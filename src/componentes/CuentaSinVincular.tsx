@@ -4,25 +4,27 @@ import { NOMBRE_DE_ROL, type Rol } from '@/dominio/roles'
 /**
  * «Tu cuenta no está vinculada a nadie.»
  *
- * Un closer o un setter ven lo suyo, y «lo suyo» se decide por la figura
- * comercial que tienen vinculada, no por el nombre de la cuenta. Sin esa
- * vinculación el alcance es vacío: todas las pantallas aparecen en cero y los
- * leads que cargue no los va a ver nunca más.
+ * Ya no es un impedimento para trabajar: cargar un lead funciona igual, y lo
+ * que uno carga lo ve siempre. Pero sigue importando, y por dos cosas que no
+ * se ven solas:
  *
- * Hasta ahora el sistema no lo decía en ningún lado, y eso es lo peor que
- * puede hacer: una pantalla vacía por permisos se lee igual que una pantalla
- * vacía por falta de datos, y el que la mira concluye que la aplicación no
- * anda. Esto lo dice, y dice cómo se arregla.
+ *  - los leads que cargue NO se le atribuyen en los números del equipo, así
+ *    que su columna en el recorrido del mes va a estar en cero aunque trabaje;
+ *  - nadie le puede ASIGNAR un lead, porque no hay a qué figura asignárselo.
+ *
+ * Y la parte que no era evidente desde ningún lado: una figura vinculada pero
+ * DESACTIVADA cuenta como no vinculada. Ahí estuvo trabado un closer días
+ * enteros.
  */
 export function CuentaSinVincular({ rol }: { rol: Rol }) {
   return (
-    <div className="aviso problema">
+    <div className="aviso atencion">
       <strong>Tu cuenta no está vinculada a ningún {rol === 'setter' ? 'setter' : 'closer'}.</strong>{' '}
-      Por eso todas las pantallas te aparecen vacías y los leads que cargues no te van a aparecer
-      después: el sistema no sabe cuáles son tuyos. No es un problema de datos y no se arregla
-      cargando más.{' '}
+      Podés cargar leads igual y los vas a ver, pero <strong>no se te van a contar</strong> en los
+      números del equipo, y nadie te puede asignar un lead porque no hay a qué figura asignártelo.{' '}
       Dirección lo resuelve en <strong>Configuración → El equipo</strong>, vinculando tu cuenta
-      ({NOMBRE_DE_ROL[rol]}) con tu figura comercial.{' '}
+      ({NOMBRE_DE_ROL[rol]}) con tu figura comercial. Si tu figura ya está vinculada pero{' '}
+      <strong>desactivada</strong>, hay que volver a activarla: desactivada, el sistema no la usa.{' '}
       <Link href="/configuracion" style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>
         Ir a Configuración →
       </Link>

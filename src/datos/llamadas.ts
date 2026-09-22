@@ -1,7 +1,7 @@
 import 'server-only'
 import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
-import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
+import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import type { TipoSesion, Resultado } from '@/dominio/resultados'
 
 /**
@@ -76,12 +76,11 @@ export async function listarLlamadas(
   filtros: FiltrosDeLlamada = {},
   limite = 200,
 ): Promise<Llamada[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const valores: unknown[] = []
   const condiciones: string[] = []
-  const alc = condicionDeAlcance(alcance, { closer: 'll.closer_id', setter: 'l.setter_id' }, 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'll.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 1)
+  valores.push(...alc.parametros)
   condiciones.push(alc.condicion)
 
   if (filtros.closerId !== undefined) { valores.push(filtros.closerId); condiciones.push(`ll.closer_id = $${valores.length}`) }

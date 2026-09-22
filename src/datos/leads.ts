@@ -2,7 +2,7 @@ import 'server-only'
 import type { PoolClient } from 'pg'
 import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
 import { clave, plegar, soloDigitos, colaDelTelefono, emailPlegado, oNulo } from '@/lib/texto'
-import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
+import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { anotar, type Cambio } from './cambios'
 import type { Resultado, Estado, TipoSesion } from '@/dominio/resultados'
 import type { NivelDeCalidad } from '@/dominio/calidad'
@@ -433,13 +433,12 @@ export async function listarLeads(
   filtros: FiltrosDeLead = {},
   limite = 300,
 ): Promise<LeadEnLista[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const condiciones = ['l.borrado_en is null']
   const valores: unknown[] = []
 
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, valores.length + 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, valores.length + 1)
+  valores.push(...alc.parametros)
   condiciones.push(alc.condicion)
 
   if (filtros.texto) {
@@ -592,15 +591,7 @@ export async function verLead(leadId: number): Promise<Lead | null> {
  * que se comprueba contra la base y no contra lo que llegó.
  */
 export async function puedeVerLead(leadId: number, alcance: Alcance): Promise<boolean> {
-  if (alcance.todo) {
-    return (await fila('select 1 from leads where id = $1 and borrado_en is null', [leadId])) !== null
-  }
-  if ('nada' in alcance) return false
-  const columna = 'setterId' in alcance ? 'setter_id' : 'closer_id'
-  const valor = 'setterId' in alcance ? alcance.setterId : alcance.closerId
-  return (await fila(
-    `select 1 from leads where id = $1 and ${columna} = $2 and borrado_en is null`, [leadId, valor],
-  )) !== null
+  return alcanzaAlLead(leadId, alcance, 'and borrado_en is null')
 }
 
 /** Exigirlo, para no repetir el mismo `if` en cada acción. */
@@ -715,11 +706,10 @@ export type LeadDeBaja = {
  * una apuesta.
  */
 export async function listarBorrados(alcance: Alcance, limite = 100): Promise<LeadDeBaja[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const valores: unknown[] = []
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 1)
+  valores.push(...alc.parametros)
   valores.push(limite)
 
   const f = await filas<Record<string, any>>(
@@ -752,11 +742,22 @@ export async function listarBorrados(alcance: Alcance, limite = 100): Promise<Le
 
 /** ¿Este usuario puede tocar este lead, aunque esté dado de baja? */
 export async function puedeVerLeadDeBaja(leadId: number, alcance: Alcance): Promise<boolean> {
-  if (alcance.todo) {
-    return (await fila('select 1 from leads where id = $1', [leadId])) !== null
-  }
-  if ('nada' in alcance) return false
-  const columna = 'setterId' in alcance ? 'setter_id' : 'closer_id'
-  const valor = 'setterId' in alcance ? alcance.setterId : alcance.closerId
-  return (await fila(`select 1 from leads where id = $1 and ${columna} = $2`, [leadId, valor])) !== null
+  return alcanzaAlLead(leadId, alcance, '')
+}
+
+/**
+ * Una sola forma de contestar «¿este lead le toca?».
+ *
+ * Usa la misma condición que las listas, así que nunca puede pasar que un lead
+ * aparezca en la lista de alguien y su ficha le conteste «no encontrado» —o al
+ * revés—. Eran dos escrituras distintas de la misma regla, y dos escrituras de
+ * la misma regla se separan el día que se toca una sola.
+ */
+async function alcanzaAlLead(leadId: number, alcance: Alcance, extra: string): Promise<boolean> {
+  const alc = condicionDeAlcance(
+    alcance, { closer: 'closer_id', setter: 'setter_id', creador: 'creado_por' }, 2)
+  return (await fila(
+    `select 1 from leads where id = $1 ${extra} and ${alc.condicion}`,
+    [leadId, ...alc.parametros],
+  )) !== null
 }

@@ -1,6 +1,6 @@
 import 'server-only'
 import { fila, filas } from '@/lib/db'
-import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
+import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { embudo, tasa, redondear, type Conteos, type Etapa } from '@/motor/embudo'
 import type { Rango } from '@/motor/periodos'
 import type { Resultado } from '@/dominio/resultados'
@@ -168,8 +168,8 @@ function donde(
   const valores: unknown[] = [rango.desde, rango.hasta]
   const condiciones = ['l.borrado_en is null', 'l.fecha_sesion between $1 and $2', ...extra]
 
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, valores.length + 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, valores.length + 1)
+  valores.push(...alc.parametros)
   condiciones.push(alc.condicion)
 
   for (const [campo, columna] of [
@@ -218,7 +218,6 @@ export async function metricas(
   filtros: FiltrosDeMetricas = {},
   monedaBase = 'USD',
 ): Promise<Metricas> {
-  if (sinEquipoAsignado(alcance)) return { medidas: vacio(monedaBase), etapas: embudo(CERO), rango }
 
   const d = donde(rango, alcance, filtros)
   const valores = [...d.valores, monedaBase]
@@ -321,8 +320,8 @@ async function dinero(
   const condiciones = ['m.borrado_en is null', 'l.borrado_en is null', 'm.fecha between $1 and $2']
   if (tabla === 'pagos') condiciones.push(`m.estado = 'cobrado'`)
 
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, valores.length + 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, valores.length + 1)
+  valores.push(...alc.parametros)
   condiciones.push(alc.condicion)
 
   for (const [campo, columna] of [
@@ -399,7 +398,6 @@ export async function apertura(
   filtros: FiltrosDeMetricas = {},
   monedaBase = 'USD',
 ): Promise<Apertura[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const union = {
     closer: { join: 'left join closers t on t.id = l.closer_id', id: 't.id', nombre: 't.nombre', sin: 'Sin closer' },
@@ -459,7 +457,6 @@ export async function porDia(
   alcance: Alcance,
   filtros: FiltrosDeMetricas = {},
 ): Promise<Dia[]> {
-  if (sinEquipoAsignado(alcance)) return []
   const d = donde(rango, alcance, filtros)
   const f = await filas<Record<string, any>>(
     `select l.fecha_sesion as dia,
@@ -524,10 +521,9 @@ export type SenaAbierta = {
 }
 
 export async function senasAbiertas(alcance: Alcance, hoy: string): Promise<SenaAbierta[]> {
-  if (sinEquipoAsignado(alcance)) return []
   const valores: unknown[] = [hoy]
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 2)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 2)
+  valores.push(...alc.parametros)
 
   const f = await filas<Record<string, any>>(
     `select l.id, l.nombre, c.nombre as closer, s.importe, s.moneda,
@@ -557,10 +553,9 @@ export async function senasAbiertas(alcance: Alcance, hoy: string): Promise<Sena
  * cree que está.
  */
 export async function sinFechaDeReunion(alcance: Alcance): Promise<number> {
-  if (sinEquipoAsignado(alcance)) return 0
   const valores: unknown[] = []
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 1)
+  valores.push(...alc.parametros)
 
   const f = await fila<{ n: number }>(
     `select count(*)::int as n from leads l
@@ -575,10 +570,9 @@ export async function sinFechaDeReunion(alcance: Alcance): Promise<number> {
 export async function sinCargar(alcance: Alcance, hoy: string, limite = 50): Promise<{
   leadId: number; lead: string; closer: string | null; fecha: string; dias: number
 }[]> {
-  if (sinEquipoAsignado(alcance)) return []
   const valores: unknown[] = [hoy]
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 2)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 2)
+  valores.push(...alc.parametros)
   valores.push(limite)
 
   const f = await filas<Record<string, any>>(
@@ -619,10 +613,9 @@ export type PlataFantasma = {
 }
 
 export async function plataFantasma(alcance: Alcance, limite = 20): Promise<PlataFantasma[]> {
-  if (sinEquipoAsignado(alcance)) return []
   const valores: unknown[] = []
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
-  if (alc.parametro !== null) valores.push(alc.parametro)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 1)
+  valores.push(...alc.parametros)
   valores.push(limite)
 
   const f = await filas<Record<string, any>>(
@@ -691,7 +684,6 @@ export async function recorridoPorCloser(
   hoy: string,
   monedaBase = 'USD',
 ): Promise<RecorridoDeCloser[]> {
-  if (sinEquipoAsignado(alcance)) return []
 
   const d = donde(rango, alcance, {})
   const reuniones = await filas<Record<string, any>>(
@@ -710,9 +702,9 @@ export async function recorridoPorCloser(
 
   // La plata va por su propia fecha, así que es otra consulta: la reunión pudo
   // ser en agosto y la venta en septiembre.
-  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 4)
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 4)
   const valoresPlata: unknown[] = [rango.desde, rango.hasta, monedaBase]
-  if (alc.parametro !== null) valoresPlata.push(alc.parametro)
+  valoresPlata.push(...alc.parametros)
 
   const [ventas, cobros] = await Promise.all([
     filas<Record<string, any>>(

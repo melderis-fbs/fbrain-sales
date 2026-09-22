@@ -15,21 +15,25 @@ import { PUEDE, type Permiso } from '@/dominio/roles'
 export type Alcance =
   /** Ve la operación entera. */
   | { todo: true }
-  /** Un closer: sólo las oportunidades asignadas a él. */
-  | { todo: false; closerId: number }
-  /** Un setter: sólo los leads que agendó. */
-  | { todo: false; setterId: number }
-  /** Un usuario sin closer ni setter asignado: no ve ninguno. */
-  | { todo: false; nada: true }
+  /** Un closer: sus leads asignados, más lo que haya cargado él. */
+  | { todo: false; usuarioId: number; closerId: number }
+  /** Un setter: los leads que agendó, más lo que haya cargado él. */
+  | { todo: false; usuarioId: number; setterId: number }
+  /** Sin figura comercial vinculada: ve lo que cargó, y nada más. */
+  | { todo: false; usuarioId: number; nada: true }
 
 export function alcanceDe(usuario: Usuario): Alcance {
   if (PUEDE[usuario.rol].verTodo) return { todo: true }
-  if (usuario.rol === 'closer' && usuario.closerId !== null) return { todo: false, closerId: usuario.closerId }
-  if (usuario.rol === 'setter' && usuario.setterId !== null) return { todo: false, setterId: usuario.setterId }
-  return { todo: false, nada: true }
+  const usuarioId = usuario.id
+  if (usuario.rol === 'closer' && usuario.closerId !== null) {
+    return { todo: false, usuarioId, closerId: usuario.closerId }
+  }
+  if (usuario.rol === 'setter' && usuario.setterId !== null) {
+    return { todo: false, usuarioId, setterId: usuario.setterId }
+  }
+  return { todo: false, usuarioId, nada: true }
 }
 
-/** Sin closer ni setter asignado no se ve nada. Vacío por permiso, no por falta de datos. */
 export function sinEquipoAsignado(alcance: Alcance): boolean {
   return !alcance.todo && 'nada' in alcance
 }
@@ -45,37 +49,43 @@ export function exigir(usuario: Usuario, permiso: Permiso): void {
 }
 
 /**
- * La condición SQL del alcance, con el valor aparte.
+ * La condición SQL del alcance, con los valores aparte.
  *
- * Devuelve el fragmento y el parámetro por separado para que el valor nunca se
- * pegue a la consulta a mano. `false` cuando no hay equipo asignado: es más
- * claro que inventar un id que no existe, y no trae nada igual.
+ * Devuelve el fragmento y los parámetros por separado para que ningún valor se
+ * pegue a la consulta a mano.
+ *
+ * La regla de fondo, y la que evita el problema que tuvo bloqueado a un closer
+ * días enteros: **lo que cargó una persona lo ve esa persona, siempre**. Da
+ * igual si su cuenta tiene figura comercial vinculada, si la figura quedó
+ * desactivada o si el lead terminó asignado a otro. Un lead que se guarda y
+ * desaparece de la pantalla de quien lo cargó no se lee como «quedó mal
+ * asignado»: se lee como «esto no anda», y lo siguiente que pasa es que se
+ * carga de nuevo y quedan duplicados que nadie ve.
+ *
+ * Arriba de eso se suma lo suyo por figura: un closer ve además todo lo que le
+ * asignaron, un setter todo lo que agendó.
  */
 export function condicionDeAlcance(
   alcance: Alcance,
-  columnas: { closer: string; setter: string },
+  columnas: { closer: string; setter: string; creador: string },
   siguienteParametro: number,
-): { condicion: string; parametro: number | null } {
-  if (alcance.todo) return { condicion: 'true', parametro: null }
-  if ('nada' in alcance) return { condicion: 'false', parametro: null }
+): { condicion: string; parametros: number[] } {
+  if (alcance.todo) return { condicion: 'true', parametros: [] }
+
+  const parametros: number[] = [alcance.usuarioId]
+  const partes = [`${columnas.creador} = $${siguienteParametro}`]
+
   if ('closerId' in alcance) {
-    return { condicion: `${columnas.closer} = $${siguienteParametro}`, parametro: alcance.closerId }
+    parametros.push(alcance.closerId)
+    partes.push(`${columnas.closer} = $${siguienteParametro + 1}`)
+  } else if ('setterId' in alcance) {
+    parametros.push(alcance.setterId)
+    partes.push(`${columnas.setter} = $${siguienteParametro + 1}`)
   }
-  return { condicion: `${columnas.setter} = $${siguienteParametro}`, parametro: alcance.setterId }
+
+  return { condicion: `(${partes.join(' or ')})`, parametros }
 }
 
-/**
- * De quién es el lead que carga alguien que sólo ve lo suyo.
- *
- * Un closer ve los leads que tiene asignados y un setter los que agendó. Si
- * cargan uno sin ponerse, el lead queda sin dueño: se guarda bien, pero
- * desaparece —no está en su lista y su ficha le contesta «no encontrado»—. Del
- * otro lado del teclado eso no se lee como «quedó mal asignado»: se lee como
- * «no puedo crear leads», que es exactamente el reporte que llegó.
- *
- * Sólo completa lo que quedó vacío. Un setter que agenda para otro closer sigue
- * pudiendo elegirlo: el lead queda a nombre de los dos y los dos lo ven.
- */
 export function asignarAQuienCarga<T extends { closerId?: number | null; setterId?: number | null }>(
   alcance: Alcance, lead: T,
 ): T {

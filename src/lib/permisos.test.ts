@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { asignarAQuienCarga, alcanceDe, sinEquipoAsignado, type Alcance } from './permisos'
 import type { Usuario } from './auth'
 
-const CLOSER: Alcance = { todo: false, closerId: 7 }
-const SETTER: Alcance = { todo: false, setterId: 3 }
+const CLOSER: Alcance = { todo: false, usuarioId: 99, closerId: 7 }
+const SETTER: Alcance = { todo: false, usuarioId: 99, setterId: 3 }
 const TODO: Alcance = { todo: true }
-const NADIE: Alcance = { todo: false, nada: true }
+const NADIE: Alcance = { todo: false, usuarioId: 99, nada: true }
 
 describe('de quién es el lead que alguien carga', () => {
   it('el que carga un closer es suyo, aunque no se elija a sí mismo', () => {

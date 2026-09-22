@@ -311,16 +311,16 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     const deKevin = await alta('Lead de Kevin')
     const deBraian = await alta('Lead de Braian', { closerId: closerBraian })
 
-    const suyos = await leads.listarLeads({ todo: false, closerId: closerKevin })
+    const suyos = await leads.listarLeads({ todo: false, usuarioId: 0, closerId: closerKevin })
     expect(suyos.map((l) => l.nombre)).toEqual(['Lead de Kevin'])
 
-    expect(await leads.puedeVerLead(deBraian, { todo: false, closerId: closerKevin })).toBe(false)
+    expect(await leads.puedeVerLead(deBraian, { todo: false, usuarioId: 0, closerId: closerKevin })).toBe(false)
     expect(await leads.puedeVerLead(deKevin, { todo: true })).toBe(true)
 
     // Sin closer ni setter asignado no se ve nada: vacío por permiso, no por
     // falta de datos.
-    expect(await leads.listarLeads({ todo: false, nada: true })).toEqual([])
-    expect((await metricas.metricas(rango, { todo: false, nada: true })).medidas.agendadas).toBe(0)
+    expect(await leads.listarLeads({ todo: false, usuarioId: 0, nada: true })).toEqual([])
+    expect((await metricas.metricas(rango, { todo: false, usuarioId: 0, nada: true })).medidas.agendadas).toBe(0)
   })
 
   it('una escritura que no toca las filas que declaró, rompe', async () => {
@@ -775,12 +775,12 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     // desaparecía de su lista y la ficha le contestaba «no encontrado».
     const permisos = await import('@/lib/permisos')
     const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
-      { todo: false, closerId: closerKevin },
+      { todo: false, usuarioId: 0, closerId: closerKevin },
       { nombre: 'Histórico de Kevin', fechaSesion: '2026-09-03' },
     )
     const id = await leads.crearLead(suyo, usuarioId)
 
-    const comoKevin = { todo: false, closerId: closerKevin } as const
+    const comoKevin = { todo: false, usuarioId: 0, closerId: closerKevin } as const
     expect(await leads.puedeVerLead(id, comoKevin)).toBe(true)
     expect((await leads.listarLeads(comoKevin)).map((l) => l.nombre)).toContain('Histórico de Kevin')
 
@@ -791,12 +791,40 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await metricas.sinCargar(comoKevin, '2026-09-15')).toHaveLength(1)
   })
 
-  it('un lead sin dueño no lo ve el closer que lo cargó', async () => {
-    // El error que había, escrito como prueba para que no vuelva por otro lado.
-    const id = await leads.crearLead({ nombre: 'Sin Dueño', fechaSesion: '2026-09-03' }, usuarioId)
-    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
-    // Dirección sí lo ve: no se perdió, quedó sin asignar.
-    expect(await leads.puedeVerLead(id, TODO)).toBe(true)
+  it('el que carga un lead lo ve, aunque su cuenta no tenga figura vinculada', async () => {
+    // Es la regla que evita el problema que tuvo bloqueado a un closer días
+    // enteros: su figura estaba desactivada, el lead se guardaba y desaparecía
+    // de su pantalla. Del otro lado eso se lee «esto no anda», y lo siguiente
+    // que pasa es que se carga de nuevo y quedan duplicados que nadie ve.
+    const suCuenta = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email,nombre,rol,clave_hash) values ('sin@figura.com','Sin Figura','closer','x') returning id`)
+    const id = await leads.crearLead({ nombre: 'Cargado a Ciegas', fechaSesion: '2026-09-03' }, suCuenta.id)
+
+    const comoEl = { todo: false, usuarioId: suCuenta.id, nada: true } as const
+    expect(await leads.puedeVerLead(id, comoEl)).toBe(true)
+    expect((await leads.listarLeads(comoEl)).map((l) => l.nombre)).toEqual(['Cargado a Ciegas'])
+    // Y entra a sus números, así no carga contra una pantalla en cero.
+    expect((await metricas.metricas(rango, comoEl)).medidas.agendadas).toBe(1)
+
+    // Pero sigue sin ver lo que no es suyo.
+    await leads.crearLead({ nombre: 'De Otro', closerId: closerBraian, fechaSesion: '2026-09-04' }, usuarioId)
+    expect((await leads.listarLeads(comoEl)).map((l) => l.nombre)).toEqual(['Cargado a Ciegas'])
+  })
+
+  it('un closer ve lo que le asignaron Y lo que cargó él, y nada más', async () => {
+    const cuentaKevin = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email,nombre,rol,clave_hash) values ('k@k.com','Kevin','closer','x') returning id`)
+
+    // Se lo asignó dirección: no lo cargó él.
+    await leads.crearLead({ nombre: 'Me lo asignaron', closerId: closerKevin, fechaSesion: '2026-09-05' }, usuarioId)
+    // Lo cargó él y quedó para otro closer.
+    await leads.crearLead({ nombre: 'Lo cargué para Braian', closerId: closerBraian, fechaSesion: '2026-09-06' }, cuentaKevin.id)
+    // Ni de él ni cargado por él.
+    await leads.crearLead({ nombre: 'Ajeno', closerId: closerBraian, fechaSesion: '2026-09-07' }, usuarioId)
+
+    const comoKevin = { todo: false, usuarioId: cuentaKevin.id, closerId: closerKevin } as const
+    expect((await leads.listarLeads(comoKevin)).map((l) => l.nombre).sort())
+      .toEqual(['Lo cargué para Braian', 'Me lo asignaron'])
   })
 
   it('el setter que carga un lead para otro closer lo sigue viendo', async () => {
@@ -804,15 +832,15 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
       `insert into setters (nombre, nombre_pleg) values ('Fabricio','fabricio') returning id`)
     const permisos = await import('@/lib/permisos')
     const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
-      { todo: false, setterId: s.id },
+      { todo: false, usuarioId: 0, setterId: s.id },
       { nombre: 'Agendado por Fabricio', closerId: closerBraian, fechaSesion: '2026-09-03' },
     )
     const id = await leads.crearLead(suyo, usuarioId)
 
-    expect(await leads.puedeVerLead(id, { todo: false, setterId: s.id })).toBe(true)
-    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerBraian })).toBe(true)
+    expect(await leads.puedeVerLead(id, { todo: false, usuarioId: 0, setterId: s.id })).toBe(true)
+    expect(await leads.puedeVerLead(id, { todo: false, usuarioId: 0, closerId: closerBraian })).toBe(true)
     // Y no el closer al que no se lo asignaron.
-    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
+    expect(await leads.puedeVerLead(id, { todo: false, usuarioId: 0, closerId: closerKevin })).toBe(false)
   })
 
   it('la migración devuelve a su dueño los leads que quedaron sueltos', async () => {
@@ -828,7 +856,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
     const suelto = await leads.crearLead({ nombre: 'Suelto', fechaSesion: '2026-09-03' }, kevin.id)
     const deDireccion = await leads.crearLead({ nombre: 'De Dirección' }, usuarioId)
-    const comoKevin = { todo: false, closerId: closerKevin } as const
+    const comoKevin = { todo: false, usuarioId: 0, closerId: closerKevin } as const
     expect(await leads.puedeVerLead(suelto, comoKevin)).toBe(false)
 
     await db.escribir(
@@ -972,7 +1000,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(m.cashCollected).toBe(2000)
 
     // Con dueño: si no, el closer que los importó no los volvería a ver.
-    expect(await leads.listarLeads({ todo: false, closerId: closerKevin })).toHaveLength(3)
+    expect(await leads.listarLeads({ todo: false, usuarioId: 0, closerId: closerKevin })).toHaveLength(3)
   })
 
   it('volver a pegar la misma planilla no duplica nada', async () => {
