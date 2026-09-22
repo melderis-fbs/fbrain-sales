@@ -38,7 +38,8 @@ describe('permisos', () => {
   it('todos los roles declaran todos los permisos', () => {
     for (const rol of ROLES) {
       expect(Object.keys(PUEDE[rol]).sort()).toEqual(
-        ['configurar', 'cargarResultado', 'editarDinero', 'editarLead', 'reasignarCloser', 'verDinero', 'verTodo'].sort(),
+        ['configurar', 'cargarResultado', 'editarDinero', 'editarLead', 'borrarLead',
+         'restaurarLead', 'reasignarCloser', 'verDinero', 'verTodo'].sort(),
       )
     }
   })
