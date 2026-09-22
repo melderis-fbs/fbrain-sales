@@ -769,6 +769,52 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await metricas.plataFantasma(TODO)).toEqual([])
   })
 
+  it('el lead que carga un closer le queda a él, y lo puede volver a abrir', async () => {
+    // El reporte fue «no puedo crear leads para cargar mi histórico». El lead
+    // se creaba bien: quedaba sin closer, y un closer sólo ve lo suyo, así que
+    // desaparecía de su lista y la ficha le contestaba «no encontrado».
+    const permisos = await import('@/lib/permisos')
+    const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
+      { todo: false, closerId: closerKevin },
+      { nombre: 'Histórico de Kevin', fechaSesion: '2026-09-03' },
+    )
+    const id = await leads.crearLead(suyo, usuarioId)
+
+    const comoKevin = { todo: false, closerId: closerKevin } as const
+    expect(await leads.puedeVerLead(id, comoKevin)).toBe(true)
+    expect((await leads.listarLeads(comoKevin)).map((l) => l.nombre)).toContain('Histórico de Kevin')
+
+    // Y entra a sus números, que es para lo que lo está cargando.
+    expect((await metricas.metricas(rango, comoKevin)).medidas.agendadas).toBe(1)
+    // Sin resultado cargado, le aparece en «reuniones que pasaron sin cargar»:
+    // es justo el camino para completar un histórico.
+    expect(await metricas.sinCargar(comoKevin, '2026-09-15')).toHaveLength(1)
+  })
+
+  it('un lead sin dueño no lo ve el closer que lo cargó', async () => {
+    // El error que había, escrito como prueba para que no vuelva por otro lado.
+    const id = await leads.crearLead({ nombre: 'Sin Dueño', fechaSesion: '2026-09-03' }, usuarioId)
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
+    // Dirección sí lo ve: no se perdió, quedó sin asignar.
+    expect(await leads.puedeVerLead(id, TODO)).toBe(true)
+  })
+
+  it('el setter que carga un lead para otro closer lo sigue viendo', async () => {
+    const s = await db.escribirDevolviendo<{ id: number }>(
+      `insert into setters (nombre, nombre_pleg) values ('Fabricio','fabricio') returning id`)
+    const permisos = await import('@/lib/permisos')
+    const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
+      { todo: false, setterId: s.id },
+      { nombre: 'Agendado por Fabricio', closerId: closerBraian, fechaSesion: '2026-09-03' },
+    )
+    const id = await leads.crearLead(suyo, usuarioId)
+
+    expect(await leads.puedeVerLead(id, { todo: false, setterId: s.id })).toBe(true)
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerBraian })).toBe(true)
+    // Y no el closer al que no se lo asignaron.
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

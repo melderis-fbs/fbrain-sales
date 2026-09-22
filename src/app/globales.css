@@ -225,6 +225,15 @@ input:focus, select:focus, textarea:focus {
 textarea { min-height: 76px; resize: vertical; }
 .campo { margin-bottom: 10px; }
 .campo .nota { font-size: 11px; color: var(--gris-claro); margin-top: 3px; }
+
+/* El campo que no se elige: se ve como un campo, apagado. Esconderlo dejaría la
+ * duda de a quién le quedó el lead; así la contesta. */
+.campo .fijo {
+  padding: 7px 9px; font-size: 13.5px; font-weight: 600;
+  border: 1px solid var(--borde); border-radius: var(--radio-chico);
+  background: var(--gris-fondo); color: var(--tinta);
+}
+.campo .fijo .sindato { font-size: 12.5px; }
 input[type="checkbox"], input[type="radio"] { width: auto; }
 
 button, .boton {

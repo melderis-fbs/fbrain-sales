@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, exigir, puede } from '@/lib/permisos'
+import { alcanceDe, asignarAQuienCarga, exigir, puede } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
+  puedeVerLead,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
 import { cargarResultado, registrarPago, anularVenta, anularSena } from '@/datos/resultado'
@@ -47,7 +48,9 @@ function refrescar(leadId: number) {
 export type EstadoDeAlta =
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'duplicados'; mensaje: string
-      duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string }[] }
+      duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string
+                    /** Si el que pregunta lo puede abrir. Un closer no ve el lead de otro closer. */
+                    tuyo: boolean }[] }
   | null
 
 /**
@@ -85,27 +88,44 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   }
   if (lead.nombre === '') return { tipo: 'error', mensaje: 'El lead necesita un nombre.' }
 
+  // El lead que carga un closer es suyo; el que carga un setter, suyo. Sin
+  // esto quedaba sin dueño y desaparecía de su pantalla — ver `asignarAQuienCarga`.
+  const alcance = alcanceDe(usuario)
+  const suyo = asignarAQuienCarga(alcance, lead)
+
   if (datos.get('confirmado') !== '1') {
-    const encontrados = await posiblesDuplicados(lead)
+    const encontrados = await posiblesDuplicados(suyo)
     if (encontrados.length > 0) {
+      // Los duplicados se buscan en TODA la operación —si no, dos closers
+      // cargan dos fichas de la misma persona— pero el que pregunta puede no
+      // tener acceso a la que encontró. Ofrecerle un enlace que le va a dar
+      // «no encontrado» es peor que no ofrecerle nada.
+      const conAcceso = await Promise.all(
+        encontrados.map((d) => puedeVerLead(d.id, alcance)),
+      )
       return {
         tipo: 'duplicados',
         mensaje: 'Puede que esta persona ya esté cargada. Mirá antes de crear otra ficha.',
-        duplicados: encontrados.map((d) => ({
+        duplicados: encontrados.map((d, i) => ({
           id: d.id,
           nombre: d.nombre,
           porque: d.porque === 'email' ? 'mismo email'
             : d.porque === 'telefono' ? 'mismo teléfono' : 'nombre parecido',
           cerrado: d.resultado === 'perdida' || d.resultado === 'no_calificado',
           resultado: NOMBRE_DE_RESULTADO[d.resultado] ?? d.resultado,
+          tuyo: conAcceso[i] ?? false,
         })),
       }
     }
   }
 
-  const id = await crearLead(lead, usuario.id)
+  const id = await crearLead(suyo, usuario.id)
   revalidatePath('/leads')
   revalidatePath('/tracker')
+
+  // Si aun así quedó fuera de su alcance —dirección puede asignárselo a
+  // cualquiera— no lo mandamos a una ficha que le va a dar «no encontrado».
+  if (!(await puedeVerLead(id, alcance))) redirect('/leads')
   redirect(`/leads/${id}`)
 }
 

@@ -554,6 +554,61 @@ await paso('un caso de éxito se carga y queda listo para mandar', async () => {
   await foto('casos')
 })
 
+await paso('un closer entra con su cuenta y carga su histórico', async () => {
+  // El reporte fue «no puedo crear leads para cargar mi histórico». El lead se
+  // creaba, pero quedaba sin closer: desaparecía de su lista y su ficha le
+  // contestaba «no encontrado».
+  await p.goto(`${RAIZ}/configuracion`)
+  const alta = '.contenido .tarjeta:has-text("Dar de alta a alguien")'
+  await p.fill(`${alta} #nombre`, `Nadia ${marca}`)
+  await p.selectOption(`${alta} #funcion`, 'closer')
+  await p.check(`${alta} input[name=entra]`)
+  await p.fill(`${alta} #email`, `nadia${marca}@fbs.com`)
+  await p.fill(`${alta} #clave`, 'clave12345')
+  await p.click(`${alta} button[type=submit]`)
+  await esperar()
+
+  // Salir es el único botón de la barra lateral: por eso todo lo demás del
+  // recorrido va dentro de `.contenido`.
+  await p.locator('.lateral .pie button[type=submit]').click()
+  await p.waitForURL('**/login')
+  await p.fill('#email', `nadia${marca}@fbs.com`)
+  await p.fill('#clave', 'clave12345')
+  await p.click('form:has(#clave) button[type=submit]')
+  await p.waitForURL('**/tracker')
+  comprobar(await p.locator('.contenido .aviso.problema:has-text("no está vinculada")').count() === 0,
+            'su cuenta quedó vinculada a su figura de closer')
+
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  comprobar((await p.locator('.contenido .campo:has(label[for=closerId]) .fijo').textContent() ?? '')
+              .includes(`Nadia ${marca}`),
+            'el lead que carga es suyo: el closer no se elige, es él')
+
+  await p.fill('.contenido #nombre', `Cliente Histórico ${marca}`)
+  await p.fill('.contenido #fechaSesion', '2026-08-04')
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/, { timeout: 10000 })
+  comprobar(/leads\/\d+/.test(p.url()),
+            'después de crearlo abre su ficha, y no un «no encontrado»')
+  comprobar((await p.locator('.contenido .cabecera-ficha').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'con el lead que acaba de cargar')
+
+  await p.goto(`${RAIZ}/leads`)
+  comprobar((await p.locator('.contenido table').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'y le aparece en su lista de leads')
+
+  // Y vuelve a entrar dirección, que es con quien terminó todo lo demás.
+  await p.locator('.lateral .pie button[type=submit]').click()
+  await p.waitForURL('**/login')
+  await p.fill('#email', 'admin@foundersbs.com')
+  await p.fill('#clave', 'clave123')
+  await p.click('form:has(#clave) button[type=submit]')
+  await p.waitForURL('**/dashboard')
+  await foto('closer-carga-historico')
+})
+
 await b.close()
 
 console.log(`\n${'─'.repeat(60)}`)

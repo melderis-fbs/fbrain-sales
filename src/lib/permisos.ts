@@ -63,3 +63,23 @@ export function condicionDeAlcance(
   }
   return { condicion: `${columnas.setter} = $${siguienteParametro}`, parametro: alcance.setterId }
 }
+
+/**
+ * De quién es el lead que carga alguien que sólo ve lo suyo.
+ *
+ * Un closer ve los leads que tiene asignados y un setter los que agendó. Si
+ * cargan uno sin ponerse, el lead queda sin dueño: se guarda bien, pero
+ * desaparece —no está en su lista y su ficha le contesta «no encontrado»—. Del
+ * otro lado del teclado eso no se lee como «quedó mal asignado»: se lee como
+ * «no puedo crear leads», que es exactamente el reporte que llegó.
+ *
+ * Sólo completa lo que quedó vacío. Un setter que agenda para otro closer sigue
+ * pudiendo elegirlo: el lead queda a nombre de los dos y los dos lo ven.
+ */
+export function asignarAQuienCarga<T extends { closerId?: number | null; setterId?: number | null }>(
+  alcance: Alcance, lead: T,
+): T {
+  if (alcance.todo || 'nada' in alcance) return lead
+  if ('closerId' in alcance) return { ...lead, closerId: lead.closerId ?? alcance.closerId }
+  return { ...lead, setterId: lead.setterId ?? alcance.setterId }
+}
