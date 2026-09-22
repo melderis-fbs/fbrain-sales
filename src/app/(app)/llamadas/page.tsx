@@ -34,7 +34,14 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
   const hoy = hoyEn()
 
   const periodo = (q.periodo ?? 'mes') as NombreDePeriodo
-  const r = q.dia ? { desde: q.dia, hasta: q.dia, etiqueta: fechaCorta(q.dia) } : rango(periodo, hoy)
+  // Un rango a mano gana sobre el período: es lo que hace falta para cargar un
+  // histórico, y para que «Verlas →» muestre reuniones atrasadas de cualquier
+  // fecha en vez de saltar a un período fijo que puede no contenerlas.
+  const aMano = q.desde ? { desde: q.desde, hasta: q.hasta ?? hoy } : null
+  const r = aMano
+    ? { ...aMano, etiqueta: `${fechaCorta(aMano.desde)} a ${fechaCorta(aMano.hasta)}` }
+    : q.dia ? { desde: q.dia, hasta: q.dia, etiqueta: fechaCorta(q.dia) }
+    : rango(periodo, hoy)
   const filtros = { closerId: q.closer ? Number(q.closer) : undefined }
 
   const [datos, leads, atrasadas, cats] = await Promise.all([
@@ -55,6 +62,8 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
       && l.fechaSesion !== null && l.fechaSesion <= hoy,
   )
   const deOtrosDias = atrasadas.filter((a) => !paraCargar.some((l) => l.id === a.leadId))
+  const masVieja = deOtrosDias.reduce<string | null>(
+    (v, x) => (v === null || x.fecha < v ? x.fecha : v), null)
 
   const conNota = leads.filter((l) => l.notaLlamada !== null)
   const promedio = conNota.length === 0 ? null
@@ -78,8 +87,9 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
       <div className="entre">
         <div className="chips">
           {PERIODOS.map((x) => (
-            <Link key={x.clave} href={con({ periodo: x.clave, dia: undefined })}
-                  className={!q.dia && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
+            <Link key={x.clave}
+                  href={con({ periodo: x.clave, dia: undefined, desde: undefined, hasta: undefined })}
+                  className={!q.dia && !aMano && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
           ))}
         </div>
         <form method="get" className="fila">
@@ -103,7 +113,8 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
         <div className="aviso atencion">
           Fuera de este período hay <strong>{deOtrosDias.length}</strong>{' '}
           {deOtrosDias.length === 1 ? 'reunión' : 'reuniones'} sin cargar.{' '}
-          <Link href={con({ periodo: 'anio', dia: undefined })}
+          <Link href={con({ dia: undefined, periodo: undefined, resultado: undefined,
+                            desde: masVieja ?? undefined, hasta: hoy })}
                 style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>Verlas →</Link>
         </div>
       ) : null}

@@ -647,6 +647,299 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(0)
   })
 
+  it('corregir el resultado NO saca la venta: hay que anularla, y entonces sí sale del mes', async () => {
+    // Ésta es la prueba de un error que estuvo vivo: cargar una venta por
+    // equivocación y después corregir el resultado a «perdida» sacaba el lead
+    // del embudo pero dejaba la plata contando en la facturación del mes, para
+    // siempre y sin forma de arreglarlo.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.registrarPago(id, { importe: 2000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+
+    await resultado.cargarResultado(id, { resultado: 'perdida', motivoPerdida: 'precio' }, usuarioId)
+
+    // El embudo ya no la cuenta como venta...
+    const conError = (await metricas.metricas(rango, TODO)).medidas
+    expect(conError.ventas).toBe(0)
+    // ...pero la plata sigue ahí. Esto es el error, y el tablero lo sabe decir.
+    expect(conError.facturacion).toBe(5000)
+    expect(conError.cashCollected).toBe(2000)
+
+    const [fantasma] = await metricas.plataFantasma(TODO)
+    expect(fantasma?.lead).toBe('María')
+    expect(fantasma?.que).toBe('venta')
+    expect(fantasma?.importe).toBe(5000)
+
+    await resultado.anularVenta(id, usuarioId, 'Se cargó en el lead equivocado')
+
+    const limpio = (await metricas.metricas(rango, TODO)).medidas
+    expect(limpio.facturacion).toBe(0)
+    // El cobro se va con la venta: si no, el cash seguiría contando plata de
+    // algo que ya no existe.
+    expect(limpio.cashCollected).toBe(0)
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+
+    // Y no se borró: queda quién la anuló y por qué.
+    const anulada = (await cambios.historialDelLead(id)).find((h) => h.campo === 'venta: anulada')
+    expect(anulada?.anterior).toBe('USD 5000')
+    expect(anulada?.motivo).toBe('Se cargó en el lead equivocado')
+  })
+
+  it('anular una venta sin motivo no se hace', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await expect(resultado.anularVenta(id, usuarioId, '  ')).rejects.toThrow(/por qué/i)
+    expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(5000)
+  })
+
+  it('anular la venta de un lead que todavía dice «venta» lo deja pendiente, no mintiendo', async () => {
+    // Un lead que dice «Venta» sin venta es el mismo error dado vuelta.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await resultado.anularVenta(id, usuarioId, 'El cliente se arrepintió antes de pagar')
+
+    const lead = await leads.verLead(id)
+    expect(lead?.resultado).toBe('pendiente')
+    expect(lead?.venta).toBe(null)
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+  })
+
+  it('anular la venta devuelve la seña que se había convertido en ella', async () => {
+    // La seña se había convertido y su importe era el primer pago de la venta.
+    // Si la venta se anula y la seña no vuelve, esa plata desaparece de los dos
+    // lados: no era una venta y tampoco un compromiso abierto.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
+
+    await resultado.anularVenta(id, usuarioId, 'Se cargó en el lead equivocado')
+
+    const abiertas = await metricas.senasAbiertas(TODO, '2026-09-15')
+    expect(abiertas.map((s) => s.importe)).toEqual([1000])
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.facturacion).toBe(0)
+    expect(m.cashCollected).toBe(0)
+  })
+
+  it('una seña ya convertida no se anula por su lado: lo que se anula es la venta', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    await expect(resultado.anularSena(id, usuarioId, 'Error')).rejects.toThrow(/venta/i)
+  })
+
+  it('una seña en un lead perdido es plata que no cuadra, y se puede anular', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    // Una seña con el lead abierto es normal: no es un descuadre.
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+
+    await resultado.cargarResultado(id, { resultado: 'perdida', motivoPerdida: 'precio' }, usuarioId)
+    const [fantasma] = await metricas.plataFantasma(TODO)
+    expect(fantasma?.que).toBe('sena')
+
+    await resultado.anularSena(id, usuarioId, 'Nunca llegó a transferir')
+    expect(await metricas.senasAbiertas(TODO, '2026-09-15')).toEqual([])
+    expect(await metricas.plataFantasma(TODO)).toEqual([])
+  })
+
+  it('el lead que carga un closer le queda a él, y lo puede volver a abrir', async () => {
+    // El reporte fue «no puedo crear leads para cargar mi histórico». El lead
+    // se creaba bien: quedaba sin closer, y un closer sólo ve lo suyo, así que
+    // desaparecía de su lista y la ficha le contestaba «no encontrado».
+    const permisos = await import('@/lib/permisos')
+    const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
+      { todo: false, closerId: closerKevin },
+      { nombre: 'Histórico de Kevin', fechaSesion: '2026-09-03' },
+    )
+    const id = await leads.crearLead(suyo, usuarioId)
+
+    const comoKevin = { todo: false, closerId: closerKevin } as const
+    expect(await leads.puedeVerLead(id, comoKevin)).toBe(true)
+    expect((await leads.listarLeads(comoKevin)).map((l) => l.nombre)).toContain('Histórico de Kevin')
+
+    // Y entra a sus números, que es para lo que lo está cargando.
+    expect((await metricas.metricas(rango, comoKevin)).medidas.agendadas).toBe(1)
+    // Sin resultado cargado, le aparece en «reuniones que pasaron sin cargar»:
+    // es justo el camino para completar un histórico.
+    expect(await metricas.sinCargar(comoKevin, '2026-09-15')).toHaveLength(1)
+  })
+
+  it('un lead sin dueño no lo ve el closer que lo cargó', async () => {
+    // El error que había, escrito como prueba para que no vuelva por otro lado.
+    const id = await leads.crearLead({ nombre: 'Sin Dueño', fechaSesion: '2026-09-03' }, usuarioId)
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
+    // Dirección sí lo ve: no se perdió, quedó sin asignar.
+    expect(await leads.puedeVerLead(id, TODO)).toBe(true)
+  })
+
+  it('el setter que carga un lead para otro closer lo sigue viendo', async () => {
+    const s = await db.escribirDevolviendo<{ id: number }>(
+      `insert into setters (nombre, nombre_pleg) values ('Fabricio','fabricio') returning id`)
+    const permisos = await import('@/lib/permisos')
+    const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
+      { todo: false, setterId: s.id },
+      { nombre: 'Agendado por Fabricio', closerId: closerBraian, fechaSesion: '2026-09-03' },
+    )
+    const id = await leads.crearLead(suyo, usuarioId)
+
+    expect(await leads.puedeVerLead(id, { todo: false, setterId: s.id })).toBe(true)
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerBraian })).toBe(true)
+    // Y no el closer al que no se lo asignaron.
+    expect(await leads.puedeVerLead(id, { todo: false, closerId: closerKevin })).toBe(false)
+  })
+
+  it('la migración devuelve a su dueño los leads que quedaron sueltos', async () => {
+    // Los que ya se habían cargado con el error: existen, pero el closer que
+    // los cargó no los ve. La migración 0008 se los devuelve usando `creado_por`,
+    // que es un dato que siempre estuvo guardado.
+    const { readFile } = await import('node:fs/promises')
+
+    const kevin = await db.escribirDevolviendo<{ id: number }>(
+      `insert into usuarios (email,nombre,rol,clave_hash) values ('k@k.com','Kevin','closer','x') returning id`)
+    await db.escribir('update closers set usuario_id = $1 where id = $2', [kevin.id, closerKevin],
+      { esperadas: 1 })
+
+    const suelto = await leads.crearLead({ nombre: 'Suelto', fechaSesion: '2026-09-03' }, kevin.id)
+    const deDireccion = await leads.crearLead({ nombre: 'De Dirección' }, usuarioId)
+    const comoKevin = { todo: false, closerId: closerKevin } as const
+    expect(await leads.puedeVerLead(suelto, comoKevin)).toBe(false)
+
+    await db.escribir(
+      await readFile('supabase/migrations/0008_leads_sin_dueno.sql', 'utf8'), [],
+      { esperadas: 'cualquiera' },
+    )
+
+    expect(await leads.puedeVerLead(suelto, comoKevin)).toBe(true)
+    // Y el closer inicial también, que es con el que se mide la reasignación.
+    const f = await db.fila<{ closer_inicial_id: number }>(
+      'select closer_inicial_id from leads where id = $1', [suelto])
+    expect(f?.closer_inicial_id).toBe(closerKevin)
+
+    // Lo que dirección dejó sin asignar a propósito no se toca: dirección ve
+    // la operación entera y no perdió nada.
+    const sigueSuelto = await db.fila<{ closer_id: number | null }>(
+      'select closer_id from leads where id = $1', [deDireccion])
+    expect(sigueSuelto?.closer_id).toBe(null)
+  })
+
+  it('los posibles duplicados dicen si son de otro o si no son de nadie', async () => {
+    // Para un closer no es lo mismo: uno se pide, el otro se habla con quien
+    // lo tiene. Decir «de otro» para un lead sin asignar manda a preguntarle a
+    // nadie.
+    await leads.crearLead({ nombre: 'Clarissa Persichini' }, usuarioId)
+    await leads.crearLead({ nombre: 'Clarissa Persichini', closerId: closerBraian }, usuarioId)
+
+    const encontrados = await leads.posiblesDuplicados({ nombre: 'clarissa persichini' })
+    expect(encontrados).toHaveLength(2)
+    expect(encontrados.map((d) => d.sinAsignar).sort()).toEqual([false, true])
+  })
+
+  it('la asistencia válida separa al que no calificaba, y el cierre sobre ella es otro número', async () => {
+    // Cerrar 1 de 4 asistencias y cerrar 1 de 2 asistencias válidas es el mismo
+    // mes: la diferencia dice si el problema es del closer o del filtro, y se
+    // arreglan en lugares distintos.
+    await alta('Compró').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId))
+    await alta('Sigue').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'seguimiento' }, usuarioId))
+    await alta('No calificaba').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'no_calificado' }, usuarioId))
+    await alta('Tampoco').then((id) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'no_calificado' }, usuarioId))
+    await alta('Faltó').then((id) => resultado.cargarResultado(id, { estado: 'no_show' }, usuarioId))
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.agendadas).toBe(5)
+    expect(m.asistencias).toBe(4)
+    expect(m.noCalificadas).toBe(2)
+    expect(m.asistenciasValidas).toBe(2)
+
+    expect(m.asistenciaPct).toBe(80)            // 4 de 5 agendadas
+    expect(m.asistenciaValidaPct).toBe(40)      // 2 de 5 agendadas
+    expect(m.noCalificadasPct).toBe(50)         // 2 de 4 asistencias
+    expect(m.cierrePct).toBe(25)                // 1 de 4 asistencias
+    expect(m.cierreSobreValidaPct).toBe(50)     // 1 de 2 válidas
+  })
+
+  it('las segundas llamadas se cuentan aparte de las primeras', async () => {
+    await leads.crearLead({ nombre: 'Primera', closerId: closerKevin, fechaSesion: '2026-09-10' }, usuarioId)
+    const b = await leads.crearLead(
+      { nombre: 'Segunda B', closerId: closerKevin, fechaSesion: '2026-09-11', tipoSesion: 'segunda' }, usuarioId)
+    const c = await leads.crearLead(
+      { nombre: 'Segunda C', closerId: closerKevin, fechaSesion: '2026-09-12', tipoSesion: 'segunda' }, usuarioId)
+    await resultado.cargarResultado(b, { estado: 'asistio' }, usuarioId)
+    await resultado.cargarResultado(c, { estado: 'no_show' }, usuarioId)
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.segundas).toBe(2)
+    expect(m.segundasAsistidas).toBe(1)
+    expect(m.segundaAsistenciaPct).toBe(50)
+  })
+
+  it('el cash por reunión no se inventa cuando no hubo reuniones', async () => {
+    // Dividir por cero no da cero. «USD 0 por agenda» sin agendas es un número
+    // inventado, y un número inventado en un tablero se usa igual que uno real.
+    const vacio = (await metricas.metricas(
+      { desde: '2026-01-01', hasta: '2026-01-31', etiqueta: 'enero' }, TODO)).medidas
+    expect(vacio.cashPorAgenda).toBe(null)
+    expect(vacio.cashPorAsistencia).toBe(null)
+
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 6000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.registrarPago(id, { importe: 3000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+    await alta('No vino').then((x) => resultado.cargarResultado(x, { estado: 'no_show' }, usuarioId))
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.cashCollected).toBe(3000)
+    expect(m.cashPorAgenda).toBe(1500)      // 3000 ÷ 2 agendadas
+    expect(m.cashPorAsistencia).toBe(3000)  // 3000 ÷ 1 asistencia
+  })
+
+  it('cada medida del tablero tiene su definición escrita', async () => {
+    // El tablero muestra la fórmula al pasar el mouse. Una medida sin
+    // definición es una que después se discute en una reunión.
+    for (const clave of ['agendadas', 'asistencias', 'asistenciasValidas', 'noCalificadas',
+                         'noShows', 'cancelados', 'reagendados', 'segundas', 'segundasAsistidas',
+                         'ofertas', 'senas', 'ventas', 'cierrePct', 'asistenciaValidaPct',
+                         'noCalificadasPct', 'segundaAsistenciaPct', 'cierreSobreValidaPct',
+                         'cierreSobreOfertaPct', 'cashCollected', 'cashPorAgenda',
+                         'cashPorAsistencia', 'facturacion']) {
+      expect(metricas.DEFINICIONES[clave]?.formula).toBeTruthy()
+    }
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

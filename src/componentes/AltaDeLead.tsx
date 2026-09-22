@@ -17,13 +17,43 @@ import type { Opcion, CloserOpcion } from '@/datos/catalogos'
  * obligatorios se completa con datos inventados, y después esos datos son los
  * que alimentan las métricas.
  */
+/**
+ * El campo que no se elige: queda en el nombre de quien está cargando.
+ *
+ * Se muestra igual, apagado, en vez de esconderse. Un campo que desaparece
+ * deja la duda de a quién le quedó el lead; uno que dice «Kevin (vos)» la
+ * contesta.
+ */
+function Mio({ nombre, campo, id }: { nombre: string; campo: string; id: number }) {
+  return (
+    <>
+      <input type="hidden" name={campo} value={id} />
+      <div className="fijo">{nombre} <span className="sindato">(vos)</span></div>
+    </>
+  )
+}
+
 function Boton() {
   const { pending } = useFormStatus()
   return <button type="submit" disabled={pending}>{pending ? 'Guardando…' : 'Registrar lead'}</button>
 }
 
-export function AltaDeLead({ catalogos }: {
+/**
+ * Quién carga.
+ *
+ * Un closer y un setter ven sólo lo suyo, así que el campo que decide de quién
+ * es el lead no puede ser un desplegable con todo el equipo: elegir a otro es
+ * perder el lead de vista para siempre. Para ellos queda fijo en su nombre.
+ */
+export type QuienCarga =
+  | { tipo: 'todo' }
+  | { tipo: 'closer'; id: number; nombre: string }
+  | { tipo: 'setter'; id: number; nombre: string }
+  | { tipo: 'nadie' }
+
+export function AltaDeLead({ catalogos, yo }: {
   catalogos: { fuentes: Opcion[]; funnels: Opcion[]; setters: Opcion[]; closers: CloserOpcion[] }
+  yo: QuienCarga
 }) {
   const [estado, accion] = useActionState<EstadoDeAlta, FormData>(crearLeadAccion, null)
   // Los valores viven del lado de React: si la acción vuelve con un aviso de
@@ -31,7 +61,9 @@ export function AltaDeLead({ catalogos }: {
   // justo cuando le estamos pidiendo a alguien que revise algo.
   const { campo, form } = useCampos({
     nombre: '', email: '', telefono: '', pais: '', empresa: '', industria: '',
-    fuenteId: '', funnelId: '', setterId: '', closerId: '',
+    fuenteId: '', funnelId: '',
+    setterId: yo.tipo === 'setter' ? String(yo.id) : '',
+    closerId: yo.tipo === 'closer' ? String(yo.id) : '',
     fechaSesion: '', horaSesion: '', tipoSesion: 'primera', valorPotencial: '', moneda: 'USD',
   }, estado)
 
@@ -48,11 +80,19 @@ export function AltaDeLead({ catalogos }: {
             <tbody>
               {estado.duplicados.map((d) => (
                 <tr key={d.id}>
-                  <td><Link href={`/leads/${d.id}`} style={{ fontWeight: 650 }}>{d.nombre}</Link></td>
+                  <td>
+                    {d.tuyo
+                      ? <Link href={`/leads/${d.id}`} style={{ fontWeight: 650 }}>{d.nombre}</Link>
+                      : <strong>{d.nombre}</strong>}
+                  </td>
                   <td style={{ fontSize: 12.5 }}>{d.porque}</td>
                   <td style={{ fontSize: 12.5 }}>{d.resultado}</td>
                   <td className="num">
-                    {d.cerrado ? (
+                    {!d.tuyo ? (
+                      <span className="sindato">
+                        {d.sinAsignar ? 'sin asignar · pedí que te lo pasen' : 'de otro · no lo ves'}
+                      </span>
+                    ) : d.cerrado ? (
                       <Link href={`/leads/${d.id}?pestana=resultado`} style={{ fontWeight: 650, color: 'var(--acento)' }}>
                         Reflotarlo →
                       </Link>
@@ -68,6 +108,11 @@ export function AltaDeLead({ catalogos }: {
             Si uno de esos está cerrado y es la misma persona, <strong>reflotalo</strong> en vez de crear
             otra ficha: así no se parte la historia y queda registrado que la repesca la hiciste vos.
             Si es otra persona, seguí abajo.
+            {estado.duplicados.some((d) => !d.tuyo) ? (
+              <> Los que no podés abrir están a nombre de otra persona del equipo, o sin asignar.
+              Si es el mismo cliente, pedí que te lo pasen en vez de crear otra ficha: si creás
+              otra, la historia queda partida en dos y ninguna de las dos está completa.</>
+            ) : null}
           </p>
         </div>
       ) : null}
@@ -121,17 +166,25 @@ export function AltaDeLead({ catalogos }: {
           </div>
           <div className="campo">
             <label htmlFor="setterId">Setter</label>
-            <select {...campo('setterId')}>
-              <option value="">Sin cargar</option>
-              {catalogos.setters.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-            </select>
+            {yo.tipo === 'setter' ? (
+              <Mio nombre={yo.nombre} campo="setterId" id={yo.id} />
+            ) : (
+              <select {...campo('setterId')}>
+                <option value="">Sin cargar</option>
+                {catalogos.setters.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </select>
+            )}
           </div>
           <div className="campo">
             <label htmlFor="closerId">Closer</label>
-            <select {...campo('closerId')}>
-              <option value="">Sin asignar</option>
-              {catalogos.closers.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-            </select>
+            {yo.tipo === 'closer' ? (
+              <Mio nombre={yo.nombre} campo="closerId" id={yo.id} />
+            ) : (
+              <select {...campo('closerId')}>
+                <option value="">Sin asignar</option>
+                {catalogos.closers.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </select>
+            )}
           </div>
         </div>
       </div>

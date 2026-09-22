@@ -337,14 +337,54 @@ await paso('el closer carga el resultado sin salir del Tracker', async () => {
   await foto('tracker-carga')
 })
 
+/** El valor de una celda del mini tablero, por su etiqueta EXACTA. */
+const miniValor = (etiqueta) => p.evaluate((e) => {
+  const celda = [...document.querySelectorAll('.contenido .mini')]
+    .find((x) => x.querySelector('.mini-etiqueta')?.textContent?.trim() === e)
+  return celda?.querySelector('.mini-numero')?.textContent?.trim() ?? null
+}, etiqueta)
+
 await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () => {
   await p.goto(`${RAIZ}/dashboard?periodo=mes`)
   const dash = await p.locator('.tarjeta:has-text("Asistencias") .numero').first().textContent()
   await p.goto(`${RAIZ}/tracker?periodo=mes`)
-  const track = await p.locator('.tarjeta:has-text("Asistencias") .numero').first().textContent()
-  comprobar(dash?.trim() === track?.trim(),
-            `asistencias: Dashboard ${dash?.trim()} · Tracker ${track?.trim()}`)
+  const track = await miniValor('Asistencias')
+  comprobar(dash?.trim() === track,
+            `asistencias: Dashboard ${dash?.trim()} · Tracker ${track}`)
   await foto('tracker')
+})
+
+await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', async () => {
+  await p.goto(`${RAIZ}/tracker?periodo=mes`)
+  const pedidas = [
+    'Llamadas agendadas', 'Asistencias', 'Asistencias válidas', 'No calificadas', 'No show',
+    'Canceladas', 'Reagendadas', 'Segundas llamadas', 'Asistencia a segunda', 'Ofertas hechas',
+    'Reservas', 'Cierres',
+    '% Asistencia', '% Asistencia válida', '% No calificadas', '% Canceladas',
+    '% Asistencia a segunda', '% Ofertas hechas', '% Cierre / asistencia',
+    '% Cierre / asist. válida', '% Cierre / oferta',
+    'Cash collected', 'Cash por agenda', 'Cash por asistencia',
+  ]
+  const faltan = []
+  for (const etiqueta of pedidas) if ((await miniValor(etiqueta)) === null) faltan.push(etiqueta)
+  comprobar(faltan.length === 0, `están las ${pedidas.length} medidas${faltan.length ? `; faltan: ${faltan.join(', ')}` : ''}`)
+
+  // Ninguna celda con un número solo: abajo de cada uno dice sobre qué se
+  // calcula, que es lo que separa «28%» de «28% de las asistencias».
+  const sinContra = await p.locator('.contenido .mini:not(:has(.mini-contra))').count()
+  comprobar(sinContra === 0, 'ningún número va solo: todos dicen sobre qué se calculan')
+
+  // Y el cierre sobre asistencia válida no puede ser menor que el cierre sobre
+  // asistencia: las válidas son un subconjunto.
+  // Los porcentajes salen en formato local: «66,7%». Leerlos con Number() a
+  // secas da NaN, y una comprobación que falla por eso no comprueba nada.
+  const aPct = (t) => (t === null || t === 'sin datos' ? null
+    : Number(t.replace('%', '').replace(/\./g, '').replace(',', '.')))
+  const sobreAsistencia = aPct(await miniValor('% Cierre / asistencia'))
+  const sobreValida = aPct(await miniValor('% Cierre / asist. válida'))
+  comprobar(sobreAsistencia === null || sobreValida === null || sobreValida >= sobreAsistencia,
+            `el cierre sobre asistencia válida (${sobreValida}%) no puede ser menor que sobre asistencia (${sobreAsistencia}%)`)
+  await foto('tablero')
 })
 
 await paso('las demás pantallas abren sin romperse', async () => {
@@ -482,6 +522,63 @@ await paso('un lead con una venta no se da de baja a la ligera', async () => {
             'avisa que tiene una venta y que la baja la saca de los números')
 })
 
+await paso('una venta cargada por error se puede sacar de la facturación', async () => {
+  // El error que estuvo vivo: corregir el resultado a «Perdido» sacaba el lead
+  // del embudo pero dejaba la plata contando en la facturación del mes.
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Venta Mal Cargada ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const errada = p.url().match(/leads\/(\d+)/)?.[1]
+
+  await p.locator('.contenido .botonera .accion:has-text("Venta")').click()
+  await p.fill('.contenido .confirmar input[name=importe]', '9900')
+  await p.locator('.contenido .confirmar button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(700)
+
+  // El closer se da cuenta y corrige el resultado.
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  await p.locator('.contenido .botonera .accion:has-text("Perdido")').click()
+  await p.selectOption('.contenido .confirmar select[name=motivoPerdida]', 'precio')
+  await p.locator('.contenido .confirmar button[type=submit]').click()
+  await esperar()
+  await p.waitForTimeout(700)
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  const alerta = await p.locator('.contenido .aviso.problema').first().textContent()
+  comprobar((alerta ?? '').includes('9.900') || (alerta ?? '').includes('9900'),
+            'la ficha avisa que la plata contradice el resultado, y dice cuánta')
+
+  await p.goto(`${RAIZ}/dashboard`)
+  comprobar((await p.locator('.contenido').textContent())?.includes(`Venta Mal Cargada ${marca}`),
+            'y el Dashboard lo nombra en vez de dejar el número inflado en silencio')
+  await foto('plata-que-no-cuadra')
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  await p.locator('.contenido .aviso.problema button:has-text("Anular la venta")').click()
+  comprobar(await p.locator('.contenido #motivo-anular').count() === 1,
+            'pide el motivo antes de anular')
+  await p.fill('.contenido #motivo-anular', 'Se cargó en el lead equivocado')
+  await p.locator('.contenido .aviso.problema button:has-text("Sí, anular")').click()
+  await esperar()
+  await p.waitForTimeout(900)
+
+  await p.goto(`${RAIZ}/leads/${errada}`)
+  comprobar(await p.locator('.contenido .aviso.problema').count() === 0,
+            'anulada, el aviso desaparece')
+
+  await p.goto(`${RAIZ}/dashboard`)
+  comprobar(!(await p.locator('.contenido').textContent())?.includes(`Venta Mal Cargada ${marca}`),
+            'y el Dashboard deja de reclamarlo')
+
+  await p.goto(`${RAIZ}/leads/${errada}?pestana=historial`)
+  comprobar((await p.locator('.contenido').textContent())?.includes('Se cargó en el lead equivocado'),
+            'no se borró nada: queda en el historial quién la anuló y por qué')
+})
+
 await paso('un caso de éxito se carga y queda listo para mandar', async () => {
   await p.goto(`${RAIZ}/casos`)
   await p.fill(enLaPantalla('#titulo'), `De 5k a 30k ${marca}`)
@@ -495,6 +592,84 @@ await paso('un caso de éxito se carga y queda listo para mandar', async () => {
   comprobar(await p.locator(`.contenido .tarjeta:has-text("De 5k a 30k ${marca}")`).count() > 0,
             'el caso quedó cargado y visible')
   await foto('casos')
+})
+
+await paso('un closer entra con su cuenta y carga su histórico', async () => {
+  // El reporte fue «no puedo crear leads para cargar mi histórico». El lead se
+  // creaba, pero quedaba sin closer: desaparecía de su lista y su ficha le
+  // contestaba «no encontrado».
+  await p.goto(`${RAIZ}/configuracion`)
+  const alta = '.contenido .tarjeta:has-text("Dar de alta a alguien")'
+  await p.fill(`${alta} #nombre`, `Nadia ${marca}`)
+  await p.selectOption(`${alta} #funcion`, 'closer')
+  await p.check(`${alta} input[name=entra]`)
+  await p.fill(`${alta} #email`, `nadia${marca}@fbs.com`)
+  await p.fill(`${alta} #clave`, 'clave12345')
+  await p.click(`${alta} button[type=submit]`)
+  await esperar()
+
+  // Salir es el único botón de la barra lateral: por eso todo lo demás del
+  // recorrido va dentro de `.contenido`.
+  await p.locator('.lateral .pie button[type=submit]').click()
+  await p.waitForURL('**/login')
+  await p.fill('#email', `nadia${marca}@fbs.com`)
+  await p.fill('#clave', 'clave12345')
+  await p.click('form:has(#clave) button[type=submit]')
+  await p.waitForURL('**/tracker')
+  comprobar(await p.locator('.contenido .aviso.problema:has-text("no está vinculada")').count() === 0,
+            'su cuenta quedó vinculada a su figura de closer')
+
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  comprobar((await p.locator('.contenido .campo:has(label[for=closerId]) .fijo').textContent() ?? '')
+              .includes(`Nadia ${marca}`),
+            'el lead que carga es suyo: el closer no se elige, es él')
+
+  await p.fill('.contenido #nombre', `Cliente Histórico ${marca}`)
+  await p.fill('.contenido #fechaSesion', '2026-08-04')
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/, { timeout: 10000 })
+  comprobar(/leads\/\d+/.test(p.url()),
+            'después de crearlo abre su ficha, y no un «no encontrado»')
+  comprobar((await p.locator('.contenido .cabecera-ficha').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'con el lead que acaba de cargar')
+
+  await p.goto(`${RAIZ}/leads`)
+  comprobar((await p.locator('.contenido table').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'y le aparece en su lista de leads')
+
+  // «Verlas →» tiene que llevar a las reuniones atrasadas, sean del mes que
+  // sean. Antes saltaba a un período fijo que podía no contenerlas: se
+  // clickeaba y no pasaba nada, o peor, la lista quedaba vacía.
+  await p.goto(`${RAIZ}/tracker`)
+  const avisoAtrasadas = '.contenido .aviso:has-text("Fuera de este período")'
+  comprobar(await p.locator(avisoAtrasadas).count() === 1,
+            'el Tracker avisa que hay una reunión atrasada fuera del período')
+  await p.locator(`${avisoAtrasadas} a:has-text("Verlas")`).click()
+  await esperar()
+  comprobar((await p.locator('.contenido').textContent() ?? '')
+              .includes(`Cliente Histórico ${marca}`),
+            'y «Verlas →» la muestra, aunque sea de otro mes')
+
+  await p.goto(`${RAIZ}/llamadas`)
+  const avisoLlamadas = '.contenido .aviso:has-text("Fuera de este período")'
+  if (await p.locator(avisoLlamadas).count() === 1) {
+    await p.locator(`${avisoLlamadas} a:has-text("Verlas")`).click()
+    await esperar()
+    comprobar((await p.locator('.contenido').textContent() ?? '')
+                .includes(`Cliente Histórico ${marca}`),
+              'y en Llamadas también')
+  }
+
+  // Y vuelve a entrar dirección, que es con quien terminó todo lo demás.
+  await p.locator('.lateral .pie button[type=submit]').click()
+  await p.waitForURL('**/login')
+  await p.fill('#email', 'admin@foundersbs.com')
+  await p.fill('#clave', 'clave123')
+  await p.click('form:has(#clave) button[type=submit]')
+  await p.waitForURL('**/dashboard')
+  await foto('closer-carga-historico')
 })
 
 await b.close()

@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion, DEFINICIONES } from '@/datos/metricas'
+import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
-import { Numero, Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
+import { Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
 import { CargaRapida } from '@/componentes/CargaRapida'
+import { Tablero } from '@/componentes/Tablero'
 import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
@@ -35,7 +36,14 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
   const hoy = hoyEn()
   const periodo = (q.periodo ?? 'hoy') as NombreDePeriodo
-  const r = q.dia ? { desde: q.dia, hasta: q.dia, etiqueta: fechaCorta(q.dia) } : rango(periodo, hoy)
+  // Un rango a mano gana sobre el período. Hace falta para cargar un histórico
+  // —«todas las llamadas del mes pasado»— y para que «Verlas →» pueda mostrar
+  // reuniones atrasadas de cualquier fecha, que es lo que el aviso promete.
+  const aMano = q.desde ? { desde: q.desde, hasta: q.hasta ?? hoy } : null
+  const r = aMano
+    ? { ...aMano, etiqueta: `${fechaCorta(aMano.desde)} a ${fechaCorta(aMano.hasta)}` }
+    : q.dia ? { desde: q.dia, hasta: q.dia, etiqueta: fechaCorta(q.dia) }
+    : rango(periodo, hoy)
   const monedaBase = await config<string>('moneda_base', 'USD')
   const soloPendientes = q.pendientes === '1'
 
@@ -66,6 +74,12 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     return `/tracker?${u.toString()}`
   }
 
+  // La reunión atrasada más vieja. El aviso de «Verlas →» tiene que llevar a un
+  // rango que las contenga a todas: mandar a un período fijo era prometer una
+  // lista y mostrar otra —o ninguna—, que es como si el enlace no hiciera nada.
+  const masVieja = pendientes.reduce<string | null>(
+    (v, x) => (v === null || x.fecha < v ? x.fecha : v), null)
+
   // Lo que hay que cargar: la reunión ya fue y nadie dijo qué pasó. Va arriba
   // de todo porque es el trabajo pendiente, no un dato de consulta.
   const porCargar = leads.filter(
@@ -91,8 +105,9 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
       <div className="entre">
         <div className="chips">
           {PERIODOS.map((x) => (
-            <Link key={x.clave} href={con({ periodo: x.clave, dia: undefined })}
-                  className={!q.dia && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
+            <Link key={x.clave}
+                href={con({ periodo: x.clave, dia: undefined, desde: undefined, hasta: undefined })}
+                  className={!q.dia && !aMano && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
           ))}
         </div>
         <form method="get" className="fila">
@@ -127,7 +142,8 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           {pendientes.length - porCargar.length === 1
             ? 'reunión más que ya pasó sin resultado cargado'
             : 'reuniones más que ya pasaron sin resultado cargado'}.{' '}
-          <Link href={con({ pendientes: '1', periodo: 'mes', dia: undefined })}
+          <Link href={con({ pendientes: '1', dia: undefined, periodo: undefined,
+                            desde: masVieja ?? undefined, hasta: hoy })}
                 style={{ color: 'inherit', fontWeight: 650, textDecoration: 'underline' }}>Verlas →</Link>
         </div>
       ) : null}
@@ -207,20 +223,11 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         </Tarjeta>
       ) : null}
 
-      <div className="rejilla g4">
-        <Numero etiqueta="Agendadas" valor={m.agendadas} comoSeCalcula={DEFINICIONES.agendadas!.formula} />
-        <Numero etiqueta="Asistencias" valor={m.asistencias} contra={porcentaje(m.asistenciaPct)} />
-        <Numero etiqueta="No shows" valor={m.noShows} contra={porcentaje(m.noShowPct)} />
-        <Numero etiqueta="Ofertas" valor={m.ofertas} contra={`${porcentaje(m.ofertaPct)} de las asistencias`} />
-        <Numero etiqueta="Ventas" valor={m.ventas} contra={`${porcentaje(m.cierrePct)} de cierre`} />
-        <Numero etiqueta="Señas" valor={m.senas} contra={verPlata ? plata(m.senasImporte, monedaBase) : undefined} />
-        <Numero etiqueta="Sin cargar" valor={m.pendientesDeCargar}
-                contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
-        {verPlata ? (
-          <Numero etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} chico
-                  comoSeCalcula={DEFINICIONES.facturacion!.formula} />
-        ) : null}
-      </div>
+      <Tarjeta titulo={`El tablero · ${r.etiqueta}`}
+               ayuda="Sale del mismo módulo de métricas que el Dashboard: no hay dos cuentas, hay una. Pasá el mouse por cada número para ver de dónde sale."
+               accion={<Link href="/dashboard" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Ver el Dashboard →</Link>}>
+        <Tablero m={m} verPlata={verPlata} />
+      </Tarjeta>
 
       {toques.length > 0 ? (
         <Tarjeta titulo={`Seguimientos que tocan hoy (${toques.length})`}

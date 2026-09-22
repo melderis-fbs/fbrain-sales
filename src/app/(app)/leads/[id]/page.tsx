@@ -10,9 +10,11 @@ import { seguimientoDelLead, interaccionesDelLead, toques } from '@/datos/seguim
 import { historialDelLead } from '@/datos/cambios'
 import { catalogos } from '@/datos/catalogos'
 import { hoyEn } from '@/motor/periodos'
+import { plataQueNoCuadra } from '@/dominio/resultados'
 import { Iconos, type NombreDeIcono } from '@/componentes/Iconos'
 import { CabeceraDeLead } from '@/componentes/CabeceraDeLead'
 import { AccionDelCloser } from '@/componentes/AccionDelCloser'
+import { PlataQueNoCuadra } from '@/componentes/PlataQueNoCuadra'
 import { Resumen } from '@/componentes/ficha/Resumen'
 import { Calificacion } from '@/componentes/ficha/Calificacion'
 import { Resultado } from '@/componentes/ficha/Resultado'
@@ -63,6 +65,13 @@ export default async function FichaDeLead({
     interaccionesDelLead(leadId),
   ])
 
+  // Una seña convertida ya es una venta: se mira la venta, no se cuenta dos veces.
+  const senaAbierta = lead.sena && lead.sena.estado !== 'convertida' ? lead.sena : null
+  const noCuadra = plataQueNoCuadra(lead.resultado, {
+    venta: lead.venta?.importe ?? 0,
+    sena: senaAbierta?.importe ?? 0,
+  })
+
   const PESTANAS: { clave: string; texto: string; icono: NombreDeIcono; cuenta?: number }[] = [
     { clave: 'resumen', texto: 'Resumen', icono: 'dashboard' },
     { clave: 'calificacion', texto: 'Calificación', icono: 'setters' },
@@ -88,6 +97,15 @@ export default async function FichaDeLead({
       </Link>
 
       <CabeceraDeLead lead={lead} calidad={calidad} />
+
+      {noCuadra && verPlata ? (
+        <PlataQueNoCuadra
+          leadId={leadId} que={noCuadra} resultado={lead.resultado}
+          importe={noCuadra === 'venta' ? lead.venta!.importe : senaAbierta!.importe}
+          moneda={noCuadra === 'venta' ? lead.venta!.moneda : senaAbierta!.moneda}
+          fecha={noCuadra === 'venta' ? lead.venta!.fecha : senaAbierta!.fecha}
+          puedeConPlata={puede(usuario, 'editarDinero')} />
+      ) : null}
 
       {puede(usuario, 'cargarResultado') ? (
         <AccionDelCloser leadId={leadId} moneda={lead.moneda} hoy={hoy}

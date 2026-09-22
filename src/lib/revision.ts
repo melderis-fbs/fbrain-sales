@@ -50,6 +50,16 @@ const ESPERADO: { tabla: string; migracion: string }[] = [
 ]
 
 /**
+ * Migraciones que no tocan el esquema: sólo arreglan datos.
+ *
+ * La revisión no tiene nada que comprobar en ellas —no crean tabla ni columna—
+ * pero igual se nombran acá. El control que corre antes del build exige que
+ * toda migración figure en este archivo, y una lista de excepciones escrita a
+ * mano es lo que separa «no cambia el esquema» de «me olvidé de declararla».
+ */
+export const SIN_ESQUEMA = ['0008_leads_sin_dueno.sql']
+
+/**
  * Columnas que una migración AGREGA a una tabla que ya existía.
  *
  * Sin esto, una base que corrió 0002 pero no 0004 pasa la revisión —las tablas

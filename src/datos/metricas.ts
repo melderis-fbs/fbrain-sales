@@ -3,6 +3,7 @@ import { fila, filas } from '@/lib/db'
 import { condicionDeAlcance, sinEquipoAsignado, type Alcance } from '@/lib/permisos'
 import { embudo, tasa, redondear, type Conteos, type Etapa } from '@/motor/embudo'
 import type { Rango } from '@/motor/periodos'
+import type { Resultado } from '@/dominio/resultados'
 
 /**
  * Las métricas. Todas. Definidas UNA vez.
@@ -50,6 +51,21 @@ export type Medidas = {
   enSeguimiento: number
   pendientesDeCargar: number
 
+  /**
+   * La asistencia que además calificaba.
+   *
+   * Vino a la reunión y era alguien a quien se le podía vender. Separarla de la
+   * asistencia a secas es lo que deja ver si un mes malo fue del closer o del
+   * filtro: cerrar 2 de 10 asistencias válidas y cerrar 2 de 10 asistencias
+   * donde 6 no calificaban son dos problemas distintos, y se arreglan en
+   * lugares distintos.
+   */
+  asistenciasValidas: number
+  noCalificadas: number
+  /** Segundas sesiones: se agendan y se asiste distinto que a una primera. */
+  segundas: number
+  segundasAsistidas: number
+
   asistenciaPct: number | null
   noShowPct: number | null
   cancelacionPct: number | null
@@ -58,6 +74,11 @@ export type Medidas = {
   /** Ventas sobre asistencias, del mismo universo. Nunca puede pasar de 100. */
   cierrePct: number | null
   cierreSobreOfertaPct: number | null
+  asistenciaValidaPct: number | null
+  noCalificadasPct: number | null
+  segundaAsistenciaPct: number | null
+  /** Cierre sobre lo que de verdad era vendible. */
+  cierreSobreValidaPct: number | null
 
   // La plata, por su propia fecha.
   facturacion: number
@@ -66,6 +87,13 @@ export type Medidas = {
   ticketPromedio: number | null
   /** Valor potencial de lo que sigue abierto. No es forecast. */
   valorEnJuego: number
+  /**
+   * Cash por reunión. No es un porcentaje aunque se pida así: es plata dividida
+   * por cantidad, y darlo como «%» sería un número sin unidad que nadie puede
+   * comparar contra nada.
+   */
+  cashPorAgenda: number | null
+  cashPorAsistencia: number | null
 
   moneda: string
   /** Lo que está en otra moneda y NO se sumó. */
@@ -89,6 +117,19 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   senas:        { nombre: 'Señas', formula: 'De esos, los que tienen una seña cargada.', universo: 'reunión' },
   ventas:       { nombre: 'Ventas', formula: 'De esos, los que quedaron en «venta».', universo: 'reunión' },
   cierrePct:    { nombre: 'Cierre', formula: 'Ventas ÷ asistencias, las dos del mismo universo.', universo: 'reunión' },
+  asistenciasValidas: { nombre: 'Asistencias válidas', formula: 'Asistencias que no quedaron en «no calificado».', universo: 'reunión' },
+  noCalificadas:{ nombre: 'No calificadas', formula: 'De los que asistieron, los que quedaron en «no calificado».', universo: 'reunión' },
+  cancelados:   { nombre: 'Canceladas', formula: 'De los agendados, los que quedaron en «cancelado».', universo: 'reunión' },
+  reagendados:  { nombre: 'Reagendadas', formula: 'De los agendados, los que quedaron en «reagendado».', universo: 'reunión' },
+  segundas:     { nombre: 'Segundas llamadas', formula: 'Reuniones del período marcadas como segunda sesión.', universo: 'reunión' },
+  segundasAsistidas: { nombre: 'Asistencia a segunda', formula: 'De las segundas sesiones, las que quedaron en «asistió».', universo: 'reunión' },
+  asistenciaValidaPct: { nombre: '% Asistencia válida', formula: 'Asistencias válidas ÷ agendadas.', universo: 'reunión' },
+  noCalificadasPct: { nombre: '% No calificadas', formula: 'No calificadas ÷ asistencias.', universo: 'reunión' },
+  segundaAsistenciaPct: { nombre: '% Asistencia a segunda', formula: 'Asistencias a segunda ÷ segundas agendadas.', universo: 'reunión' },
+  cierreSobreValidaPct: { nombre: '% Cierre / asistencia válida', formula: 'Ventas ÷ asistencias válidas.', universo: 'reunión' },
+  cierreSobreOfertaPct: { nombre: '% Cierre / oferta', formula: 'Ventas ÷ ofertas hechas.', universo: 'reunión' },
+  cashPorAgenda:{ nombre: 'Cash por agenda', formula: 'Cash collected del período ÷ agendadas del período. No es un porcentaje: es plata por reunión, y los dos números salen de universos distintos.', universo: 'mezcla' },
+  cashPorAsistencia: { nombre: 'Cash por asistencia', formula: 'Cash collected del período ÷ asistencias del período. Tampoco es un porcentaje.', universo: 'mezcla' },
   facturacion:  { nombre: 'Facturación', formula: 'Suma de las ventas con fecha de venta en el período.', universo: 'venta' },
   cashCollected:{ nombre: 'Cash collected', formula: 'Suma de los pagos cobrados con fecha en el período. La seña convertida entra acá, una sola vez.', universo: 'cobro' },
   senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas del período. No es facturación ni cash.', universo: 'reunión' },
@@ -133,6 +174,12 @@ const CONTEOS = `
   count(*) filter (where l.estado = 'no_show')                 as no_shows,
   count(*) filter (where l.estado = 'cancelado')               as cancelados,
   count(*) filter (where l.estado = 'reagendado')              as reagendados,
+  count(*) filter (where l.resultado = 'no_calificado')        as no_calificadas,
+  count(*) filter (where l.estado = 'asistio'
+                     and l.resultado <> 'no_calificado')       as asistencias_validas,
+  count(*) filter (where l.tipo_sesion = 'segunda')            as segundas,
+  count(*) filter (where l.tipo_sesion = 'segunda'
+                     and l.estado = 'asistio')                 as segundas_asistidas,
   count(*) filter (where l.hubo_oferta)                        as ofertas,
   count(*) filter (where exists (select 1 from senias s
                      where s.lead_id = l.id and s.borrado_en is null)) as senas,
@@ -197,6 +244,10 @@ export async function metricas(
       perdidos: n('perdidos'),
       enSeguimiento: n('en_seguimiento'),
       pendientesDeCargar: n('pendientes'),
+      asistenciasValidas: n('asistencias_validas'),
+      noCalificadas: n('no_calificadas'),
+      segundas: n('segundas'),
+      segundasAsistidas: n('segundas_asistidas'),
 
       asistenciaPct: tasa(conteo.asistidas, conteo.agendadas),
       noShowPct: tasa(n('no_shows'), conteo.agendadas),
@@ -205,12 +256,20 @@ export async function metricas(
       senaPct: tasa(conteo.senas, conteo.asistidas),
       cierrePct: tasa(conteo.ventas, conteo.asistidas),
       cierreSobreOfertaPct: tasa(conteo.ventas, conteo.ofertas),
+      asistenciaValidaPct: tasa(n('asistencias_validas'), conteo.agendadas),
+      noCalificadasPct: tasa(n('no_calificadas'), conteo.asistidas),
+      segundaAsistenciaPct: tasa(n('segundas_asistidas'), n('segundas')),
+      cierreSobreValidaPct: tasa(conteo.ventas, n('asistencias_validas')),
 
       facturacion: factura.total,
       cashCollected: cash.total,
       senasImporte: Number(sena?.importe ?? 0),
       ticketPromedio: factura.cantidad === 0 ? null : Math.round(factura.total / factura.cantidad),
       valorEnJuego: Number(c?.valor_en_juego ?? 0),
+      // Dividir por cero no da cero: da «sin datos». Un «USD 0 por agenda»
+      // cuando no hubo agendas es un número inventado.
+      cashPorAgenda: conteo.agendadas === 0 ? null : Math.round(cash.total / conteo.agendadas),
+      cashPorAsistencia: conteo.asistidas === 0 ? null : Math.round(cash.total / conteo.asistidas),
 
       moneda: monedaBase,
       otrasMonedas: juntarMonedas([...factura.otras, ...cash.otras]),
@@ -280,9 +339,13 @@ function vacio(moneda: string): Medidas {
   return {
     agendadas: 0, asistencias: 0, noShows: 0, cancelados: 0, reagendados: 0,
     ofertas: 0, senas: 0, ventas: 0, perdidos: 0, enSeguimiento: 0, pendientesDeCargar: 0,
+    asistenciasValidas: 0, noCalificadas: 0, segundas: 0, segundasAsistidas: 0,
     asistenciaPct: null, noShowPct: null, cancelacionPct: null, ofertaPct: null,
     senaPct: null, cierrePct: null, cierreSobreOfertaPct: null,
+    asistenciaValidaPct: null, noCalificadasPct: null, segundaAsistenciaPct: null,
+    cierreSobreValidaPct: null,
     facturacion: 0, cashCollected: 0, senasImporte: 0, ticketPromedio: null, valorEnJuego: 0,
+    cashPorAgenda: null, cashPorAsistencia: null,
     moneda, otrasMonedas: [],
   }
 }
@@ -509,6 +572,60 @@ export async function sinCargar(alcance: Alcance, hoy: string, limite = 50): Pro
   return f.map((x) => ({
     leadId: x.id, lead: x.nombre, closer: x.closer,
     fecha: x.fecha_sesion, dias: Number(x.dias),
+  }))
+}
+
+/**
+ * Leads cuya plata contradice su resultado.
+ *
+ * Un lead que dice «Perdido» con una venta activa suma a la facturación del mes
+ * igual que una venta real. El error es fácil de cometer —se carga la venta en
+ * el lead equivocado, o el cliente se arrepiente— y era imposible de encontrar:
+ * el embudo ya no lo mostraba y el número seguía inflado.
+ *
+ * Que el tablero sepa decir cuáles son es la diferencia entre un número que se
+ * corrige y un número en el que se deja de confiar.
+ */
+export type PlataFantasma = {
+  leadId: number
+  lead: string
+  closer: string | null
+  resultado: Resultado
+  que: 'venta' | 'sena'
+  importe: number
+  moneda: string
+  fecha: string
+}
+
+export async function plataFantasma(alcance: Alcance, limite = 20): Promise<PlataFantasma[]> {
+  if (sinEquipoAsignado(alcance)) return []
+  const valores: unknown[] = []
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id' }, 1)
+  if (alc.parametro !== null) valores.push(alc.parametro)
+  valores.push(limite)
+
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, l.resultado, c.nombre as closer,
+            'venta' as que, v.importe, v.moneda, v.fecha
+       from ventas v
+       join leads l on l.id = v.lead_id and l.borrado_en is null
+       left join closers c on c.id = l.closer_id
+      where v.borrado_en is null and l.resultado <> 'venta' and ${alc.condicion}
+     union all
+     select l.id, l.nombre, l.resultado, c.nombre as closer,
+            'sena' as que, s.importe, s.moneda, s.fecha
+       from senias s
+       join leads l on l.id = s.lead_id and l.borrado_en is null
+       left join closers c on c.id = l.closer_id
+      where s.borrado_en is null and s.estado <> 'convertida'
+        and l.resultado in ('perdida', 'no_calificado') and ${alc.condicion}
+     order by fecha desc
+     limit $${valores.length}`,
+    valores,
+  )
+  return f.map((x) => ({
+    leadId: x.id, lead: x.nombre, closer: x.closer, resultado: x.resultado as Resultado,
+    que: x.que as 'venta' | 'sena', importe: Number(x.importe), moneda: x.moneda, fecha: x.fecha,
   }))
 }
 

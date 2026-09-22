@@ -3,13 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, exigir, puede } from '@/lib/permisos'
+import { alcanceDe, asignarAQuienCarga, exigir, puede } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
+  puedeVerLead,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
-import { cargarResultado, registrarPago } from '@/datos/resultado'
+import { cargarResultado, registrarPago, anularVenta, anularSena } from '@/datos/resultado'
 import { guardarCalificacion, congelarQuality } from '@/datos/calificacion'
 import { agregarNota, borrarNota } from '@/datos/notas'
 import { marcarSeguimientoLargo } from '@/datos/seguimientos'
@@ -37,6 +38,9 @@ function refrescar(leadId: number) {
   revalidatePath('/tracker')
   revalidatePath('/dashboard')
   revalidatePath('/seguimientos')
+  // La plata que se carga acá es la que se cuenta allá.
+  revalidatePath('/metricas')
+  revalidatePath('/comisiones')
 }
 
 // ── Alta ────────────────────────────────────────────────────────────────────
@@ -44,7 +48,11 @@ function refrescar(leadId: number) {
 export type EstadoDeAlta =
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'duplicados'; mensaje: string
-      duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string }[] }
+      duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string
+                    /** Si el que pregunta lo puede abrir. Un closer no ve el lead de otro closer. */
+                    tuyo: boolean
+                    /** Y si no lo puede abrir, si es porque no es de nadie. */
+                    sinAsignar: boolean }[] }
   | null
 
 /**
@@ -82,27 +90,45 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   }
   if (lead.nombre === '') return { tipo: 'error', mensaje: 'El lead necesita un nombre.' }
 
+  // El lead que carga un closer es suyo; el que carga un setter, suyo. Sin
+  // esto quedaba sin dueño y desaparecía de su pantalla — ver `asignarAQuienCarga`.
+  const alcance = alcanceDe(usuario)
+  const suyo = asignarAQuienCarga(alcance, lead)
+
   if (datos.get('confirmado') !== '1') {
-    const encontrados = await posiblesDuplicados(lead)
+    const encontrados = await posiblesDuplicados(suyo)
     if (encontrados.length > 0) {
+      // Los duplicados se buscan en TODA la operación —si no, dos closers
+      // cargan dos fichas de la misma persona— pero el que pregunta puede no
+      // tener acceso a la que encontró. Ofrecerle un enlace que le va a dar
+      // «no encontrado» es peor que no ofrecerle nada.
+      const conAcceso = await Promise.all(
+        encontrados.map((d) => puedeVerLead(d.id, alcance)),
+      )
       return {
         tipo: 'duplicados',
         mensaje: 'Puede que esta persona ya esté cargada. Mirá antes de crear otra ficha.',
-        duplicados: encontrados.map((d) => ({
+        duplicados: encontrados.map((d, i) => ({
           id: d.id,
           nombre: d.nombre,
           porque: d.porque === 'email' ? 'mismo email'
             : d.porque === 'telefono' ? 'mismo teléfono' : 'nombre parecido',
           cerrado: d.resultado === 'perdida' || d.resultado === 'no_calificado',
           resultado: NOMBRE_DE_RESULTADO[d.resultado] ?? d.resultado,
+          tuyo: conAcceso[i] ?? false,
+          sinAsignar: d.sinAsignar,
         })),
       }
     }
   }
 
-  const id = await crearLead(lead, usuario.id)
+  const id = await crearLead(suyo, usuario.id)
   revalidatePath('/leads')
   revalidatePath('/tracker')
+
+  // Si aun así quedó fuera de su alcance —dirección puede asignárselo a
+  // cualquiera— no lo mandamos a una ficha que le va a dar «no encontrado».
+  if (!(await puedeVerLead(id, alcance))) redirect('/leads')
   redirect(`/leads/${id}`)
 }
 
@@ -304,6 +330,45 @@ export async function registrarPagoAccion(datos: FormData): Promise<void> {
     nCuota: numero(datos, 'nCuota'),
   }, usuario.id)
   refrescar(leadId)
+}
+
+// ── Anular plata cargada por error ──────────────────────────────────────────
+
+/**
+ * Sacar de los números una venta o una seña que no existió.
+ *
+ * Es la tercera forma de «cargué mal». Las otras dos ya estaban: si el dato del
+ * lead está mal se corrige en Datos, y si el lead no debería existir se da de
+ * baja. Faltaba ésta, y era la cara: corregir el resultado de «venta» a
+ * «perdida» sacaba el lead del embudo pero dejaba la plata contando en la
+ * facturación del mes, sin forma de sacarla.
+ *
+ * La pide quien puede tocar la plata, con motivo. No la borra: la anula, y
+ * queda en el historial con quién y por qué.
+ */
+export async function anularPlataAccion(
+  _previo: string | null, datos: FormData,
+): Promise<string | null> {
+  const usuario = await exigirUsuario()
+  exigir(usuario, 'editarDinero')
+
+  const leadId = Number(datos.get('leadId'))
+  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+  const motivo = texto(datos, 'motivo')
+  if (motivo === null) {
+    return 'Poné por qué se anula. Plata que desaparece de la facturación hay que poder explicarla.'
+  }
+
+  try {
+    if (texto(datos, 'que') === 'sena') await anularSena(leadId, usuario.id, motivo)
+    else await anularVenta(leadId, usuario.id, motivo)
+  } catch (e) {
+    return e instanceof Error ? e.message : 'No se pudo anular.'
+  }
+
+  refrescar(leadId)
+  return null
 }
 
 // ── Repesca ─────────────────────────────────────────────────────────────────
