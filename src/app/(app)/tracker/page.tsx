@@ -202,7 +202,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                 contra={<a href="#ventas">ver cuáles →</a>}
                 comoSeCalcula={DEFINICIONES.ventasCerradas!.formula} />
         <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
-                contra="sobre las asistencias del período"
+                contra={`${m.ventas} ventas sobre ${m.asistencias} asistencias`}
                 comoSeCalcula={DEFINICIONES.cierrePct!.formula} />
         <Numero etiqueta="Cierre en segunda" valor={m.cierresEnSegunda}
                 contra="de los cierres, en segunda llamada"

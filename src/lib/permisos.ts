@@ -2,14 +2,24 @@ import type { Usuario } from './auth'
 import { PUEDE, type Permiso } from '@/dominio/roles'
 
 /**
- * Quién ve qué.
+ * Quién ve qué, y quién es cada uno. Son dos preguntas distintas.
  *
- * Dirección, admin, head y coach ven toda la operación. Un closer ve sus
- * oportunidades. Un setter ve los leads que agendó. No hay un quinto caso.
+ * EL ALCANCE es la primera: qué leads entran en una consulta. Hoy todos ven
+ * toda la operación, y es una decisión del negocio: el equipo es chico, los
+ * leads se pasan entre closers, y no poder abrir el lead que cargó otro
+ * costaba más que lo que cuidaba. Un setter veía «está duplicado» y no podía
+ * ver contra qué; el otro setter sí lo veía. Eso no se lee como un permiso:
+ * se lee como que el sistema está roto.
  *
- * El alcance viaja como argumento obligatorio de cada consulta que toca leads u
- * oportunidades: si mañana alguien agrega una pantalla y se olvida de filtrar,
- * no compila. Un filtro que depende de acordarse no es un filtro.
+ * Se apaga por rol, en `PUEDE[rol].verTodo`, y el filtro sigue viajando como
+ * argumento obligatorio de cada consulta que toca leads: si mañana hay que
+ * volver a separar por equipo, es una línea y no una auditoría. Un filtro que
+ * depende de acordarse no es un filtro.
+ *
+ * LA FIGURA es la segunda: quién es el que está cargando. Va aparte a
+ * propósito. Que un closer vea todo NO significa que el lead que carga sea de
+ * nadie: sigue siendo suyo. Cuando las dos preguntas eran la misma, abrirle
+ * la vista a un closer le quitaba el dueño a lo que cargaba.
  */
 
 export type Alcance =
@@ -32,6 +42,39 @@ export function alcanceDe(usuario: Usuario): Alcance {
     return { todo: false, usuarioId, setterId: usuario.setterId }
   }
   return { todo: false, usuarioId, nada: true }
+}
+
+/**
+ * Quién es el que carga: su figura comercial, si tiene una.
+ *
+ * No depende de lo que pueda ver. Un closer que ve toda la operación sigue
+ * siendo un closer, y lo que carga entra a su nombre.
+ */
+export type Figura =
+  | { tipo: 'closer'; closerId: number }
+  | { tipo: 'setter'; setterId: number }
+  | { tipo: 'ninguna' }
+
+export function figuraDe(usuario: Usuario): Figura {
+  if (usuario.rol === 'closer' && usuario.closerId !== null) {
+    return { tipo: 'closer', closerId: usuario.closerId }
+  }
+  if (usuario.rol === 'setter' && usuario.setterId !== null) {
+    return { tipo: 'setter', setterId: usuario.setterId }
+  }
+  return { tipo: 'ninguna' }
+}
+
+/**
+ * Una cuenta de closer o de setter sin su figura vinculada.
+ *
+ * No es un caso raro: pasa cada vez que se crea el usuario antes que la
+ * persona en Configuración. Lo que carga no queda a nombre de nadie, así que
+ * la aplicación lo dice arriba de todo en vez de dejarlo pasar.
+ */
+export function sinFiguraVinculada(usuario: Usuario): boolean {
+  return (usuario.rol === 'closer' || usuario.rol === 'setter')
+    && figuraDe(usuario).tipo === 'ninguna'
 }
 
 export function sinEquipoAsignado(alcance: Alcance): boolean {
@@ -86,10 +129,16 @@ export function condicionDeAlcance(
   return { condicion: `(${partes.join(' or ')})`, parametros }
 }
 
+/**
+ * El lead que carga un closer es suyo; el que carga un setter, también.
+ *
+ * Lo decide la FIGURA y no el alcance: que alguien vea toda la operación no
+ * convierte en huérfano lo que carga.
+ */
 export function asignarAQuienCarga<T extends { closerId?: number | null; setterId?: number | null }>(
-  alcance: Alcance, lead: T,
+  figura: Figura, lead: T,
 ): T {
-  if (alcance.todo || 'nada' in alcance) return lead
-  if ('closerId' in alcance) return { ...lead, closerId: lead.closerId ?? alcance.closerId }
-  return { ...lead, setterId: lead.setterId ?? alcance.setterId }
+  if (figura.tipo === 'closer') return { ...lead, closerId: lead.closerId ?? figura.closerId }
+  if (figura.tipo === 'setter') return { ...lead, setterId: lead.setterId ?? figura.setterId }
+  return lead
 }

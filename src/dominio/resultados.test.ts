@@ -53,10 +53,14 @@ describe('permisos', () => {
     expect(PUEDE.coach.cargarResultado).toBe(false)
   })
 
-  it('un closer no reasigna leads ni toca importes', () => {
+  it('un closer no reasigna leads ni toca importes, pero ve toda la operación', () => {
     expect(PUEDE.closer.reasignarCloser).toBe(false)
     expect(PUEDE.closer.editarDinero).toBe(false)
-    expect(PUEDE.closer.verTodo).toBe(false)
+    // Ver y poder tocar no son lo mismo. El equipo es chico y los leads se
+    // pasan: un setter que ve «está duplicado» y no puede ver contra qué no
+    // lee un permiso, lee que el sistema está roto.
+    expect(PUEDE.closer.verTodo).toBe(true)
+    expect(PUEDE.setter.verTodo).toBe(true)
   })
 
   it('un setter no carga resultados de venta', () => {

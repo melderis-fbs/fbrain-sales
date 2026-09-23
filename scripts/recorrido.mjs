@@ -707,9 +707,26 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
             'con el lead que acaba de cargar')
 
   await p.goto(`${RAIZ}/leads`)
-  comprobar((await p.locator('.contenido table').textContent() ?? '')
-              .includes(`Cliente Histórico ${marca}`),
+  const suLista = await p.locator('.contenido table').textContent() ?? ''
+  comprobar(suLista.includes(`Cliente Histórico ${marca}`),
             'y le aparece en su lista de leads')
+  // Y ve TAMBIÉN lo que cargó otro. El equipo es chico y los leads se pasan:
+  // un setter que veía «está duplicado» sin poder abrir contra qué no leía un
+  // permiso, leía que el sistema está roto.
+  comprobar(suLista.includes(CLIENTA),
+            'y también el lead que cargó otro: todos ven toda la operación')
+
+  // Por eso mismo el aviso de duplicado ahora se puede verificar: el lead
+  // contra el que choca se abre.
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('.contenido #nombre', 'Otra Persona Más')
+  await p.fill('.contenido #telefono', TELEFONO)
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await esperar()
+  comprobar(await p.locator('.contenido .aviso.atencion').count() > 0,
+            'al cargar un duplicado de otro, avisa')
+  comprobar(await p.locator(`.contenido .aviso.atencion a:has-text("${CLIENTA}")`).count() === 1,
+            'y el duplicado se puede abrir, que era lo que faltaba')
 
   // «Verlas →» tiene que llevar a las reuniones atrasadas, sean del mes que
   // sean. Antes saltaba a un período fijo que podía no contenerlas: se

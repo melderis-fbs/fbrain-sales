@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, asignarAQuienCarga, exigir, puede } from '@/lib/permisos'
+import { alcanceDe, asignarAQuienCarga, figuraDe, exigir, puede } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
@@ -103,7 +103,7 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
 
   // El lead que carga un closer es suyo; el que carga un setter, suyo. Sin
   // esto quedaba sin dueño y desaparecía de su pantalla — ver `asignarAQuienCarga`.
-  const suyo = asignarAQuienCarga(alcance, lead)
+  const suyo = asignarAQuienCarga(figuraDe(usuario), lead)
 
   if (datos.get('confirmado') !== '1') {
     const encontrados = await posiblesDuplicados(suyo)
@@ -509,11 +509,14 @@ export async function importarAccion(
   const pegado = String(datos.get('planilla') ?? '')
   if (pegado.trim() === '') return { tipo: 'error', mensaje: 'Pegá la planilla en el cuadro de arriba.' }
 
-  const alcance = alcanceDe(usuario)
+  // La planilla que sube un closer entra a su nombre si no trae columna de
+  // closer. Es su histórico: pedirle que escriba su propio nombre en cien
+  // filas es pedirle que no lo suba.
+  const figura = figuraDe(usuario)
   const cats = await catalogos()
   const lectura = leerPlanilla(pegado, cats, {
-    closerId: !alcance.todo && 'closerId' in alcance ? alcance.closerId : null,
-    setterId: !alcance.todo && 'setterId' in alcance ? alcance.setterId : null,
+    closerId: figura.tipo === 'closer' ? figura.closerId : null,
+    setterId: figura.tipo === 'setter' ? figura.setterId : null,
   }, await config<string>('moneda_base', 'USD'))
 
   if (lectura.problema !== null) return { tipo: 'error', mensaje: lectura.problema }

@@ -1,5 +1,5 @@
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, exigir } from '@/lib/permisos'
+import { figuraDe, exigir } from '@/lib/permisos'
 import { catalogos } from '@/datos/catalogos'
 import { Encabezado } from '@/componentes/Piezas'
 import { AltaDeLead, type QuienCarga } from '@/componentes/AltaDeLead'
@@ -9,18 +9,18 @@ export default async function LeadNuevo() {
   exigir(usuario, 'editarLead')
   const cats = await catalogos()
 
-  // Para un closer o un setter, de quién es el lead no se elige: es suyo. Si
-  // pudiera asignárselo a otro lo perdería de vista para siempre, y eso se lee
-  // como «se cargó mal» o directamente como «no se creó».
-  const alcance = alcanceDe(usuario)
-  const yo: QuienCarga = alcance.todo ? { tipo: 'todo' }
-    : 'closerId' in alcance
-      ? { tipo: 'closer', id: alcance.closerId,
-          nombre: cats.closers.find((c) => c.id === alcance.closerId)?.nombre ?? usuario.nombre }
-    : 'setterId' in alcance
-      ? { tipo: 'setter', id: alcance.setterId,
-          nombre: cats.setters.find((c) => c.id === alcance.setterId)?.nombre ?? usuario.nombre }
-    : { tipo: 'nadie' }
+  // Para un closer o un setter, de quién es el lead no se elige: es suyo. Lo
+  // decide su figura, no lo que pueda ver: ahora ven toda la operación y lo
+  // que cargan sigue entrando a su nombre.
+  const figura = figuraDe(usuario)
+  const yo: QuienCarga = figura.tipo === 'closer'
+    ? { tipo: 'closer', id: figura.closerId,
+        nombre: cats.closers.find((c) => c.id === figura.closerId)?.nombre ?? usuario.nombre }
+    : figura.tipo === 'setter'
+    ? { tipo: 'setter', id: figura.setterId,
+        nombre: cats.setters.find((c) => c.id === figura.setterId)?.nombre ?? usuario.nombre }
+    : usuario.rol === 'closer' || usuario.rol === 'setter' ? { tipo: 'nadie' }
+    : { tipo: 'todo' }
 
   return (
     <div className="apilado">

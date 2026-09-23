@@ -4,12 +4,26 @@ import { ritmo, diasHabilesTranscurridos } from './objetivo'
 import { rango, lunesDe, sumarDias, diasDelMes, hoyEn } from './periodos'
 
 describe('embudo', () => {
-  it('calcula el paso contra la etapa anterior, no contra el total', () => {
+  it('cada etapa se mide contra su base, no contra la de arriba', () => {
     const e = embudo({ agendadas: 100, asistidas: 83, ofertas: 76, senas: 9, ventas: 6 })
-    expect(e.map((x) => x.paso)).toEqual([null, 83, 91.6, 11.8, 66.7])
+    // Asistidas sobre agendadas; ofertas, señas y ventas sobre asistidas.
+    expect(e.map((x) => x.paso)).toEqual([null, 83, 91.6, 10.8, 7.2])
+    expect(e.map((x) => x.sobre)).toEqual(
+      [null, 'de las agendadas', 'de las asistencias', 'de las asistencias', 'de las asistencias'])
   })
 
-  it('no divide por cero: sin etapa anterior el paso es null, no 0%', () => {
+  it('la venta NO se mide contra la seña: daría más de 100% y no sería un error de redondeo', () => {
+    // El caso real: dos señas y doce ventas daban «Ventas · 600% de señas». La
+    // seña no es un paso obligatorio —la mayoría de las ventas no pasa por
+    // ahí— y un número imposible en la pantalla principal se lleva puesta la
+    // confianza en el resto del tablero.
+    const e = embudo({ agendadas: 99, asistidas: 87, ofertas: 10, senas: 2, ventas: 12 })
+    const ventas = e.find((x) => x.clave === 'ventas')
+    expect(ventas?.paso).toBe(13.8)          // 12 sobre 87 asistencias
+    expect(ventas?.sobre).toBe('de las asistencias')
+  })
+
+  it('no divide por cero: sin base el paso es null, no 0%', () => {
     const e = embudo({ agendadas: 0, asistidas: 0, ofertas: 0, senas: 0, ventas: 0 })
     expect(e.every((x) => x.paso === null)).toBe(true)
   })

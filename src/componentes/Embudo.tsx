@@ -4,18 +4,19 @@ import { Barra } from './Piezas'
 /**
  * El embudo.
  *
- * Los porcentajes son de PASO, no sobre el total: 83 asistidas sobre 100
- * agendadas es 83%, y 76 ofertas sobre 83 asistidas es 91%. Siempre contra la
- * etapa anterior, porque eso es lo que dice dónde se pierde — que es la única
- * pregunta que un embudo contesta bien.
+ * Cada etapa dice contra qué se mide, y no siempre es la de arriba: la seña no
+ * es un paso obligatorio —la mayoría de las ventas no pasa por ahí— así que
+ * ella y la venta se miden sobre las ASISTENCIAS. Medir la venta contra la
+ * seña daba «Ventas · 600% de señas», que no es una exageración: es imposible,
+ * y un número imposible en la pantalla principal se lleva puesta la confianza
+ * en el resto.
  */
 export function Embudo({ etapas }: { etapas: Etapa[] }) {
   const techo = Math.max(1, etapas[0]?.cantidad ?? 1)
 
   return (
     <div className="apilado" style={{ gap: 10 }}>
-      {etapas.map((e, i) => {
-        const anterior = i === 0 ? null : etapas[i - 1]
+      {etapas.map((e) => {
         // La caída, no el paso: es lo que hay que mirar.
         const caida = e.paso === null ? null : 100 - e.paso
         return (
@@ -26,7 +27,7 @@ export function Embudo({ etapas }: { etapas: Etapa[] }) {
                 <strong>{e.cantidad.toLocaleString('es-AR')}</strong>
                 {e.paso !== null ? (
                   <span style={{ color: 'var(--gris)', marginLeft: 6, fontSize: 12 }}>
-                    {e.paso}% de {anterior?.etiqueta.toLowerCase()}
+                    {e.paso}% {e.sobre}
                   </span>
                 ) : null}
               </span>

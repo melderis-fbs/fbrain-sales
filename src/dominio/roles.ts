@@ -33,11 +33,14 @@ export const PUEDE: Record<Rol, Record<Permiso, boolean>> = {
   admin:     { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
   direccion: { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
   head:      { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: true,  reasignarCloser: true,  cargarResultado: true,  editarDinero: true,  verDinero: true,  configurar: true  },
-  // El closer y el setter dan de baja lo suyo: un duplicado, una prueba, un
-  // lead cargado mal. No restauran: si se dieron de baja algo por error, lo
-  // vuelve a poner quien tiene la vista completa —si no, un error se tapa solo.
-  closer:    { verTodo: false, editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: true,  editarDinero: false, verDinero: true,  configurar: false },
-  setter:    { verTodo: false, editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
+  // El closer y el setter VEN TODA la operación. El equipo es chico, los leads
+  // se pasan, y no poder abrir el lead que cargó otro costaba más que lo que
+  // cuidaba: un setter veía «está duplicado» y no podía ver contra qué. Lo que
+  // no pueden es tocar la plata ni restaurar lo que se dio de baja —si se
+  // dieron de baja algo por error, lo vuelve a poner quien mira todo; si no,
+  // un error se tapa solo—.
+  closer:    { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: true,  editarDinero: false, verDinero: true,  configurar: false },
+  setter:    { verTodo: true,  editarLead: true,  borrarLead: true,  restaurarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
   // El coach mira llamadas y da feedback. No toca la operación ni la plata.
   coach:     { verTodo: true,  editarLead: false, borrarLead: false, restaurarLead: false, reasignarCloser: false, cargarResultado: false, editarDinero: false, verDinero: false, configurar: false },
 }

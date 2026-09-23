@@ -1,12 +1,19 @@
 /**
- * El embudo, de agendadas a cobrado.
+ * El embudo, de agendadas a vendidas.
  *
- * Función pura: recibe los conteos y devuelve las etapas con su porcentaje de
- * paso. No sabe de base de datos, y por eso se puede probar sin una.
+ * Función pura: recibe los conteos y devuelve las etapas con su porcentaje. No
+ * sabe de base de datos, y por eso se puede probar sin una.
  *
- * Los porcentajes son de PASO, no sobre el total: 83 asistidas sobre 100
- * agendadas es 83%, y 76 ofertas sobre 83 asistidas es 91%. Un porcentaje
- * siempre contra la etapa anterior, porque eso es lo que dice dónde se pierde.
+ * Cada etapa dice CONTRA QUÉ se mide, y no siempre es la de arriba. Eso último
+ * era el error: medir cada etapa contra la anterior daba por hecho que todas
+ * son pasos obligatorios, y la SEÑA no lo es —la mayoría de las ventas no pasa
+ * por ahí—. Con dos señas y doce ventas el tablero mostraba «Ventas · 600% de
+ * señas», que no es una exageración: es un número imposible, y un número
+ * imposible en la pantalla principal se lleva puesta la confianza en el resto.
+ *
+ * La seña y la venta se miden las dos sobre las ASISTENCIAS, que es el
+ * universo del que salen. La oferta también. Sólo la asistencia se mide sobre
+ * lo agendado, que sí es un paso obligatorio.
  */
 
 export type Conteos = {
@@ -21,8 +28,10 @@ export type Etapa = {
   clave: keyof Conteos
   etiqueta: string
   cantidad: number
-  /** Porcentaje de paso desde la etapa anterior. null en la primera. */
+  /** Porcentaje contra su base. null en la primera, que no tiene contra qué. */
   paso: number | null
+  /** Contra qué se mide, en palabras: «de las asistencias». */
+  sobre: string | null
 }
 
 const ETIQUETAS: Record<keyof Conteos, string> = {
@@ -35,14 +44,33 @@ const ETIQUETAS: Record<keyof Conteos, string> = {
 
 const ORDEN: (keyof Conteos)[] = ['agendadas', 'asistidas', 'ofertas', 'senas', 'ventas']
 
+/** Contra qué se mide cada etapa. `null` es «contra nada»: es la primera. */
+const BASE: Record<keyof Conteos, keyof Conteos | null> = {
+  agendadas: null,
+  asistidas: 'agendadas',
+  ofertas: 'asistidas',
+  senas: 'asistidas',
+  ventas: 'asistidas',
+}
+
+const EN_PALABRAS: Record<keyof Conteos, string> = {
+  agendadas: 'de las agendadas',
+  asistidas: 'de las asistencias',
+  ofertas: 'de las ofertas',
+  senas: 'de las señas',
+  ventas: 'de las ventas',
+}
+
 export function embudo(c: Conteos): Etapa[] {
-  return ORDEN.map((clave, i) => {
-    const anterior = i === 0 ? null : c[ORDEN[i - 1]!]
+  return ORDEN.map((clave) => {
+    const base = BASE[clave]
+    const total = base === null ? null : c[base]
     return {
       clave,
       etiqueta: ETIQUETAS[clave],
       cantidad: c[clave],
-      paso: anterior === null || anterior === 0 ? null : redondear((c[clave] / anterior) * 100),
+      paso: total === null || total === 0 ? null : redondear((c[clave] / total) * 100),
+      sobre: base === null ? null : EN_PALABRAS[base],
     }
   })
 }

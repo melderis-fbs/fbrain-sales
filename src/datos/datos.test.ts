@@ -1038,7 +1038,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     // desaparecía de su lista y la ficha le contestaba «no encontrado».
     const permisos = await import('@/lib/permisos')
     const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
-      { todo: false, usuarioId: 0, closerId: closerKevin },
+      { tipo: 'closer', closerId: closerKevin },
       { nombre: 'Histórico de Kevin', fechaSesion: '2026-09-03' },
     )
     const id = await leads.crearLead(suyo, usuarioId)
@@ -1095,7 +1095,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
       `insert into setters (nombre, nombre_pleg) values ('Fabricio','fabricio') returning id`)
     const permisos = await import('@/lib/permisos')
     const suyo = permisos.asignarAQuienCarga<Parameters<typeof leads.crearLead>[0]>(
-      { todo: false, usuarioId: 0, setterId: s.id },
+      { tipo: 'setter', setterId: s.id },
       { nombre: 'Agendado por Fabricio', closerId: closerBraian, fechaSesion: '2026-09-03' },
     )
     const id = await leads.crearLead(suyo, usuarioId)
