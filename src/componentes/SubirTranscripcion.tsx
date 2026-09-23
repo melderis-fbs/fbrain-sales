@@ -39,7 +39,7 @@ function BotonAnalizar({ rehacer }: { rehacer: boolean }) {
   const { pending } = useFormStatus()
   return (
     <button type="submit" disabled={pending}>
-      {pending ? 'Analizando… puede tardar un minuto' : rehacer ? 'Volver a analizar' : 'Analizar la llamada'}
+      {pending ? 'Analizando… no cierres la pestaña' : rehacer ? 'Volver a analizar' : 'Analizar la llamada'}
     </button>
   )
 }

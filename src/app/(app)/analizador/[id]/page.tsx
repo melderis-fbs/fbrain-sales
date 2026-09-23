@@ -13,6 +13,19 @@ import { comoSeLee } from '@/dominio/rubrica'
 import { NOMBRE_DE_TIPO } from '@/dominio/resultados'
 
 /**
+ * Cuánto puede tardar el análisis antes de que la plataforma lo corte.
+ *
+ * Son DOS llamadas al modelo sobre una transcripción entera —una para leer y
+ * otra para evaluar— y con una llamada de una hora eso son minutos. Sin esto,
+ * Vercel mata la función a los quince segundos: el navegador se queda sin
+ * respuesta y la pantalla queda en negro, sin error, sin aviso y sin análisis.
+ *
+ * Va acá y no en la acción porque el límite es del segmento de ruta desde el
+ * que se invoca. Si el plan permite menos, Vercel lo recorta al máximo suyo.
+ */
+export const maxDuration = 300
+
+/**
  * Una llamada y su análisis.
  *
  * Todo lo que el análisis afirma viene con la frase de la transcripción que lo
@@ -81,6 +94,34 @@ export default async function Llamada({ params }: { params: Promise<{ id: string
               El análisis falló: {analisis.error}. Se puede volver a intentar sin cargar la
               transcripción de nuevo.
             </div>
+          ) : null}
+
+          {/* Un análisis que quedó «leyendo» o «evaluando» y no volvió es uno
+              que se cortó a la mitad: casi siempre porque la plataforma mató
+              la función por tiempo. Sin este aviso la pantalla queda igual que
+              antes de apretar —sin nota, sin error, sin nada— y del otro lado
+              eso se lee como que la aplicación se colgó. */}
+          {analisis && (analisis.estado === 'leyendo' || analisis.estado === 'evaluando') ? (
+            <div className="aviso atencion">
+              <strong>Hay un análisis empezado que no terminó</strong> (quedó en «{analisis.estado}»,
+              arrancó el {fechaCorta(analisis.creadoEn)}).
+              <p style={{ margin: '6px 0 0', fontSize: 13 }}>
+                Si lo acabás de lanzar, esperá: son dos llamadas al modelo sobre la transcripción
+                entera y con una llamada larga tarda un par de minutos. Si ya pasó de eso, se cortó
+                por tiempo: tocá <strong>Volver a analizar</strong>. No hay que cargar la
+                transcripción de nuevo.
+              </p>
+            </div>
+          ) : null}
+
+          {/* Antes de apretar, cuánto va a tardar. Una transcripción de una
+              hora son dos llamadas largas al modelo, y una espera que nadie
+              anunció se lee como una pantalla colgada. */}
+          {transcripcion.caracteres > 30000 ? (
+            <p className="ayuda">
+              Es una transcripción larga: el análisis puede tardar un par de minutos.
+              Dejá la pestaña abierta mientras corre.
+            </p>
           ) : null}
 
           {analisis && analisis.score !== null ? (
