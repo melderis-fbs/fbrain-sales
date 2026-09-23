@@ -1,3 +1,7 @@
+'use client'
+
+import { useActionState } from 'react'
+import { useFormStatus } from 'react-dom'
 import type { Lead, LoQueCuelga } from '@/datos/leads'
 import type { Opcion } from '@/datos/catalogos'
 import { Tarjeta } from '../Piezas'
@@ -12,7 +16,25 @@ import { TIPOS_SESION, NOMBRE_DE_TIPO } from '@/dominio/resultados'
  * un lead no se podía corregir; acá la lista de lo editable y la lista de lo
  * que tiene un lead son la misma lista. Nada se borra y se vuelve a crear:
  * cambia el campo y queda el histórico.
+ *
+ * Y CONTESTA. Antes se apretaba «Guardar los cambios» y la pantalla quedaba
+ * igual, que es indistinguible de que no se guardó. El caso real fue peor: un
+ * lead subido por planilla tenía «no tiene» en el email, el navegador
+ * consideraba inválido ese campo y bloqueaba el envío del formulario entero.
+ * El botón no hacía literalmente nada y no había forma de saber por qué. Por
+ * eso el email ya no es `type="email"`: un dato viejo no puede dejar sin
+ * guardar el resto de la ficha, y lo que haya que decir del email se dice
+ * arriba, con el resto ya guardado.
  */
+function Guardar() {
+  const { pending } = useFormStatus()
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? 'Guardando…' : 'Guardar los cambios'}
+    </button>
+  )
+}
+
 export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
   lead: Lead
   catalogos: { fuentes: Opcion[]; funnels: Opcion[]; setters: Opcion[] }
@@ -20,16 +42,23 @@ export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
   puedeBorrar: boolean
   puedeConPlata: boolean
 }) {
+  const [guardado, accion] = useActionState(editarLeadAccion, null)
+
   return (
     <div style={{ maxWidth: 820 }}>
-      <form action={editarLeadAccion}>
+      <form action={accion}>
         <input type="hidden" name="leadId" value={lead.id} />
+        {guardado ? (
+          <div className={guardado.ok ? 'aviso dato' : 'aviso problema'} style={{ marginBottom: 10 }}>
+            {guardado.mensaje}
+          </div>
+        ) : null}
 
         <Tarjeta titulo="Quién es">
           <div className="dos">
             <Campo id="nombre" etiqueta="Nombre y apellido" valor={lead.nombre} requerido />
             <Campo id="empresa" etiqueta="Empresa" valor={lead.empresa} />
-            <Campo id="email" etiqueta="Email" valor={lead.email} tipo="email" />
+            <Campo id="email" etiqueta="Email" valor={lead.email} />
             <Campo id="telefono" etiqueta="Teléfono" valor={lead.telefono} />
             <Campo id="pais" etiqueta="País" valor={lead.pais} />
             <Campo id="industria" etiqueta="Industria" valor={lead.industria} />
@@ -93,7 +122,7 @@ export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
             <label htmlFor="motivo">Motivo del cambio</label>
             <input id="motivo" name="motivo" placeholder="Opcional · queda en el historial" />
           </div>
-          <button type="submit">Guardar los cambios</button>
+          <Guardar />
         </Tarjeta>
       </form>
 

@@ -762,6 +762,46 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
   await foto('closer-carga-historico')
 })
 
+await paso('la ficha dice si guardó o no, y un email viejo no la bloquea', async () => {
+  // El reporte fue «le quise cambiar el setter y la fuente y no lo guarda». El
+  // lead venía de una planilla con «no tiene» en la columna email: el
+  // navegador consideraba inválido ese campo y bloqueaba el envío del
+  // formulario entero. El botón no hacía literalmente nada.
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('.contenido #nombre', `Email Roto ${marca}`)
+  await p.fill('.contenido #fechaSesion', HOY)
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const roto = p.url().match(/leads\/(\d+)/)?.[1]
+
+  await p.goto(`${RAIZ}/leads/${roto}?pestana=datos`)
+  await p.fill('.contenido #email', 'no tiene')
+  await p.selectOption('.contenido #fuenteId', { index: 1 })
+  await p.selectOption('.contenido #setterId', { index: 1 })
+
+  const valido = await p.evaluate(() => document.querySelector('.contenido form').checkValidity())
+  comprobar(valido === true, 'un email que no es un email no invalida el formulario entero')
+
+  await p.click('.contenido form button:has-text("Guardar")')
+  await esperarCuantos('.contenido .aviso.dato', 1)
+  const aviso = await p.locator('.contenido .aviso').first().textContent() ?? ''
+  comprobar(aviso.includes('Guardado'), `y contesta que guardó: «${aviso.trim().slice(0, 60)}…»`)
+  comprobar(aviso.includes('no parece un email'), 'avisando además que ese email no va a servir')
+
+  await p.goto(`${RAIZ}/leads/${roto}?pestana=datos`)
+  comprobar(await p.locator('.contenido #setterId').inputValue() !== '',
+            'y el setter quedó cambiado de verdad')
+  comprobar(await p.locator('.contenido #fuenteId').inputValue() !== '',
+            'y la fuente también')
+
+  // Y guardar sin tocar nada lo dice en vez de quedarse callado.
+  await p.click('.contenido form button:has-text("Guardar")')
+  await esperarCuantos('.contenido .aviso.dato', 1)
+  comprobar((await p.locator('.contenido .aviso').first().textContent() ?? '')
+              .includes('nada para cambiar'),
+            'y si no cambió nada, también lo dice')
+})
+
 await paso('el histórico de un mes entra pegando la planilla', async () => {
   // Cargar un mes de a un formulario por vez no se hace: se abandona a la
   // mitad y el tablero queda con la mitad de los datos.

@@ -185,3 +185,37 @@ describe('leer la planilla', () => {
     expect(r.filas[0]?.errores.join(' ')).toMatch(/mas o menos/)
   })
 })
+
+
+describe('la columna «email» de una planilla trae de todo', () => {
+  it('lo que no es un email no se guarda como email, y se avisa', () => {
+    // Guardarlo tenía dos costos y los dos se pagaban después: dos leads con
+    // «no tiene» se detectaban como la misma persona, y la ficha quedaba con
+    // un campo que el navegador considera inválido, así que el formulario
+    // entero dejaba de guardar y no había forma de saber por qué.
+    const { filas } = leerPlanilla(
+      'Nombre\tEmail\nMaría\tno tiene', CATALOGOS)
+    expect(filas[0]?.email).toBe(null)
+    expect(filas[0]?.avisos.join(' ')).toContain('no es un email')
+  })
+
+  it('y un email de verdad entra como estaba', () => {
+    const { filas } = leerPlanilla(
+      'Nombre\tEmail\nMaría\tmaria@ejemplo.com', CATALOGOS)
+    expect(filas[0]?.email).toBe('maria@ejemplo.com')
+    expect(filas[0]?.avisos).toEqual([])
+  })
+})
+
+describe('la hora', () => {
+  it('«2 pm» son las 14, no las 2 de la madrugada', () => {
+    // Sin esto la reunión de la tarde entraba a la madrugada, la agenda del
+    // día quedaba mal ordenada y nadie sospechaba del importador.
+    expect(leerHora('2 pm')).toBe('14:00')
+    expect(leerHora('2:30 PM')).toBe('14:30')
+    expect(leerHora('12 am')).toBe('00:00')
+    expect(leerHora('12 pm')).toBe('12:00')
+    expect(leerHora('9 am')).toBe('09:00')
+    expect(leerHora('14:30')).toBe('14:30')
+  })
+})

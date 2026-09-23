@@ -1,4 +1,4 @@
-import { plegar } from '@/lib/texto'
+import { plegar, pareceEmail } from '@/lib/texto'
 import {
   ESTADOS, RESULTADOS, MOTIVOS_PERDIDA, TIPOS_SESION,
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, NOMBRE_DE_MOTIVO, NOMBRE_DE_TIPO,
@@ -113,9 +113,18 @@ export function leerHora(texto: string): string | null {
   if (t === '') return null
   const m = t.match(/^(\d{1,2})[:.]?(\d{2})?/)
   if (!m) return null
-  const h = Number(m[1])
+  let h = Number(m[1])
   const min = m[2] === undefined ? 0 : Number(m[2])
   if (h > 23 || min > 59) return null
+
+  // «2 pm» son las 14, no las 2 de la mañana. Sin esto la reunión de la tarde
+  // entraba a la madrugada, la agenda del día quedaba mal ordenada y nadie
+  // sospechaba del importador: sospechaban del que la cargó.
+  const tarde = /p\.?\s?m\.?$/i.test(t)
+  const manana = /a\.?\s?m\.?$/i.test(t)
+  if (tarde && h < 12) h += 12
+  if (manana && h === 12) h = 0
+
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
@@ -389,10 +398,21 @@ export function leerPlanilla(
       errores.push('Trae un cobro pero no una venta. El cobro tiene que ser de algo.')
     }
 
+    // La columna «email» de una planilla trae de todo: «no tiene», «-»,
+    // «preguntar». Guardar eso como email tiene dos costos, y los dos se pagan
+    // después: dos leads con «no tiene» se detectan como la misma persona, y
+    // la ficha queda con un campo que el navegador considera inválido, así que
+    // el formulario entero deja de guardar y nadie entiende por qué.
+    const emailCrudo = valor('email')
+    const email = pareceEmail(emailCrudo) ? emailCrudo : null
+    if (emailCrudo !== '' && email === null) {
+      avisos.push(`«${emailCrudo}» no es un email: la fila se importa sin email.`)
+    }
+
     return {
       linea: i + 2,
       nombre,
-      email: valor('email') || null,
+      email,
       telefono: valor('telefono') || null,
       empresa: valor('empresa') || null,
       pais: valor('pais') || null,

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
+import { pareceEmail } from '@/lib/texto'
 import { alcanceDe, asignarAQuienCarga, figuraDe, exigir, puede } from '@/lib/permisos'
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
@@ -134,25 +135,56 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   redirect(`/leads/${id}`)
 }
 
-export async function editarLeadAccion(datos: FormData): Promise<void> {
-  const usuario = await exigirUsuario()
-  exigir(usuario, 'editarLead')
+/**
+ * Lo que contesta el formulario de datos.
+ *
+ * Existe porque sin esto no contestaba nada: se apretaba «Guardar los cambios»
+ * y la pantalla quedaba igual, que es indistinguible de que no se guardó. El
+ * caso real fue peor todavía —el navegador bloqueaba el envío por un email
+ * viejo que no era un email, y el botón no hacía literalmente nada—, pero la
+ * lección vale igual: un formulario que no confirma es un formulario en el que
+ * no se confía, y lo que no se confía se carga dos veces.
+ */
+export type Guardado = { ok: boolean; mensaje: string } | null
 
-  const leadId = Number(datos.get('leadId'))
-  // El id viene del navegador: es lo que escribió cualquiera, no lo que vio en
-  // la pantalla. Se comprueba contra la base.
-  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+export async function editarLeadAccion(_previo: Guardado, datos: FormData): Promise<Guardado> {
+  try {
+    const usuario = await exigirUsuario()
+    exigir(usuario, 'editarLead')
 
-  const cambios: Partial<Record<ClaveEditable, string | null>> = {}
-  for (const campo of ['nombre', 'email', 'telefono', 'pais', 'empresa', 'industria',
-                       'fuenteId', 'funnelId', 'setterId', 'fechaSesion', 'horaSesion',
-                       'tipoSesion', 'valorPotencial', 'moneda',
-                       'links', 'infoNegocio', 'infoExtra'] as ClaveEditable[]) {
-    if (datos.has(campo)) cambios[campo] = texto(datos, campo)
+    const leadId = Number(datos.get('leadId'))
+    // El id viene del navegador: es lo que escribió cualquiera, no lo que vio en
+    // la pantalla. Se comprueba contra la base.
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+    const cambios: Partial<Record<ClaveEditable, string | null>> = {}
+    for (const campo of ['nombre', 'email', 'telefono', 'pais', 'empresa', 'industria',
+                         'fuenteId', 'funnelId', 'setterId', 'fechaSesion', 'horaSesion',
+                         'tipoSesion', 'valorPotencial', 'moneda',
+                         'links', 'infoNegocio', 'infoExtra'] as ClaveEditable[]) {
+      if (datos.has(campo)) cambios[campo] = texto(datos, campo)
+    }
+
+    const cuantos = await editarLead(leadId, cambios, usuario.id, texto(datos, 'motivo') ?? undefined)
+    refrescar(leadId)
+
+    // El email se guarda como vino, pero si no es un email hay que decirlo: no
+    // va a servir para buscar ni para detectar duplicados.
+    const mail = texto(datos, 'email')
+    const dudoso = mail !== null && !pareceEmail(mail)
+      ? ` El email «${mail}» no parece un email: no va a servir para buscar ni para detectar duplicados.`
+      : ''
+
+    if (cuantos === 0) {
+      return { ok: true, mensaje: `No había nada para cambiar: está todo como estaba.${dudoso}` }
+    }
+    return {
+      ok: true,
+      mensaje: `Guardado. ${cuantos} ${cuantos === 1 ? 'campo cambiado' : 'campos cambiados'}, con su registro en el historial.${dudoso}`,
+    }
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo guardar.' }
   }
-
-  await editarLead(leadId, cambios, usuario.id, texto(datos, 'motivo') ?? undefined)
-  refrescar(leadId)
 }
 
 export async function reasignarCloserAccion(datos: FormData): Promise<void> {

@@ -106,6 +106,14 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await leads.posiblesDuplicados({ nombre: 'Pedro Gómez' })).toEqual([])
   })
 
+  it('«no tiene» en la columna email no convierte a dos personas en la misma', async () => {
+    // La columna «email» de una planilla trae de todo. Si eso se guarda como
+    // email, dos leads con «no tiene» son el mismo email y el aviso de
+    // duplicado empieza a mentir justo donde tiene que ser creíble.
+    await leads.crearLead({ nombre: 'Uno', email: 'no tiene' }, usuarioId)
+    expect(await leads.posiblesDuplicados({ nombre: 'Dos', email: 'no tiene' })).toEqual([])
+  })
+
   it('el aviso de duplicado dice quién lo tiene, que es lo que evita la segunda ficha', async () => {
     // Sin esto el aviso decía «está duplicado» y nada más. El que lo veía no
     // podía hacer nada con esa información, así que creaba la ficha igual —y

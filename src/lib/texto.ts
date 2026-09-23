@@ -49,10 +49,29 @@ export function colaDelTelefono(texto: string | null | undefined): string | null
 }
 
 /** Un email se compara en minúscula y sin espacios. */
+/**
+ * ¿Esto parece un email?
+ *
+ * A propósito flojo: algo, un arroba, algo, un punto, algo. No valida
+ * direcciones —eso lo hace el servidor de correo— sino que distingue un email
+ * de «no tiene», «-» o «preguntar», que es lo que trae de verdad la columna
+ * «email» de una planilla.
+ */
+export function pareceEmail(texto: string | null | undefined): boolean {
+  if (!texto) return false
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto.trim())
+}
+
+/**
+ * El email normalizado, para buscar y para detectar duplicados.
+ *
+ * Lo que NO parece un email no se pliega: queda `null`. Si no, dos leads cuyo
+ * email decía «no tiene» se detectaban como la misma persona —mismo email—, y
+ * el aviso de duplicado empieza a mentir justo donde tiene que ser creíble.
+ */
 export function emailPlegado(texto: string | null | undefined): string | null {
-  if (!texto) return null
-  const e = texto.trim().toLowerCase()
-  return e === '' ? null : e
+  if (!pareceEmail(texto)) return null
+  return texto!.trim().toLowerCase()
 }
 
 /** Vacío es vacío, no cadena vacía: un dato que no está no se guarda como ''. */
