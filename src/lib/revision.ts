@@ -73,6 +73,8 @@ export const SIN_ESQUEMA = [
 const COLUMNAS_ESPERADAS: { tabla: string; columna: string; migracion: string }[] = [
   { tabla: 'ventas', columna: 'cuotas', migracion: '0010_programa_y_motivos.sql' },
   { tabla: 'ventas', columna: 'ciclo', migracion: '0011_una_venta_por_ciclo.sql' },
+  { tabla: 'playbooks', columna: 'fases', migracion: '0013_fases_del_playbook.sql' },
+  { tabla: 'analisis', columna: 'adherencia_pct', migracion: '0013_fases_del_playbook.sql' },
   { tabla: 'senias', columna: 'ciclo', migracion: '0011_una_venta_por_ciclo.sql' },
   { tabla: 'leads', columna: 'estado', migracion: '0004_el_lead_es_la_oportunidad.sql' },
   { tabla: 'leads', columna: 'closer_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },

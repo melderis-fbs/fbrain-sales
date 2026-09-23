@@ -1,6 +1,7 @@
 import 'server-only'
 import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
+import { FASES_POR_DEFECTO, normalizarFases, type Fase } from '@/dominio/fases'
 
 /**
  * El playbook de cada closer.
@@ -22,6 +23,16 @@ export type Playbook = {
   version: number
   vigente: boolean
   creadoEn: string
+  /**
+   * Las fases contra las que se mide la adherencia.
+   *
+   * Un playbook sin fases cargadas usa las de por defecto en vez de quedar sin
+   * ninguna: sin fases la adherencia daría cero, y un cero que sólo significa
+   * «no configuraste esto» se lee como «el closer no siguió el guión».
+   */
+  fases: Fase[]
+  /** Si las de arriba son las de por defecto, para poder decirlo en pantalla. */
+  fasesPorDefecto: boolean
 }
 
 export async function playbooksDe(closerId: number): Promise<Playbook[]> {
@@ -59,16 +70,23 @@ export async function verPlaybook(id: number): Promise<Playbook | null> {
 }
 
 function aPlaybook(x: Record<string, any>): Playbook {
+  const guardadas = Array.isArray(x.fases) ? (x.fases as Fase[]) : []
   return {
     id: x.id, closerId: x.closer_id, closer: x.closer, nombre: x.nombre, oferta: x.oferta,
     script: x.script, version: Number(x.version), vigente: x.vigente,
     creadoEn: x.creado_en.toISOString(),
+    fases: guardadas.length > 0 ? guardadas : FASES_POR_DEFECTO,
+    fasesPorDefecto: guardadas.length === 0,
   }
 }
 
 export async function guardarPlaybook(
   closerId: number,
-  datos: { nombre: string; oferta?: string | null; script: string },
+  datos: {
+    nombre: string; oferta?: string | null; script: string
+    /** Sin fases, la versión nueva arranca con las de por defecto. */
+    fases?: { nombre: string; peso: unknown; objetivo?: string; comoSeHace?: string }[]
+  },
 ): Promise<number> {
   if (datos.script.trim().length < 100) {
     throw new Error('El script es muy corto: sin guion no hay contra qué comparar la llamada.')
@@ -80,10 +98,12 @@ export async function guardarPlaybook(
     )
     await escribir('update playbooks set vigente = false where closer_id = $1 and vigente',
       [closerId], { esperadas: 'cualquiera', cliente: cx })
+    const fases = datos.fases === undefined ? [] : normalizarFases(datos.fases)
     const creado = await escribirDevolviendo<{ id: number }>(
-      `insert into playbooks (closer_id, nombre, oferta, script, version, vigente)
-       values ($1,$2,$3,$4,$5,true) returning id`,
-      [closerId, datos.nombre.trim(), oNulo(datos.oferta), datos.script.trim(), (ultima?.v ?? 0) + 1],
+      `insert into playbooks (closer_id, nombre, oferta, script, version, vigente, fases)
+       values ($1,$2,$3,$4,$5,true,$6) returning id`,
+      [closerId, datos.nombre.trim(), oNulo(datos.oferta), datos.script.trim(),
+       (ultima?.v ?? 0) + 1, JSON.stringify(fases)],
       cx,
     )
     return creado.id
