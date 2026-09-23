@@ -8,6 +8,7 @@ import { alcanceDe, asignarAQuienCarga, figuraDe, exigir, puede } from '@/lib/pe
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
+  verLead,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
 import {
@@ -165,7 +166,25 @@ export async function editarLeadAccion(_previo: Guardado, datos: FormData): Prom
       if (datos.has(campo)) cambios[campo] = texto(datos, campo)
     }
 
-    const cuantos = await editarLead(leadId, cambios, usuario.id, texto(datos, 'motivo') ?? undefined)
+    const motivo = texto(datos, 'motivo')
+    const cuantos = await editarLead(leadId, cambios, usuario.id, motivo ?? undefined)
+
+    // El CLOSER se edita en la misma pantalla que el resto —no tenía sentido
+    // mandar a buscarlo a otra pestaña— pero no pasa por el mismo camino: una
+    // reasignación congela el quality con el que se lo va a evaluar y deja su
+    // propia línea en el historial. Es un cambio con consecuencias, y el
+    // formulario lo dice sin obligar a nadie a mudarse de pantalla.
+    let reasignado = 0
+    if (datos.has('closerId') && puede(usuario, 'reasignarCloser')) {
+      const antes = await verLead(leadId)
+      const nuevo = numero(datos, 'closerId')
+      if (antes && antes.closerId !== nuevo) {
+        await reasignarCloser(leadId, nuevo, usuario.id, motivo)
+        await congelarQuality(leadId)
+        reasignado = 1
+      }
+    }
+
     refrescar(leadId)
 
     // El email se guarda como vino, pero si no es un email hay que decirlo: no
@@ -175,12 +194,14 @@ export async function editarLeadAccion(_previo: Guardado, datos: FormData): Prom
       ? ` El email «${mail}» no parece un email: no va a servir para buscar ni para detectar duplicados.`
       : ''
 
-    if (cuantos === 0) {
+    const total = cuantos + reasignado
+    if (total === 0) {
       return { ok: true, mensaje: `No había nada para cambiar: está todo como estaba.${dudoso}` }
     }
+    const closer = reasignado === 1 ? ' El closer quedó reasignado.' : ''
     return {
       ok: true,
-      mensaje: `Guardado. ${cuantos} ${cuantos === 1 ? 'campo cambiado' : 'campos cambiados'}, con su registro en el historial.${dudoso}`,
+      mensaje: `Guardado. ${total} ${total === 1 ? 'campo cambiado' : 'campos cambiados'}, con su registro en el historial.${closer}${dudoso}`,
     }
   } catch (e) {
     return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo guardar.' }

@@ -2,7 +2,7 @@ import 'server-only'
 import { fila, filas } from '@/lib/db'
 import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { embudo, tasa, redondear, type Conteos, type Etapa } from '@/motor/embudo'
-import type { Rango } from '@/motor/periodos'
+import { hoyEn, type Rango } from '@/motor/periodos'
 import type { Resultado } from '@/dominio/resultados'
 
 /**
@@ -223,8 +223,14 @@ const CONTEOS = `
   count(*) filter (where l.resultado = 'venta')                as ventas,
   count(*) filter (where l.resultado = 'perdida')              as perdidos,
   count(*) filter (where l.resultado = 'seguimiento')          as en_seguimiento,
+  -- Reuniones que YA PASARON y nadie dijo qué pasó. Sólo de días anteriores:
+  -- una reunión de hoy a las seis de la tarde no está «sin cargar» a las
+  -- nueve de la mañana, y contarla así pide cargar el resultado de algo que
+  -- todavía no ocurrió. Las de hoy tienen su propio bloque, con su hora.
+  -- La fecha viene de la aplicación y no de current_date: en la base es UTC,
+  -- y desde las nueve de la noche en Argentina eso ya es mañana.
   count(*) filter (where l.estado = 'agendado' and l.resultado = 'pendiente'
-                     and l.fecha_sesion <= current_date)       as pendientes,
+                     and l.fecha_sesion < $HOY::date)          as pendientes,
   coalesce(sum(l.valor_potencial) filter (
     where l.resultado in ('pendiente','seguimiento','sena') and l.moneda = $MONEDA), 0) as valor_en_juego`
 
@@ -238,20 +244,26 @@ export async function metricas(
 ): Promise<Metricas> {
 
   const d = donde(rango, alcance, filtros)
-  const valores = [...d.valores, monedaBase]
-  const conteos = CONTEOS.replace('$MONEDA', `$${valores.length}`)
+  // Cada consulta lleva EXACTAMENTE los parámetros que usa. Postgres rechaza
+  // uno que sobra —«could not determine data type of parameter»— y el error no
+  // dice cuál consulta es, así que compartir una lista entre dos sale caro.
+  const conteosValores = [...d.valores, hoyEn(), monedaBase]
+  const conteos = CONTEOS
+    .replace('$HOY', `$${d.valores.length + 1}`)
+    .replace('$MONEDA', `$${d.valores.length + 2}`)
 
   const c = await fila<FilaDeConteos>(
-    `select ${conteos} from leads l where ${d.sql}`, valores,
+    `select ${conteos} from leads l where ${d.sql}`, conteosValores,
   )
 
   // Las señas del período, en su propia tarjeta. No suman a facturación ni a
   // cash: recién impactan cuando se convierten.
+  const senaValores = [...d.valores, monedaBase]
   const sena = await fila<{ importe: number }>(
     `select coalesce(sum(s.importe), 0) as importe
        from senias s join leads l on l.id = s.lead_id
-      where s.borrado_en is null and s.moneda = $${valores.length} and ${d.sql}`,
-    valores,
+      where s.borrado_en is null and s.moneda = $${senaValores.length} and ${d.sql}`,
+    senaValores,
   )
 
   const [factura, cash] = await Promise.all([

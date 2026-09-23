@@ -106,6 +106,24 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await leads.posiblesDuplicados({ nombre: 'Pedro Gómez' })).toEqual([])
   })
 
+  it('una reunión de hoy no está «sin cargar» hasta que termine el día', async () => {
+    // El reporte: «las sesiones del día las muestra como pasadas y todavía no
+    // pasó la hora». Pedir el resultado de una llamada que no ocurrió enseña
+    // dos cosas malas: a inventar el dato, o a no mirar el aviso.
+    const hoy = (await import('@/motor/periodos')).hoyEn()
+    const ayer = new Date(Date.parse(`${hoy}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+
+    await leads.crearLead({ nombre: 'Es hoy más tarde', closerId: closerKevin, fechaSesion: hoy }, usuarioId)
+    await leads.crearLead({ nombre: 'Fue ayer', closerId: closerKevin, fechaSesion: ayer }, usuarioId)
+
+    const r = { desde: ayer, hasta: hoy, etiqueta: 'estos dos días' }
+    const { medidas } = await metricas.metricas(r, TODO)
+    expect(medidas.agendadas).toBe(2)
+    // Sólo la de ayer: la de hoy tiene su propio bloque, con su hora.
+    expect(medidas.pendientesDeCargar).toBe(1)
+    expect((await metricas.sinCargar(TODO, hoy)).map((x) => x.lead)).toEqual(['Fue ayer'])
+  })
+
   it('«no tiene» en la columna email no convierte a dos personas en la misma', async () => {
     // La columna «email» de una planilla trae de todo. Si eso se guarda como
     // email, dos leads con «no tiene» son el mismo email y el aviso de

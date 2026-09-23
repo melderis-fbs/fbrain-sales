@@ -29,7 +29,21 @@ export function LoDeHoy({
   moneda: string
   verPlata: boolean
 }) {
-  const yaPaso = (l: LeadEnLista) => (l.horaSesion ?? '00:00') <= ahora
+  /**
+   * ¿Esta reunión ya pasó?
+   *
+   * Sin hora cargada, NO. Antes una reunión sin hora valía «00:00» y quedaba
+   * pasada desde la medianoche: como la mayoría de lo que entra por planilla
+   * no trae hora, la agenda del día entera aparecía vencida a las nueve de la
+   * mañana y pedía cargar resultados de llamadas que todavía no ocurrieron.
+   * Una reunión sin hora recién se puede dar por pasada cuando termina el día,
+   * y para eso está la lista de atrasadas de abajo.
+   *
+   * Las horas se comparan recortadas a HH:MM: la base guarda «14:00:00» y el
+   * reloj da «14:30».
+   */
+  const yaPaso = (l: LeadEnLista) =>
+    l.horaSesion !== null && l.horaSesion.slice(0, 5) <= ahora.slice(0, 5)
   const sinCargar = leads.filter((l) => l.estado === 'agendado' && l.resultado === 'pendiente' && yaPaso(l))
   const cargadas = leads.filter((l) => !(l.estado === 'agendado' && l.resultado === 'pendiente'))
   const porVenir = leads.filter((l) => l.estado === 'agendado' && l.resultado === 'pendiente' && !yaPaso(l))
@@ -77,11 +91,15 @@ export function LoDeHoy({
                   </div>
                 </div>
                 <div className="cita-estado">
-                  {falta ? (
+                  {/* El desplegable está en las que ya pasaron Y en las que
+                      todavía no: el closer que corta a las once no tiene por
+                      qué esperar a que el reloj pase la hora agendada, y una
+                      reunión sin hora no tiene hora que esperar. Lo que
+                      distingue a las que faltan es el color, no el poder
+                      cargarlas. */}
+                  {falta || viene ? (
                     <CargaRapida leadId={l.id} estado={l.estado} resultado={l.resultado}
                                  moneda={l.moneda} hoy={hoy} compacto />
-                  ) : viene ? (
-                    <span className="sindato">por venir</span>
                   ) : (
                     <>
                       <Pildora color={COLOR_DE_ESTADO[l.estado]}>{NOMBRE_DE_ESTADO[l.estado]}</Pildora>

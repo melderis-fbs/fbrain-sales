@@ -35,12 +35,13 @@ function Guardar() {
   )
 }
 
-export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
+export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata, puedeReasignar }: {
   lead: Lead
-  catalogos: { fuentes: Opcion[]; funnels: Opcion[]; setters: Opcion[] }
+  catalogos: { fuentes: Opcion[]; funnels: Opcion[]; setters: Opcion[]; closers: Opcion[] }
   cuelga: LoQueCuelga
   puedeBorrar: boolean
   puedeConPlata: boolean
+  puedeReasignar: boolean
 }) {
   const [guardado, accion] = useActionState(editarLeadAccion, null)
 
@@ -72,6 +73,9 @@ export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
             <Select id="fuenteId" etiqueta="Fuente" valor={lead.fuenteId} opciones={catalogos.fuentes} />
             <Select id="funnelId" etiqueta="Funnel" valor={lead.funnelId} opciones={catalogos.funnels} />
             <Select id="setterId" etiqueta="Setter" valor={lead.setterId} opciones={catalogos.setters} />
+            {puedeReasignar ? (
+              <Select id="closerId" etiqueta="Closer" valor={lead.closerId} opciones={catalogos.closers} />
+            ) : null}
             <div className="campo">
               <label htmlFor="tipoSesion">Tipo de sesión</label>
               <select id="tipoSesion" name="tipoSesion" defaultValue={lead.tipoSesion}>
@@ -80,8 +84,9 @@ export function Datos({ lead, catalogos, cuelga, puedeBorrar, puedeConPlata }: {
             </div>
           </div>
           <p className="ayuda">
-            El closer se cambia desde la pestaña Resultado: ese cambio pide un motivo
-            porque es el que después hay que poder explicar.
+            Cambiar el closer queda registrado aparte en el historial y congela el Lead Quality
+            con el que se lo va a evaluar. Poné el motivo abajo: es el cambio que después hay
+            que poder explicar.
           </p>
         </Tarjeta>
 

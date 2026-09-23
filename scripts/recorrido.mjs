@@ -839,6 +839,34 @@ await paso('la ficha dice si guardó o no, y un email viejo no la bloquea', asyn
             'y si no cambió nada, también lo dice')
 })
 
+await paso('el closer se cambia desde la misma pantalla que el resto', async () => {
+  // El reporte: «no deja cambiar el nombre del closer una vez creado el lead».
+  // Estaba, pero en otra pestaña, y un campo que está en otro lado es un campo
+  // que no está.
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=datos`)
+  comprobar(await p.locator('.contenido #closerId').count() === 1,
+            'el closer está entre los datos del lead, con la fuente y el setter')
+
+  const antes = await p.locator('.contenido #closerId').inputValue()
+  const otro = await p.locator('.contenido #closerId option')
+    .evaluateAll((os, actual) => os.find((o) => o.value !== '' && o.value !== actual)?.value, antes)
+  await p.selectOption('.contenido #closerId', otro)
+  await p.fill('.contenido #motivo', 'Se lo pasa el equipo')
+  await p.click('.contenido form button:has-text("Guardar")')
+  await esperarCuantos('.contenido .aviso.dato', 1)
+  comprobar((await p.locator('.contenido .aviso').first().textContent() ?? '')
+              .includes('closer quedó reasignado'),
+            'y al guardar lo dice: el cambio de closer no pasa desapercibido')
+
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=datos`)
+  comprobar(await p.locator('.contenido #closerId').inputValue() === otro,
+            'el cambio quedó guardado')
+
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=historial`)
+  comprobar((await p.locator('.contenido').textContent() ?? '').includes('Se lo pasa el equipo'),
+            'y en el historial queda quién lo cambió y por qué')
+})
+
 await paso('el histórico de un mes entra pegando la planilla', async () => {
   // Cargar un mes de a un formulario por vez no se hace: se abandona a la
   // mitad y el tablero queda con la mitad de los datos.

@@ -146,7 +146,8 @@ export default async function FichaDeLead({
       {cual === 'datos' ? (
         <Datos lead={lead} catalogos={await catalogos()} cuelga={await loQueCuelgaDelLead(leadId)}
                puedeBorrar={puede(usuario, 'borrarLead')}
-               puedeConPlata={puede(usuario, 'editarDinero')} />
+               puedeConPlata={puede(usuario, 'editarDinero')}
+               puedeReasignar={puede(usuario, 'reasignarCloser')} />
       ) : null}
       {cual === 'historial' ? <Historial lineas={await historialDelLead(leadId)} /> : null}
     </div>
