@@ -337,6 +337,43 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     await p.goto(`${RAIZ}/seguimientos`)
   })
 
+  await paso('el tablero se filtra por closer, y los números de arriba también', async () => {
+    // Un filtro que deja el encabezado contando a todo el equipo dice dos
+    // cosas a la vez, y la que se cree es la que está más arriba.
+    await p.goto(`${RAIZ}/seguimientos`)
+    const enCadencia = async () => Number(
+      (await p.locator('.contenido .tarjeta:has-text("En cadencia") .numero').first().textContent() ?? '0')
+        .replace(/\D/g, ''))
+    const todos = await enCadencia()
+    comprobar(todos >= 1, `sin filtrar hay ${todos} en cadencia`)
+
+    // Kevin no tiene a nadie en la cadencia: el lead en seguimiento es de Braian.
+    await p.selectOption('.contenido .barra-filtros select[name=closer]', { label: 'Kevin' })
+    await p.locator('.contenido .barra-filtros button[type=submit]').click()
+    await esperar()
+    comprobar(await enCadencia() === 0, 'filtrando por Kevin, el encabezado baja a 0')
+    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 0,
+              'y su tarjeta desaparece del tablero')
+
+    await p.selectOption('.contenido .barra-filtros select[name=closer]', { label: 'Braian' })
+    await p.locator('.contenido .barra-filtros button[type=submit]').click()
+    await esperar()
+    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 1,
+              'y con el closer que lo tiene, vuelve')
+
+    // El tablero se desliza: la barra está puesta, no escondida hasta que
+    // alguien adivine que hay más columnas a la derecha.
+    const deslizador = await p.evaluate(() => {
+      const t = document.querySelector('.contenido .tablero')
+      if (!t) return null
+      return { ancho: t.scrollWidth - t.clientWidth, estilo: getComputedStyle(t).overflowX }
+    })
+    comprobar(deslizador?.estilo === 'scroll',
+              'y tiene barra de desplazamiento siempre visible, no sólo al arrastrar')
+
+    await p.goto(`${RAIZ}/seguimientos`)
+  })
+
   await paso('«no interesado» lo saca del pipeline y cierra el lead', async () => {
     await suya().locator('select[name=estado]').selectOption('no_interesado')
     await suya().locator('button[type=submit]').click()

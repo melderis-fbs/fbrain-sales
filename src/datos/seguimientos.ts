@@ -220,11 +220,22 @@ export type Tarjeta = {
   interacciones: number
 }
 
-async function tarjetas(alcance: Alcance, hoy: string, situaciones: Situacion[]): Promise<Tarjeta[]> {
+async function tarjetas(
+  alcance: Alcance, hoy: string, situaciones: Situacion[], closerId?: number,
+): Promise<Tarjeta[]> {
 
   const valores: unknown[] = [situaciones]
   const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, 2)
   valores.push(...alc.parametros)
+
+  // El filtro por closer va acá y no en la pantalla a propósito: si filtrara
+  // sólo las tarjetas, los números de arriba seguirían contando a todo el
+  // equipo y dirían una cosa distinta de la que se ve abajo.
+  let porCloser = ''
+  if (closerId !== undefined) {
+    valores.push(closerId)
+    porCloser = ` and l.closer_id = $${valores.length}`
+  }
 
   const f = await filas<Record<string, any>>(
     `select se.lead_id, se.toque_actual, se.desde, se.ingreso_en, se.situacion, se.fecha_larga,
@@ -238,7 +249,7 @@ async function tarjetas(alcance: Alcance, hoy: string, situaciones: Situacion[])
        left join closers c on c.id = l.closer_id
        left join lateral (select nivel from lead_quality q2 where q2.lead_id = l.id
                            order by q2.creado_en desc, q2.id desc limit 1) q on true
-      where se.situacion = any($1) and ${alc.condicion}
+      where se.situacion = any($1) and ${alc.condicion}${porCloser}
       order by l.nombre`,
     valores,
   )
@@ -292,12 +303,13 @@ export async function pipelineDeSeguimientos(
   alcance: Alcance,
   hoy: string,
   monedaBase = 'USD',
+  closerId?: number,
 ): Promise<Pipeline> {
   const cadencia = await toques()
   const [activos, largos, fuera] = await Promise.all([
-    tarjetas(alcance, hoy, ['activo']),
-    tarjetas(alcance, hoy, ['largo']),
-    tarjetas(alcance, hoy, ['fuera']),
+    tarjetas(alcance, hoy, ['activo'], closerId),
+    tarjetas(alcance, hoy, ['largo'], closerId),
+    tarjetas(alcance, hoy, ['fuera'], closerId),
   ])
 
   const columnas: Columna[] = cadencia.map((t) => ({

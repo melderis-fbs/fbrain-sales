@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe } from '@/lib/permisos'
 import { pipelineDeSeguimientos, type Tarjeta as Ficha } from '@/datos/seguimientos'
-import { config } from '@/datos/catalogos'
+import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
 import { ESTADOS_TOQUE, NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION } from '@/dominio/seguimientos'
@@ -42,13 +42,27 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   // «Lo que toca» es el trabajo del día sin cambiar de pantalla: el tablero
   // sigue siendo el tablero, con menos tarjetas.
   const soloLoQueToca = q.solo === 'toca'
+  // Y el closer filtra TODO —tablero y números de arriba—: un filtro que deja
+  // el encabezado contando a todo el equipo dice dos cosas a la vez.
+  const closerId = q.closer ? Number(q.closer) : undefined
 
-  const { columnas, largos, fuera, resumen } = await pipelineDeSeguimientos(alcance, hoy, monedaBase)
+  const [{ columnas, largos, fuera, resumen }, cats] = await Promise.all([
+    pipelineDeSeguimientos(alcance, hoy, monedaBase, closerId),
+    catalogos(),
+  ])
   const urge = (t: Ficha) => t.urgencia === 'vencido' || t.urgencia === 'hoy'
   const enElTablero = columnas.map((c) => ({
     ...c, tarjetas: soloLoQueToca ? c.tarjetas.filter(urge) : c.tarjetas,
   }))
   const largosEnElTablero = soloLoQueToca ? largos.filter(urge) : largos
+
+  // Cambiar un filtro sin perder el otro.
+  const con = (cambio: Record<string, string | undefined>) => {
+    const u = new URLSearchParams()
+    for (const [k, v] of Object.entries({ ...q, ...cambio })) if (v) u.set(k, v)
+    const s = u.toString()
+    return s === '' ? '/seguimientos' : `/seguimientos?${s}`
+  }
 
   return (
     <div className="apilado">
@@ -71,11 +85,22 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
       <div className="barra-filtros">
         <div className="arriba">
           <div className="chips">
-            <Link href="/seguimientos" className={soloLoQueToca ? '' : 'activo'}>Todo el tablero</Link>
-            <Link href="/seguimientos?solo=toca" className={soloLoQueToca ? 'activo' : ''}>
+            <Link href={con({ solo: undefined })} className={soloLoQueToca ? '' : 'activo'}>
+              Todo el tablero
+            </Link>
+            <Link href={con({ solo: 'toca' })} className={soloLoQueToca ? 'activo' : ''}>
               Lo que toca ({resumen.vencidos + resumen.hoy})
             </Link>
           </div>
+          <form method="get" className="selectores">
+            {soloLoQueToca ? <input type="hidden" name="solo" value="toca" /> : null}
+            <label className="oculto" htmlFor="f-closer">Closer</label>
+            <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}>
+              <option value="">Todos los closers</option>
+              {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <button type="submit" className="secundario chico">Filtrar</button>
+          </form>
         </div>
       </div>
 
@@ -95,15 +120,15 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
               <div key={c.toque.orden} data-toque={c.toque.orden}
                    className={c.tarjetas.length === 0 ? 'columna vacia' : 'columna'}>
                 <div className="cabeza">
-                  <span className="orden">{c.toque.orden}</span>
-                  <span className="como">
+                  <div className="arriba">
+                    <span className="orden">{c.toque.orden}</span>
                     <span className="que" title={c.toque.nombre}>{c.toque.nombre}</span>
-                    <span className="dia">DÍA {c.toque.dias}</span>
-                  </span>
-                  <span className="cuantos">
-                    {c.tarjetas.length}
-                    {tarde > 0 ? <span className="tarde"> · {tarde} tarde</span> : null}
-                  </span>
+                    <span className="cuantos">{c.tarjetas.length}</span>
+                  </div>
+                  <div className="abajo">
+                    DÍA {c.toque.dias}
+                    {tarde > 0 ? <> · <span className="tarde">{tarde} tarde</span></> : null}
+                  </div>
                 </div>
                 <div className="cuerpo">
                   {c.tarjetas.length === 0
@@ -117,12 +142,12 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
           {largos.length > 0 ? (
             <div data-toque="largo" className={largosEnElTablero.length === 0 ? 'columna vacia' : 'columna'}>
               <div className="cabeza">
-                <span className="orden">★</span>
-                <span className="como">
+                <div className="arriba">
+                  <span className="orden">★</span>
                   <span className="que">Seguimiento largo</span>
-                  <span className="dia">FUERA DE LA CADENCIA</span>
-                </span>
-                <span className="cuantos">{largosEnElTablero.length}</span>
+                  <span className="cuantos">{largosEnElTablero.length}</span>
+                </div>
+                <div className="abajo">FUERA DE LA CADENCIA</div>
               </div>
               <div className="cuerpo">
                 {largosEnElTablero.length === 0

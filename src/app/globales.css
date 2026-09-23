@@ -370,27 +370,50 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* ── El tablero: una columna por toque ──────────────────────────────────── */
 /* Las tarjetas no llevan la barra de doce pasos: la columna ES el paso, y
  * repetirlo en cada tarjeta es tinta que no dice nada nuevo. */
-.tablero { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+.tablero {
+  display: flex; gap: 10px; padding-bottom: 4px;
+  /* `scroll` y no `auto`: con `auto`, el sistema esconde la barra hasta que
+   * alguien arrastra, y doce columnas que se cortan sin nada que las anuncie
+   * se leen como que el tablero está roto. La barra tiene que estar puesta. */
+  overflow-x: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gris-claro) var(--gris-fondo);
+}
+.tablero::-webkit-scrollbar { height: 11px; }
+.tablero::-webkit-scrollbar-track { background: var(--gris-fondo); border-radius: 99px; }
+.tablero::-webkit-scrollbar-thumb {
+  background: var(--gris-claro); border-radius: 99px;
+  border: 3px solid var(--papel);
+}
+.tablero::-webkit-scrollbar-thumb:hover { background: var(--gris); }
+
 .tablero .columna {
-  flex: 0 0 258px; display: flex; flex-direction: column; min-width: 0;
+  flex: 0 0 268px; display: flex; flex-direction: column; min-width: 0;
   background: var(--gris-fondo); border-radius: var(--radio); padding: 9px 9px 10px;
 }
 .tablero .columna.vacia { background: transparent; border: 1px dashed var(--borde); }
-.tablero .cabeza { display: flex; align-items: baseline; gap: 6px; margin-bottom: 9px; }
+.tablero .cabeza { margin-bottom: 9px; }
+/* Dos renglones: el nombre del toque arriba con su número, y abajo el día y
+ * cuántos hay. En uno solo, un nombre largo se comía la cuenta. */
+.tablero .cabeza .arriba { display: flex; align-items: center; gap: 6px; }
 .tablero .cabeza .orden {
   display: inline-flex; align-items: center; justify-content: center;
   width: 19px; height: 19px; border-radius: 99px; flex: none;
   background: var(--blanco); border: 1px solid var(--borde);
   font-size: 10.5px; font-weight: 700; color: var(--gris);
 }
-.tablero .cabeza .como { min-width: 0; flex: 1; }
 .tablero .cabeza .que {
-  font-size: 12px; font-weight: 650; color: var(--negro);
+  flex: 1; min-width: 0; font-size: 12px; font-weight: 650; color: var(--negro);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tablero .cabeza .dia { display: block; font-size: 10.5px; color: var(--gris); letter-spacing: .02em; }
-.tablero .cabeza .cuantos { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.tablero .cabeza .cuantos .tarde { color: var(--rojo); }
+.tablero .cabeza .cuantos {
+  flex: none; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.tablero .cabeza .abajo {
+  margin-top: 2px; padding-left: 25px;
+  font-size: 10.5px; color: var(--gris); letter-spacing: .02em;
+}
+.tablero .cabeza .abajo .tarde { color: var(--rojo); font-weight: 650; }
 .tablero .cuerpo { display: flex; flex-direction: column; gap: 8px; }
 .tablero .ficha { padding: 10px 11px; box-shadow: none; }
 .tablero .ficha .nombre { font-size: 13px; }
