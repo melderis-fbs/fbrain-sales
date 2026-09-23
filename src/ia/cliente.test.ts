@@ -47,3 +47,21 @@ describe('el error que ve la persona', () => {
     expect(enCastellano(503, null, 'claude-sonnet-5')).toMatch(/no dijo por qué/)
   })
 })
+
+
+describe('la clave que no está en un workspace', () => {
+  it('se explica con los dos caminos, no con el mensaje de la API', () => {
+    // El mensaje de la API es correcto e inservible para quien no sabe qué es
+    // un workspace: «This API key is not scoped to a workspace, so this
+    // request must include the anthropic-workspace-id header».
+    const texto = enCastellano(400,
+      'This API key is not scoped to a workspace, so this request must include the ' +
+      'anthropic-workspace-id header with the ID of the workspace to use.',
+      'claude-sonnet-5')
+    expect(texto).toContain('workspace')
+    expect(texto).toContain('ANTHROPIC_WORKSPACE_ID')
+    expect(texto).toContain('console.anthropic.com')
+    // Y no deja al lector con el 400 pelado.
+    expect(texto).not.toContain('rechazó el pedido')
+  })
+})

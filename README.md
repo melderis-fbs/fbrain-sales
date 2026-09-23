@@ -479,6 +479,14 @@ Hace falta `ANTHROPIC_API_KEY`:
 
 1. Sacá una clave en [console.anthropic.com](https://console.anthropic.com) →
    **API keys** → **Create key**. Empieza con `sk-ant-`.
+
+   **Creala desde adentro del workspace que vayas a usar**, no desde la
+   pantalla de la organización. Una clave de organización no sabe a qué
+   workspace pertenece, y la API contesta 400 pidiendo un encabezado que la
+   aplicación no manda por su cuenta. Si ya tenés una clave así y no querés
+   cambiarla, agregá también `ANTHROPIC_WORKSPACE_ID` con el id del workspace
+   (empieza con `wrkspc_`, está en la URL de la consola) y el analizador manda
+   el encabezado `anthropic-workspace-id` solo.
 2. En Vercel: el proyecto → **Settings** → **Environment Variables**. Nombre
    `ANTHROPIC_API_KEY`, valor la clave, marcá los tres entornos.
 3. **Redeployá.** Las variables se leen al construir: el deploy que ya estaba

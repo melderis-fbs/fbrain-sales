@@ -35,6 +35,16 @@ const PRECIOS: Record<string, { entrada: number; salida: number; cacheEscrito: n
 
 export const MODELO_POR_DEFECTO = process.env.MODELO_ANALIZADOR ?? 'claude-sonnet-5'
 
+/**
+ * El workspace de Anthropic, cuando hace falta.
+ *
+ * Una clave creada DENTRO de un workspace ya sabe a cuál pertenece y esto no
+ * hace falta. Una creada a nivel organización, no: la API contesta 400 y pide
+ * que el pedido diga a qué workspace va. Es una variable y no una decisión del
+ * código, así que se lee del entorno y, si no está, no se manda nada.
+ */
+const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID?.trim() || null
+
 function costo(modelo: string, u: { entrada: number; salida: number; cacheLeido: number; cacheEscrito: number }): number {
   const p = PRECIOS[modelo] ?? PRECIOS['claude-sonnet-5']!
   return (u.entrada * p.entrada + u.salida * p.salida +
@@ -69,6 +79,19 @@ export function enCastellano(estado: number, motivo: string | null, modelo: stri
   if (estado === 401 || estado === 403) {
     return 'La clave de Anthropic no es válida o no tiene permiso. Se cambia en Vercel, ' +
            'en Settings → Environment Variables → ANTHROPIC_API_KEY, y hay que volver a desplegar.'
+  }
+  // La clave es de la organización, no de un workspace. Pasa al crear la
+  // clave desde la pantalla de la organización en vez de entrar primero al
+  // workspace, y el mensaje de la API es correcto e inservible para quien no
+  // sabe qué es un workspace.
+  if (m.includes('workspace')) {
+    return 'La clave de Anthropic no está asociada a un workspace. Dos formas de arreglarlo, ' +
+           'y la primera es la más simple: entrá a console.anthropic.com, abrí el workspace ' +
+           'que quieras usar y creá la clave DESDE ADENTRO de ese workspace (Settings → API keys), ' +
+           'y reemplazá ANTHROPIC_API_KEY en Vercel con esa. La otra: dejá la clave que tenés y ' +
+           'agregá en Vercel la variable ANTHROPIC_WORKSPACE_ID con el id del workspace ' +
+           '(empieza con «wrkspc_», está en la URL de la consola). En los dos casos hay que ' +
+           'volver a desplegar.'
   }
   if (m.includes('credit') || m.includes('billing')) {
     return 'La cuenta de Anthropic no tiene crédito. Se carga en console.anthropic.com, en Billing.'
@@ -140,6 +163,9 @@ export async function pedirJson<T>(opciones: {
         'content-type': 'application/json',
         'x-api-key': clave,
         'anthropic-version': '2023-06-01',
+        // Sólo si hace falta: una clave creada dentro de un workspace ya lo
+        // sabe y mandar el encabezado igual no aporta nada.
+        ...(WORKSPACE ? { 'anthropic-workspace-id': WORKSPACE } : {}),
       },
       body: JSON.stringify({
         model: modelo,
