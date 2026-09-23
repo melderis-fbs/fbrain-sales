@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   sigueAbierto, plataQueNoCuadra, COLOR_DE_RESULTADO, COLOR_DE_ESTADO, RESULTADOS, ESTADOS,
+  SALIDAS, NOMBRE_DE_SALIDA, MOTIVOS_PERDIDA, NOMBRE_DE_MOTIVO, desdeSalida, salidaDe,
 } from './resultados'
 import { PUEDE, ROLES } from './roles'
 
@@ -114,5 +115,49 @@ describe('la plata que no cuadra con el resultado', () => {
 
   it('la venta manda sobre la seña: lo que infla la facturación se avisa primero', () => {
     expect(plataQueNoCuadra('perdida', { venta: 5000, sena: 1000 })).toBe('venta')
+  })
+})
+
+
+describe('lo que el closer elige al cerrar la llamada', () => {
+  it('cada salida se guarda como resultado y, si hace falta, cómo sigue', () => {
+    expect(desdeSalida('venta')).toEqual({ resultado: 'venta', comoSigue: null })
+    expect(desdeSalida('sena')).toEqual({ resultado: 'sena', comoSigue: null })
+    expect(desdeSalida('perdida')).toEqual({ resultado: 'perdida', comoSigue: null })
+    expect(desdeSalida('seguimiento_cadencia')).toEqual({ resultado: 'seguimiento', comoSigue: 'cadencia' })
+    expect(desdeSalida('seguimiento_largo')).toEqual({ resultado: 'seguimiento', comoSigue: 'largo' })
+  })
+
+  it('la segunda llamada queda agendada, no entra a los doce toques', () => {
+    // Perseguir con toques a alguien que ya tiene reunión es perseguirlo mal.
+    expect(desdeSalida('segunda')).toEqual({ resultado: 'seguimiento', comoSigue: 'ninguno' })
+  })
+
+  it('y la ficha se abre en lo que el lead ya tiene cargado', () => {
+    expect(salidaDe('venta')).toBe('venta')
+    expect(salidaDe('perdida')).toBe('perdida')
+    expect(salidaDe('seguimiento', false)).toBe('seguimiento_cadencia')
+    expect(salidaDe('seguimiento', true)).toBe('seguimiento_largo')
+  })
+
+  it('todas tienen nombre: un desplegable con una clave suelta no se entiende', () => {
+    for (const s of SALIDAS) expect(NOMBRE_DE_SALIDA[s]).toBeTruthy()
+  })
+})
+
+describe('por qué se pierde', () => {
+  it('los cuatro motivos que más se usan van primero', () => {
+    // El orden del desplegable es el orden en que se elige: lo que está abajo
+    // de todo no se usa aunque sea lo que pasó.
+    expect(MOTIVOS_PERDIDA.slice(0, 4)).toEqual(
+      ['no_tenia_dinero', 'encaje', 'competencia', 'no_interesado'])
+  })
+
+  it('cada uno dice lo que pasó, en castellano', () => {
+    expect(NOMBRE_DE_MOTIVO.no_tenia_dinero).toBe('Interesado sin dinero')
+    expect(NOMBRE_DE_MOTIVO.encaje).toBe('No cualifica')
+    expect(NOMBRE_DE_MOTIVO.competencia).toBe('Se fue con la competencia')
+    expect(NOMBRE_DE_MOTIVO.no_interesado).toBe('No interesado')
+    for (const m of MOTIVOS_PERDIDA) expect(NOMBRE_DE_MOTIVO[m]).toBeTruthy()
   })
 })

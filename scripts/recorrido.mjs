@@ -191,12 +191,12 @@ await paso('el closer carga el resultado: seña', async () => {
   const hoy = HOY
   await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
   await p.selectOption('#estado', 'asistio')
-  await p.selectOption('#resultado', 'sena')
+  await p.selectOption('#salida', 'sena')
   await p.check('input[name=huboOferta]')
   await p.fill('#importe', '500')
   await p.fill('#fecha', hoy)
   await p.fill('#saldoPendiente', '3500')
-  await p.click(enLaPantalla('form:has(#resultado) button[type=submit]'))
+  await p.click(enLaPantalla('form:has(#salida) button[type=submit]'))
   await esperar()
 
   await p.goto(`${RAIZ}/dashboard`)
@@ -206,14 +206,49 @@ await paso('el closer carga el resultado: seña', async () => {
   await foto('dashboard-sena')
 })
 
+await paso('la ficha pregunta sólo lo del resultado que se eligió', async () => {
+  // Mostrar los cinco bloques a la vez era lo que hacía que quien carga un
+  // lead perdido tuviera que decidir cuáles de los catorce campos eran suyos.
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
+  const cuantos = async (sel) => p.locator(`.contenido form:has(#salida) ${sel}`).count()
+
+  await p.selectOption('#salida', 'perdida')
+  comprobar(await cuantos('#motivoPerdida') === 1, 'perdido pide el motivo')
+  comprobar(await cuantos('#importe') === 0, 'y no pide un importe que no existe')
+
+  await p.selectOption('#salida', 'venta')
+  comprobar(await cuantos('#importe') === 1 && await cuantos('#cuotas') === 1
+            && await cuantos('#cobradoAhora') === 1,
+            'la venta pide monto, cuotas y lo que se cobró')
+  comprobar(await cuantos('#motivoPerdida') === 0, 'y ya no pregunta por qué se perdió')
+  comprobar(await p.locator('#programa option').count() === 3,
+            'el programa es GROWTH o ELITE, no texto libre')
+
+  await p.selectOption('#salida', 'segunda')
+  comprobar(await cuantos('#fechaSegunda') === 1, 'la segunda llamada pide su fecha')
+  comprobar(await cuantos('#importe') === 0, 'y nada de plata')
+
+  await p.selectOption('#salida', 'seguimiento_largo')
+  comprobar(await cuantos('#volverEl') === 1, 'el seguimiento largo pide cuándo volver')
+
+  // Y lo que se pregunta siempre, se pregunta siempre.
+  for (const cual of ['venta', 'sena', 'perdida', 'seguimiento_cadencia']) {
+    await p.selectOption('#salida', cual)
+    comprobar(await cuantos('#estado') === 1 && await cuantos('input[name=huboOferta]') === 1
+              && await cuantos('#proximoPaso') === 1,
+              `con «${cual}» siguen estando la asistencia, la oferta y los pasos a seguir`)
+  }
+  await foto('ficha-resultado')
+})
+
 await paso('convertir la seña: el dinero se cuenta una vez', async () => {
   const hoy = HOY
   await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
-  await p.selectOption('#resultado', 'venta')
+  await p.selectOption('#salida', 'venta')
   await p.fill('#importe', '4000')
   await p.fill('#fecha', hoy)
-  await p.fill('#programa', 'Founders Scale')
-  await p.click(enLaPantalla('form:has(#resultado) button[type=submit]'))
+  await p.selectOption('#programa', 'ELITE')
+  await p.click(enLaPantalla('form:has(#salida) button[type=submit]'))
   await esperar()
 
   await p.goto(`${RAIZ}/leads/${leadId}`)
@@ -243,8 +278,8 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
 
   await p.goto(`${RAIZ}/leads/${otro}?pestana=resultado`)
   await p.selectOption('#estado', 'asistio')
-  await p.selectOption('#resultado', 'seguimiento')
-  await p.click(enLaPantalla('form:has(#resultado) button[type=submit]'))
+  await p.selectOption('#salida', 'seguimiento_cadencia')
+  await p.click(enLaPantalla('form:has(#salida) button[type=submit]'))
   await esperar()
 
   await p.goto(`${RAIZ}/seguimientos`)

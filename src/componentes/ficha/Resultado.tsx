@@ -1,21 +1,50 @@
+'use client'
+
+import { useState } from 'react'
+import { useFormStatus } from 'react-dom'
 import type { Lead } from '@/datos/leads'
 import type { CloserOpcion } from '@/datos/catalogos'
 import { Tarjeta, plata, fechaCorta } from '../Piezas'
 import {
-  ESTADOS, RESULTADOS, MOTIVOS_PERDIDA, NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, NOMBRE_DE_MOTIVO,
+  ESTADOS, SALIDAS, MOTIVOS_PERDIDA, PROGRAMAS,
+  NOMBRE_DE_ESTADO, NOMBRE_DE_SALIDA, NOMBRE_DE_MOTIVO, salidaDe,
+  type Estado, type Salida,
 } from '@/dominio/resultados'
 import {
-  cargarResultadoAccion, reasignarCloserAccion, reflotarLeadAccion,
-  registrarPagoAccion, seguimientoLargoAccion,
+  cargarResultadoAccion, reasignarCloserAccion, reflotarLeadAccion, registrarPagoAccion,
 } from '@/app/(app)/leads/acciones'
 
 /**
  * Lo que carga el closer el día de la reunión.
  *
- * Dos ejes separados a propósito: qué pasó con la REUNIÓN y qué pasó con la
- * VENTA. Mezclarlos es lo que hace que después no se pueda contestar «cuántas
- * asistencias hubo» sin discutir.
+ * Tres preguntas siempre, y una sola más: qué pasó con la reunión, qué pasó con
+ * la venta, si se llegó a mostrar la oferta — y después el bloque del resultado
+ * que se eligió, sin los otros cuatro alrededor.
+ *
+ * Mostrarlos todos a la vez era lo que hacía que la pantalla se leyera como un
+ * formulario de AFIP: quien carga un lead perdido veía importe, fecha de venta,
+ * programa, saldo de seña y fecha comprometida, y tenía que adivinar cuáles
+ * eran suyos. Lo que hay que adivinar se completa mal, y un dato mal cargado
+ * vale menos que ninguno porque se cuenta igual.
  */
+function Guardar() {
+  const { pending } = useFormStatus()
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? 'Guardando…' : 'Guardar el resultado'}
+    </button>
+  )
+}
+
+/** Una moneda es una moneda. Repetirla en tres lugares es repetir el error. */
+function Moneda({ valor }: { valor: string }) {
+  return (
+    <select id="moneda" name="moneda" defaultValue={valor} style={{ width: 88 }}>
+      <option value="USD">USD</option><option value="ARS">ARS</option><option value="EUR">EUR</option>
+    </select>
+  )
+}
+
 export function Resultado({
   lead, closers, hoy, verPlata, puedeReasignar,
 }: {
@@ -26,6 +55,7 @@ export function Resultado({
   puedeReasignar: boolean
 }) {
   const cerrado = lead.resultado === 'perdida' || lead.resultado === 'no_calificado'
+  const [salida, setSalida] = useState<Salida>(salidaDe(lead.resultado, lead.seguimientoLargo !== null))
 
   return (
     <div className="rejilla g2">
@@ -35,20 +65,17 @@ export function Resultado({
 
           <div className="dos">
             <div className="campo">
-              <label htmlFor="estado">¿Qué pasó con la reunión?</label>
+              <label htmlFor="estado">¿Asistió?</label>
               <select id="estado" name="estado" defaultValue={lead.estado}>
                 {ESTADOS.map((e) => <option key={e} value={e}>{NOMBRE_DE_ESTADO[e]}</option>)}
               </select>
             </div>
             <div className="campo">
-              <label htmlFor="resultado">¿Qué pasó con la venta?</label>
-              <select id="resultado" name="resultado" defaultValue={lead.resultado}>
-                {RESULTADOS.map((r) => <option key={r} value={r}>{NOMBRE_DE_RESULTADO[r]}</option>)}
+              <label htmlFor="salida">Resultado</label>
+              <select id="salida" name="salida" value={salida}
+                      onChange={(e) => setSalida(e.target.value as Salida)}>
+                {SALIDAS.map((s) => <option key={s} value={s}>{NOMBRE_DE_SALIDA[s]}</option>)}
               </select>
-              <div className="nota">
-                «Seguimiento» lo mete solo en el pipeline de 12 toques.
-                La seña <strong>no cierra</strong> el lead: queda abierto hasta que se convierta.
-              </div>
             </div>
           </div>
 
@@ -61,66 +88,176 @@ export function Resultado({
               si se pierde antes o después de mostrar el precio.</div>
           </div>
 
-          <div className="separador" />
-          <h3>Si se vendió o se señó</h3>
-          <div className="dos">
-            <div className="campo">
-              <label htmlFor="importe">Importe</label>
-              <div className="fila" style={{ flexWrap: 'nowrap' }}>
-                <select id="moneda" name="moneda" defaultValue={lead.moneda} style={{ width: 88 }}>
-                  <option value="USD">USD</option><option value="ARS">ARS</option><option value="EUR">EUR</option>
-                </select>
-                <input id="importe" name="importe" inputMode="decimal" placeholder="0" />
+          {salida === 'venta' ? (
+            <>
+              <div className="separador" />
+              <h3>La venta</h3>
+              <div className="dos">
+                <div className="campo">
+                  <label htmlFor="importe">Monto</label>
+                  <div className="fila" style={{ flexWrap: 'nowrap' }}>
+                    <Moneda valor={lead.venta?.moneda ?? lead.moneda} />
+                    <input id="importe" name="importe" inputMode="decimal" required
+                           defaultValue={lead.venta?.importe ?? ''} placeholder="0" />
+                  </div>
+                </div>
+                <div className="campo">
+                  <label htmlFor="fecha">Fecha de la venta</label>
+                  <input id="fecha" name="fecha" type="date" required
+                         defaultValue={lead.venta?.fecha ?? hoy} />
+                  <div className="nota">La venta se cuenta este día, no el de la llamada.</div>
+                </div>
+                <div className="campo">
+                  <label htmlFor="programa">Programa</label>
+                  <select id="programa" name="programa" defaultValue={lead.venta?.programa ?? ''}>
+                    <option value="">Sin definir</option>
+                    {PROGRAMAS.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </div>
+                <div className="campo">
+                  <label htmlFor="cuotas">Cuotas</label>
+                  <input id="cuotas" name="cuotas" inputMode="numeric" placeholder="1"
+                         defaultValue={lead.venta?.cuotas ?? ''} />
+                </div>
               </div>
-            </div>
-            <div className="campo">
-              <label htmlFor="fecha">Fecha</label>
-              <input id="fecha" name="fecha" type="date" defaultValue={hoy} />
-            </div>
-            <div className="campo">
-              <label htmlFor="programa">Programa</label>
-              <input id="programa" name="programa" />
-            </div>
-            <div className="campo">
-              <label htmlFor="saldoPendiente">Saldo pendiente (seña)</label>
-              <input id="saldoPendiente" name="saldoPendiente" inputMode="decimal" />
-            </div>
-            <div className="campo">
-              <label htmlFor="fechaComprometida">Fecha comprometida (seña)</label>
-              <input id="fechaComprometida" name="fechaComprometida" type="date" />
-            </div>
-          </div>
+              <div className="campo">
+                <label htmlFor="cobradoAhora">Cobrado de esta venta</label>
+                <input id="cobradoAhora" name="cobradoAhora" inputMode="decimal" placeholder="0" />
+                <div className="nota">
+                  Esto es el cash collected: lo que entró, no lo que se facturó.
+                  {lead.cobrado > 0
+                    ? <> Ya hay {plata(lead.cobrado, lead.venta?.moneda ?? lead.moneda)} cobrados
+                        en este lead; lo que pongas acá se suma.</>
+                    : <> Si todavía no entró nada, dejalo vacío.</>}
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {salida === 'sena' ? (
+            <>
+              <div className="separador" />
+              <h3>La seña</h3>
+              <div className="dos">
+                <div className="campo">
+                  <label htmlFor="importe">Monto de la seña</label>
+                  <div className="fila" style={{ flexWrap: 'nowrap' }}>
+                    <Moneda valor={lead.sena?.moneda ?? lead.moneda} />
+                    <input id="importe" name="importe" inputMode="decimal" required
+                           defaultValue={lead.sena?.importe ?? ''} placeholder="0" />
+                  </div>
+                </div>
+                <div className="campo">
+                  <label htmlFor="fecha">Fecha de la seña</label>
+                  <input id="fecha" name="fecha" type="date" required
+                         defaultValue={lead.sena?.fecha ?? hoy} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="saldoPendiente">Saldo pendiente</label>
+                  <input id="saldoPendiente" name="saldoPendiente" inputMode="decimal"
+                         defaultValue={lead.sena?.saldo ?? ''} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="fechaComprometida">Fecha comprometida</label>
+                  <input id="fechaComprometida" name="fechaComprometida" type="date"
+                         defaultValue={lead.sena?.comprometida ?? ''} />
+                </div>
+              </div>
+              <div className="campo">
+                <label htmlFor="proximoContacto">Próximo contacto</label>
+                <input id="proximoContacto" name="proximoContacto" type="date"
+                       defaultValue={lead.proximoContacto ?? ''} />
+                <div className="nota">La seña <strong>no cierra</strong> el lead: queda abierto hasta
+                  que se convierta en venta, y su plata no es facturación todavía.</div>
+              </div>
+            </>
+          ) : null}
+
+          {salida === 'segunda' ? (
+            <>
+              <div className="separador" />
+              <h3>La segunda llamada</h3>
+              <div className="dos">
+                <div className="campo">
+                  <label htmlFor="fechaSegunda">Fecha</label>
+                  <input id="fechaSegunda" name="fechaSegunda" type="date" required />
+                </div>
+                <div className="campo">
+                  <label htmlFor="horaSegunda">Hora</label>
+                  <input id="horaSegunda" name="horaSegunda" type="time" />
+                </div>
+              </div>
+              <div className="nota">La reunión de hoy queda cerrada con su fecha y el lead queda
+                agendado para la segunda. No entra al pipeline de toques: ya tiene reunión, y
+                perseguir a alguien que tiene reunión es ruido. En el tablero las segundas se
+                cuentan aparte de las agendas.</div>
+            </>
+          ) : null}
+
+          {salida === 'seguimiento_largo' ? (
+            <>
+              <div className="separador" />
+              <h3>El seguimiento largo</h3>
+              <div className="campo">
+                <label htmlFor="volverEl">Fecha del próximo seguimiento</label>
+                <input id="volverEl" name="volverEl" type="date" required
+                       defaultValue={lead.seguimientoLargo ?? ''} />
+                <div className="nota">Sale de la cadencia y vuelve a aparecer ese día. Es para el que
+                  pidió que lo llamen después del cierre de su trimestre: meterlo igual en los doce
+                  toques llena el pipeline de tarjetas que nadie va a tocar.</div>
+              </div>
+            </>
+          ) : null}
+
+          {salida === 'seguimiento_cadencia' ? (
+            <>
+              <div className="separador" />
+              <h3>El seguimiento</h3>
+              <div className="nota">Entra al pipeline de 12 toques y aparece en Seguimientos el día
+                que toca cada uno. Si lo que pidió fue que lo llamen en una fecha puntual, es
+                «Seguimiento largo» y no esto.</div>
+            </>
+          ) : null}
+
+          {salida === 'perdida' ? (
+            <>
+              <div className="separador" />
+              <h3>Por qué se perdió</h3>
+              <div className="campo">
+                <label htmlFor="motivoPerdida">Motivo</label>
+                <select id="motivoPerdida" name="motivoPerdida" required
+                        defaultValue={lead.motivoPerdida ?? ''}>
+                  <option value="" disabled>Elegí uno</option>
+                  {MOTIVOS_PERDIDA.map((m) => <option key={m} value={m}>{NOMBRE_DE_MOTIVO[m]}</option>)}
+                </select>
+                <div className="nota">Lista cerrada a propósito: «no le interesó» escrito de nueve
+                  maneras no se puede contar, y contar por qué se pierde es de lo poco que cambia
+                  decisiones.</div>
+              </div>
+            </>
+          ) : null}
+
+          {salida === 'no_calificado' ? (
+            <>
+              <div className="separador" />
+              <div className="nota">No calificado no es lo mismo que perdido: no llegó a ser una
+                oportunidad. Queda fuera de la tasa de cierre y se cuenta aparte, que es lo que
+                después dice si el problema está en el agendamiento.</div>
+            </>
+          ) : null}
 
           <div className="separador" />
-          <h3>Si se perdió</h3>
           <div className="campo">
-            <label htmlFor="motivoPerdida">Motivo</label>
-            <select id="motivoPerdida" name="motivoPerdida" defaultValue={lead.motivoPerdida ?? ''}>
-              <option value="">Sin cargar</option>
-              {MOTIVOS_PERDIDA.map((m) => <option key={m} value={m}>{NOMBRE_DE_MOTIVO[m]}</option>)}
-            </select>
-            <div className="nota">Lista cerrada a propósito: «no le interesó» escrito de nueve maneras
-              no se puede contar, y contar por qué se pierde es de lo poco que cambia decisiones.</div>
-          </div>
-
-          <div className="separador" />
-          <div className="dos">
-            <div className="campo">
-              <label htmlFor="proximoContacto">Próximo contacto</label>
-              <input id="proximoContacto" name="proximoContacto" type="date"
-                     defaultValue={lead.proximoContacto ?? ''} />
-            </div>
-            <div className="campo">
-              <label htmlFor="proximoPaso">Próximo paso</label>
-              <input id="proximoPaso" name="proximoPaso" defaultValue={lead.proximoPaso ?? ''} />
-            </div>
+            <label htmlFor="proximoPaso">Pasos a seguir</label>
+            <input id="proximoPaso" name="proximoPaso" defaultValue={lead.proximoPaso ?? ''}
+                   placeholder="Mandar la propuesta, hablar con la socia, cobrar la cuota 2…" />
           </div>
           <div className="campo">
             <label htmlFor="observaciones">Observaciones</label>
             <textarea id="observaciones" name="observaciones" defaultValue={lead.observaciones ?? ''} />
           </div>
 
-          <button type="submit">Guardar el resultado</button>
+          <Guardar />
         </form>
       </Tarjeta>
 
@@ -156,22 +293,6 @@ export function Resultado({
           </Tarjeta>
         ) : null}
 
-        <Tarjeta titulo="Seguimiento largo"
-                 ayuda="Cuando el cliente pide que lo llamen en tres meses. Sale de la cadencia y vuelve a aparecer ese día.">
-          <form action={seguimientoLargoAccion}>
-            <input type="hidden" name="leadId" value={lead.id} />
-            <div className="campo">
-              <label htmlFor="sl-fecha">Volver a contactar el</label>
-              <input id="sl-fecha" name="fecha" type="date" required />
-            </div>
-            <div className="campo">
-              <label htmlFor="sl-nota">Qué pidió</label>
-              <input id="sl-nota" name="nota" placeholder="Pidió que lo llamemos después del cierre de su trimestre" />
-            </div>
-            <button type="submit" className="secundario">Marcar seguimiento largo</button>
-          </form>
-        </Tarjeta>
-
         {puedeReasignar ? (
           <Tarjeta titulo="Cambiar el closer"
                    ayuda="No se borra ni se recrea nada: queda el histórico con quién lo cambió y por qué.">
@@ -197,8 +318,10 @@ export function Resultado({
           <Tarjeta titulo="Registrar un cobro"
                    ayuda="Esto —y no la venta— es el cash collected. Facturación y cash no son el mismo número.">
             <p className="ayuda" style={{ marginBottom: 10 }}>
-              Vendido {plata(lead.venta.importe, lead.venta.moneda)} el {fechaCorta(lead.venta.fecha)} ·
-              cobrado {plata(lead.cobrado, lead.moneda)}.
+              Vendido {plata(lead.venta.importe, lead.venta.moneda)} el {fechaCorta(lead.venta.fecha)}
+              {lead.venta.programa ? ` · ${lead.venta.programa}` : ''}
+              {lead.venta.cuotas ? ` · ${lead.venta.cuotas} cuotas` : ''} ·
+              cobrado {plata(lead.cobrado, lead.venta.moneda)}.
             </p>
             <form action={registrarPagoAccion}>
               <input type="hidden" name="leadId" value={lead.id} />

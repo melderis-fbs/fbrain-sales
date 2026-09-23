@@ -192,6 +192,130 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(sena?.estado).toBe('convertida')
   })
 
+  it('corregir una venta la corrige: no carga una segunda', async () => {
+    // El error caro: el closer se equivocaba en un dígito, volvía a guardar la
+    // ficha y quedaban DOS ventas. La facturación del mes contaba la plata dos
+    // veces, para siempre, y no había forma de sacarla desde la aplicación.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 300, moneda: 'USD', fecha: '2026-09-10', programa: 'GROWTH' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', programa: 'ELITE', cuotas: 3 },
+    }, usuarioId)
+
+    const cuantas = await db.fila<{ n: string }>(
+      'select count(*) as n from ventas where lead_id = $1 and borrado_en is null', [id])
+    expect(Number(cuantas?.n)).toBe(1)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.ventas).toBe(1)
+    expect(medidas.facturacion).toBe(3000)
+
+    const lead = await leads.verLead(id)
+    expect(lead?.venta?.importe).toBe(3000)
+    expect(lead?.venta?.programa).toBe('ELITE')
+    expect(lead?.venta?.cuotas).toBe(3)
+
+    // Y el cambio queda escrito: plata que cambia de valor hay que poder explicarla.
+    const historia = await cambios.historialDelLead(id)
+    expect(historia.some((h) => h.anterior === 'USD 300' && h.nuevo === 'USD 3000')).toBe(true)
+  })
+
+  it('pero un lead reflotado que compra en el segundo intento tiene dos ventas de verdad', async () => {
+    // El límite del arreglo de arriba: corregir no duplica, vender otra vez sí
+    // suma. Lo que los separa es el ciclo, no la suerte.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'perdida', motivoPerdida: 'timing',
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+
+    await leads.reflotarLead(id, usuarioId, { fechaSesion: '2026-09-20' })
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 2000, moneda: 'USD', fecha: '2026-09-22' },
+    }, usuarioId)
+
+    const cuantas = await db.fila<{ n: string }>(
+      'select count(*) as n from ventas where lead_id = $1 and borrado_en is null', [id])
+    expect(Number(cuantas?.n)).toBe(2)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.facturacion).toBe(3000)
+  })
+
+  it('lo que se cobró al firmar es el cash collected del día', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 3, cobradoAhora: 1000 },
+    }, usuarioId)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.facturacion).toBe(3000)   // lo que se vendió
+    expect(medidas.cashCollected).toBe(1000) // lo que entró
+
+    const pago = await db.fila<{ n_cuota: number; cuotas_totales: number; origen: string }>(
+      `select p.n_cuota, p.cuotas_totales, p.origen from pagos p
+         join ventas v on v.id = p.venta_id where v.lead_id = $1`, [id])
+    expect(pago?.origen).toBe('cuota')
+    expect(pago?.n_cuota).toBe(1)
+    expect(pago?.cuotas_totales).toBe(3)
+  })
+
+  it('una venta al contado sin cobro no inventa cash', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.facturacion).toBe(3000)
+    expect(medidas.cashCollected).toBe(0)
+  })
+
+  it('corregir una seña tampoco carga una segunda', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 200, moneda: 'USD', fecha: '2026-09-10' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 500, moneda: 'USD', fecha: '2026-09-10', saldoPendiente: 2500 },
+    }, usuarioId)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.senas).toBe(1)
+    expect(medidas.senasImporte).toBe(500)
+    expect(await metricas.senasAbiertas(TODO, '2026-09-15')).toHaveLength(1)
+  })
+
+  it('el seguimiento largo se ve en la ficha, que es donde se vuelve a elegir', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'seguimiento', comoSigue: 'largo', volverEl: '2026-12-01',
+    }, usuarioId)
+
+    const lead = await leads.verLead(id)
+    expect(lead?.seguimientoLargo).toBe('2026-12-01')
+    expect(lead?.proximoContacto).toBe('2026-12-01')
+
+    // El que entra a los doce toques no tiene fecha larga: son dos cosas distintas.
+    const otro = await alta('Pedro')
+    await resultado.cargarResultado(otro, {
+      estado: 'asistio', resultado: 'seguimiento', comoSigue: 'cadencia',
+    }, usuarioId)
+    expect((await leads.verLead(otro))?.seguimientoLargo).toBe(null)
+  })
+
   it('el cierre no puede pasar de 100%: ventas y asistencias salen del mismo universo', async () => {
     // El bug que traía el sistema anterior: el tablero decía 111% porque las
     // ventas venían de la tabla de ventas, por fecha de venta, y las

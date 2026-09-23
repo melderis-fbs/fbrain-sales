@@ -67,6 +67,9 @@ export const SIN_ESQUEMA = ['0008_leads_sin_dueno.sql', '0009_cada_reunion_su_fi
  * justamente el error que esta pantalla existe para evitar.
  */
 const COLUMNAS_ESPERADAS: { tabla: string; columna: string; migracion: string }[] = [
+  { tabla: 'ventas', columna: 'cuotas', migracion: '0010_programa_y_motivos.sql' },
+  { tabla: 'ventas', columna: 'ciclo', migracion: '0011_una_venta_por_ciclo.sql' },
+  { tabla: 'senias', columna: 'ciclo', migracion: '0011_una_venta_por_ciclo.sql' },
   { tabla: 'leads', columna: 'estado', migracion: '0004_el_lead_es_la_oportunidad.sql' },
   { tabla: 'leads', columna: 'closer_id', migracion: '0004_el_lead_es_la_oportunidad.sql' },
   { tabla: 'leads', columna: 'ciclo', migracion: '0004_el_lead_es_la_oportunidad.sql' },

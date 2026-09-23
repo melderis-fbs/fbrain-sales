@@ -29,7 +29,19 @@ export type ResultadoCargado = {
   proximoPaso?: string | null
   observaciones?: string | null
   /** Cuando el resultado es venta. */
-  venta?: { importe: number; moneda: string; fecha: string; programa?: string | null }
+  venta?: {
+    importe: number; moneda: string; fecha: string
+    /** GROWTH o ELITE. */
+    programa?: string | null
+    /** En cuántas cuotas se pactó. Los pagos guardan cuál es cada uno; esto es el total. */
+    cuotas?: number | null
+    /**
+     * Lo que se cobró al firmar. Es el cash collected del día, y el número que
+     * más se perdía: quedaba «para cargarlo después» en otra pantalla y
+     * después no se cargaba.
+     */
+    cobradoAhora?: number | null
+  }
   /**
    * Cómo sigue un lead que queda en seguimiento.
    *
@@ -79,10 +91,16 @@ export async function cargarResultado(
   usuarioId: number,
 ): Promise<void> {
   const antes = await fila<Record<string, unknown>>(
-    `select ${CAMPOS.map((c) => c.columna).join(', ')} from leads where id = $1 and borrado_en is null`,
+    `select ${CAMPOS.map((c) => c.columna).join(', ')}, ciclo
+       from leads where id = $1 and borrado_en is null`,
     [leadId],
   )
   if (!antes) throw new Error('Ese lead no existe.')
+
+  // El ciclo es lo que separa «corregir la venta» de «vendió otra vez». Un lead
+  // perdido que se reflota y compra en el segundo intento tiene dos ventas de
+  // verdad, y ésas no son duplicados.
+  const ciclo = Number(antes.ciclo ?? 1)
 
   const sets: string[] = []
   const valores: unknown[] = []
@@ -114,17 +132,47 @@ export async function cargarResultado(
     }
 
     if (datos.venta) {
-      const v = await escribirDevolviendo<{ id: number }>(
-        `insert into ventas (lead_id, importe, moneda, fecha, programa, creado_por)
-         values ($1,$2,$3,$4,$5,$6) returning id`,
-        [leadId, datos.venta.importe, datos.venta.moneda, datos.venta.fecha,
-         oNulo(datos.venta.programa), usuarioId],
-        cx,
+      // Volver a guardar la ficha CORRIGE la venta; no carga otra. Insertar
+      // siempre era plata duplicada en la facturación del mes por el solo
+      // hecho de arreglar un importe mal tipeado, y esa plata no se podía
+      // sacar de ningún lado.
+      const yaHay = await fila<{ id: number; importe: string | number; moneda: string }>(
+        `select id, importe, moneda from ventas
+          where lead_id = $1 and ciclo = $2 and borrado_en is null
+          order by fecha desc, id desc limit 1`,
+        [leadId, ciclo], cx,
       )
-      anotaciones.push({
-        entidad: 'venta', entidadId: leadId, campo: 'importe',
-        anterior: null, nuevo: `${datos.venta.moneda} ${datos.venta.importe}`,
-      })
+
+      let ventaId: number
+      if (yaHay) {
+        ventaId = yaHay.id
+        await escribir(
+          `update ventas set importe = $1, moneda = $2, fecha = $3, programa = $4, cuotas = $5
+            where id = $6`,
+          [datos.venta.importe, datos.venta.moneda, datos.venta.fecha,
+           oNulo(datos.venta.programa), datos.venta.cuotas ?? null, ventaId],
+          { esperadas: 1, cliente: cx },
+        )
+        const antesPlata = `${yaHay.moneda} ${Number(yaHay.importe)}`
+        const ahoraPlata = `${datos.venta.moneda} ${datos.venta.importe}`
+        if (antesPlata !== ahoraPlata) {
+          anotaciones.push({ entidad: 'venta', entidadId: leadId, campo: 'importe',
+                             anterior: antesPlata, nuevo: ahoraPlata })
+        }
+      } else {
+        const v = await escribirDevolviendo<{ id: number }>(
+          `insert into ventas (lead_id, ciclo, importe, moneda, fecha, programa, cuotas, creado_por)
+           values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+          [leadId, ciclo, datos.venta.importe, datos.venta.moneda, datos.venta.fecha,
+           oNulo(datos.venta.programa), datos.venta.cuotas ?? null, usuarioId],
+          cx,
+        )
+        ventaId = v.id
+        anotaciones.push({
+          entidad: 'venta', entidadId: leadId, campo: 'importe',
+          anterior: null, nuevo: `${datos.venta.moneda} ${datos.venta.importe}`,
+        })
+      }
 
       // Si venía de una seña, la seña se convierte y su importe pasa a ser el
       // primer pago de esta venta. Así el dinero se cuenta una vez: no dos, y
@@ -137,27 +185,69 @@ export async function cargarResultado(
       )
       if (abierta) {
         await escribir(`update senias set estado = 'convertida', venta_id = $1 where id = $2`,
-          [v.id, abierta.id], { esperadas: 1, cliente: cx })
+          [ventaId, abierta.id], { esperadas: 1, cliente: cx })
         await escribir(
           `insert into pagos (venta_id, importe, moneda, fecha, origen, estado)
            values ($1, $2, $3, $4, 'sena', 'cobrado')`,
-          [v.id, abierta.importe, abierta.moneda, abierta.fecha], { esperadas: 1, cliente: cx },
+          [ventaId, abierta.importe, abierta.moneda, abierta.fecha], { esperadas: 1, cliente: cx },
         )
         anotaciones.push({ entidad: 'sena', entidadId: leadId, campo: 'estado',
                            anterior: 'abierta', nuevo: 'convertida' })
       }
+
+      // Lo que entró el día de la firma. Un cobro se SUMA siempre —dos cobros
+      // son dos cobros— así que este campo viene vacío cada vez que se abre la
+      // ficha: lo que ya está cargado se ve al lado.
+      const cobrado = datos.venta.cobradoAhora ?? 0
+      if (cobrado > 0) {
+        const enCuotas = (datos.venta.cuotas ?? 1) > 1
+        await escribir(
+          `insert into pagos (venta_id, importe, moneda, fecha, origen, n_cuota, cuotas_totales, estado)
+           values ($1,$2,$3,$4,$5,$6,$7,'cobrado')`,
+          [ventaId, cobrado, datos.venta.moneda, datos.venta.fecha,
+           enCuotas ? 'cuota' : 'contado', enCuotas ? 1 : null, datos.venta.cuotas ?? null],
+          { esperadas: 1, cliente: cx },
+        )
+        anotaciones.push({ entidad: 'venta', entidadId: leadId, campo: 'cobro',
+                           anterior: null, nuevo: `${datos.venta.moneda} ${cobrado}` })
+      }
     }
 
     if (datos.sena) {
-      await escribir(
-        `insert into senias (lead_id, importe, moneda, fecha, saldo_pendiente, fecha_comprometida, creado_por)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
-        [leadId, datos.sena.importe, datos.sena.moneda, datos.sena.fecha,
-         datos.sena.saldoPendiente ?? null, oNulo(datos.sena.fechaComprometida), usuarioId],
-        { esperadas: 1, cliente: cx },
+      // Mismo criterio que la venta: corregir una seña no crea una segunda.
+      const yaHay = await fila<{ id: number; importe: string | number; moneda: string }>(
+        `select id, importe, moneda from senias
+          where lead_id = $1 and ciclo = $2 and estado = 'abierta' and borrado_en is null
+          order by fecha desc, id desc limit 1`,
+        [leadId, ciclo], cx,
       )
-      anotaciones.push({ entidad: 'sena', entidadId: leadId, campo: 'importe',
-                         anterior: null, nuevo: `${datos.sena.moneda} ${datos.sena.importe}` })
+      if (yaHay) {
+        await escribir(
+          `update senias set importe = $1, moneda = $2, fecha = $3,
+                             saldo_pendiente = $4, fecha_comprometida = $5
+            where id = $6`,
+          [datos.sena.importe, datos.sena.moneda, datos.sena.fecha,
+           datos.sena.saldoPendiente ?? null, oNulo(datos.sena.fechaComprometida), yaHay.id],
+          { esperadas: 1, cliente: cx },
+        )
+        const antesPlata = `${yaHay.moneda} ${Number(yaHay.importe)}`
+        const ahoraPlata = `${datos.sena.moneda} ${datos.sena.importe}`
+        if (antesPlata !== ahoraPlata) {
+          anotaciones.push({ entidad: 'sena', entidadId: leadId, campo: 'importe',
+                             anterior: antesPlata, nuevo: ahoraPlata })
+        }
+      } else {
+        await escribir(
+          `insert into senias (lead_id, ciclo, importe, moneda, fecha, saldo_pendiente,
+                               fecha_comprometida, creado_por)
+           values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [leadId, ciclo, datos.sena.importe, datos.sena.moneda, datos.sena.fecha,
+           datos.sena.saldoPendiente ?? null, oNulo(datos.sena.fechaComprometida), usuarioId],
+          { esperadas: 1, cliente: cx },
+        )
+        anotaciones.push({ entidad: 'sena', entidadId: leadId, campo: 'importe',
+                           anterior: null, nuevo: `${datos.sena.moneda} ${datos.sena.importe}` })
+      }
     }
 
     // El pipeline de seguimientos se mueve con el resultado, pero ya no

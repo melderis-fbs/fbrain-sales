@@ -560,10 +560,13 @@ export type Lead = {
   infoNegocio: string | null
   infoExtra: string | null
   creadoEn: string
-  venta: { importe: number; moneda: string; fecha: string; programa: string | null } | null
+  venta: { importe: number; moneda: string; fecha: string; programa: string | null
+           cuotas: number | null } | null
   sena: { id: number; importe: number; moneda: string; fecha: string; saldo: number | null
           comprometida: string | null; estado: string } | null
   cobrado: number
+  /** Si quedó en seguimiento largo, el día en que hay que volver. */
+  seguimientoLargo: string | null
 }
 
 export async function verLead(leadId: number): Promise<Lead | null> {
@@ -571,7 +574,8 @@ export async function verLead(leadId: number): Promise<Lead | null> {
     `select l.*, fu.nombre as fuente, fn.nombre as funnel, s.nombre as setter,
             c.nombre as closer, ci.nombre as closer_inicial, u.nombre as reflotador,
             v.importe as venta_importe, v.moneda as venta_moneda, v.fecha as venta_fecha,
-            v.programa as venta_programa, v.id as venta_id,
+            v.programa as venta_programa, v.id as venta_id, v.cuotas as venta_cuotas,
+            case when se.situacion = 'largo' then se.fecha_larga end as seguimiento_largo,
             sn.id as sena_id, sn.importe as sena_importe, sn.moneda as sena_moneda,
             sn.fecha as sena_fecha, sn.saldo_pendiente as sena_saldo,
             sn.fecha_comprometida as sena_comprometida, sn.estado as sena_estado,
@@ -589,6 +593,7 @@ export async function verLead(leadId: number): Promise<Lead | null> {
                            order by vx.fecha desc, vx.id desc limit 1) v on true
        left join lateral (select * from senias sx where sx.lead_id = l.id and sx.borrado_en is null
                            order by sx.fecha desc, sx.id desc limit 1) sn on true
+       left join seguimiento_estado se on se.lead_id = l.id
       where l.id = $1 and l.borrado_en is null`,
     [leadId],
   )
@@ -613,12 +618,14 @@ export async function verLead(leadId: number): Promise<Lead | null> {
     creadoEn: x.creado_en.toISOString(),
     venta: x.venta_importe === null || x.venta_importe === undefined ? null
       : { importe: Number(x.venta_importe), moneda: x.venta_moneda, fecha: x.venta_fecha,
-          programa: x.venta_programa },
+          programa: x.venta_programa,
+          cuotas: x.venta_cuotas === null || x.venta_cuotas === undefined ? null : Number(x.venta_cuotas) },
     sena: x.sena_importe === null || x.sena_importe === undefined ? null
       : { id: x.sena_id, importe: Number(x.sena_importe), moneda: x.sena_moneda, fecha: x.sena_fecha,
           saldo: x.sena_saldo === null ? null : Number(x.sena_saldo),
           comprometida: x.sena_comprometida, estado: x.sena_estado },
     cobrado: Number(x.cobrado),
+    seguimientoLargo: x.seguimiento_largo ?? null,
   }
 }
 

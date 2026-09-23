@@ -10,14 +10,20 @@ import {
   puedeVerLead,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
-import { cargarResultado, registrarPago, anularVenta, anularSena } from '@/datos/resultado'
+import {
+  cargarResultado, registrarPago, anularVenta, anularSena, agendarSegundaLlamada,
+} from '@/datos/resultado'
 import { leerPlanilla, type FilaLeida } from '@/dominio/importacion'
 import { yaCargados, importar, type YaEstaba, type ReporteDeImportacion } from '@/datos/importar'
 import { catalogos, config } from '@/datos/catalogos'
 import { guardarCalificacion, congelarQuality } from '@/datos/calificacion'
 import { agregarNota, borrarNota } from '@/datos/notas'
 import { marcarSeguimientoLargo } from '@/datos/seguimientos'
-import { NOMBRE_DE_RESULTADO, type Estado, type Resultado, type MotivoPerdida, type TipoSesion } from '@/dominio/resultados'
+import {
+  NOMBRE_DE_RESULTADO, PROGRAMAS, desdeSalida,
+  type Estado, type Resultado, type MotivoPerdida, type TipoSesion,
+  type Salida, type ComoSigue, type Programa,
+} from '@/dominio/resultados'
 import { CAMPOS_LIBRES, CAMPOS_QUE_PUNTUAN } from '@/dominio/calidad'
 
 function texto(datos: FormData, campo: string): string | null {
@@ -206,7 +212,14 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
   const leadId = Number(datos.get('leadId'))
   await exigirAccesoAlLead(leadId, alcanceDe(usuario))
 
-  const resultado = texto(datos, 'resultado') as Resultado | null
+  // En la pantalla el closer elige UNA cosa —«Venta», «Seguimiento largo»,
+  // «Segunda llamada»— y acá se abre en las dos columnas que guarda la base.
+  const elegida = texto(datos, 'salida') as Salida | null
+  const { resultado, comoSigue } = elegida
+    ? desdeSalida(elegida)
+    : { resultado: texto(datos, 'resultado') as Resultado | null,
+        comoSigue: (texto(datos, 'comoSigue') ?? 'cadencia') as ComoSigue }
+
   const moneda = texto(datos, 'moneda') ?? 'USD'
   const importe = numero(datos, 'importe')
   const fecha = texto(datos, 'fecha')
@@ -221,21 +234,39 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
   if (resultado === 'perdida' && texto(datos, 'motivoPerdida') === null) {
     throw new Error('Un lead perdido necesita su motivo: es lo que después dice por qué se pierde.')
   }
+  const programa = texto(datos, 'programa')
+  if (programa !== null && !PROGRAMAS.includes(programa as Programa)) {
+    throw new Error('El programa es GROWTH o ELITE.')
+  }
+  const cobradoAhora = numero(datos, 'cobradoAhora')
+  if (cobradoAhora !== null && importe !== null && cobradoAhora > importe) {
+    throw new Error('No se puede haber cobrado más de lo que se vendió.')
+  }
+
+  // Una segunda llamada necesita su fecha antes de tocar nada: si falla a la
+  // mitad, la reunión de hoy queda cerrada y el lead sin agenda.
+  const fechaSegunda = texto(datos, 'fechaSegunda')
+  if (elegida === 'segunda' && fechaSegunda === null) {
+    throw new Error('Una segunda llamada necesita la fecha de la segunda llamada.')
+  }
 
   await cargarResultado(leadId, {
     estado: (texto(datos, 'estado') ?? undefined) as Estado | undefined,
     resultado: resultado ?? undefined,
     ...(resultado === 'seguimiento'
-      ? { comoSigue: (texto(datos, 'comoSigue') ?? 'cadencia') as 'cadencia' | 'largo' | 'ninguno',
-          volverEl: texto(datos, 'volverEl') }
+      ? { comoSigue: comoSigue ?? 'cadencia', volverEl: texto(datos, 'volverEl') }
       : {}),
     huboOferta: datos.has('huboOferta') ? datos.get('huboOferta') === 'on' : undefined,
     motivoPerdida: (texto(datos, 'motivoPerdida') ?? null) as MotivoPerdida | null,
-    proximoContacto: texto(datos, 'proximoContacto'),
-    proximoPaso: texto(datos, 'proximoPaso'),
-    observaciones: texto(datos, 'observaciones'),
+    // Lo que el formulario no mandó, no se toca. Los campos del resultado que
+    // no se eligió ni se dibujan, y un campo ausente que se guardaba como
+    // vacío le borraba al lead el próximo contacto que ya tenía.
+    ...(datos.has('proximoContacto') ? { proximoContacto: texto(datos, 'proximoContacto') } : {}),
+    ...(datos.has('proximoPaso') ? { proximoPaso: texto(datos, 'proximoPaso') } : {}),
+    ...(datos.has('observaciones') ? { observaciones: texto(datos, 'observaciones') } : {}),
     ...(resultado === 'venta' && importe !== null && fecha !== null
-      ? { venta: { importe, moneda, fecha, programa: texto(datos, 'programa') } }
+      ? { venta: { importe, moneda, fecha, programa,
+                   cuotas: numero(datos, 'cuotas'), cobradoAhora } }
       : {}),
     ...(resultado === 'sena' && importe !== null && fecha !== null
       ? { sena: {
@@ -245,6 +276,16 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
           } }
       : {}),
   }, usuario.id)
+
+  // Y recién ahora se re-agenda: la reunión de hoy ya quedó escrita con su
+  // fecha y su resultado, así que la segunda no le pisa la agenda a la primera.
+  if (elegida === 'segunda' && fechaSegunda !== null) {
+    await agendarSegundaLlamada(
+      leadId,
+      { fecha: fechaSegunda, hora: texto(datos, 'horaSegunda'), nota: texto(datos, 'proximoPaso') },
+      usuario.id,
+    )
+  }
 
   refrescar(leadId)
 }

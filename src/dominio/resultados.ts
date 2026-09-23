@@ -77,23 +77,84 @@ export const NOMBRE_DE_TIPO: Record<TipoSesion, string> = {
  * que cambia decisiones.
  */
 export const MOTIVOS_PERDIDA = [
-  'precio', 'timing', 'socio', 'confianza', 'urgencia', 'encaje',
-  'competencia', 'no_entendio', 'no_tenia_dinero', 'no_era_decisor', 'seguimiento_deficiente',
+  'no_tenia_dinero', 'encaje', 'competencia', 'no_interesado',
+  'precio', 'timing', 'socio', 'confianza', 'urgencia',
+  'no_entendio', 'no_era_decisor', 'seguimiento_deficiente',
 ] as const
 export type MotivoPerdida = (typeof MOTIVOS_PERDIDA)[number]
 
 export const NOMBRE_DE_MOTIVO: Record<MotivoPerdida, string> = {
+  no_tenia_dinero: 'Interesado sin dinero',
+  encaje: 'No cualifica',
+  competencia: 'Se fue con la competencia',
+  no_interesado: 'No interesado',
   precio: 'Precio',
   timing: 'Timing',
   socio: 'Socio o pareja',
   confianza: 'Confianza',
   urgencia: 'Sin urgencia',
-  encaje: 'No hay encaje',
-  competencia: 'Competencia',
   no_entendio: 'No entendió la oferta',
-  no_tenia_dinero: 'No tenía el dinero',
   no_era_decisor: 'No era decisor',
   seguimiento_deficiente: 'Seguimiento deficiente',
+}
+
+/**
+ * Los programas que se venden. Son dos.
+ *
+ * Era texto libre, y texto libre se escribe de nueve maneras: «Growth»,
+ * «GROWTH», «growth elite». Después no se puede contestar cuánto vendió cada
+ * programa, que es de las preguntas más baratas que hay.
+ */
+export const PROGRAMAS = ['GROWTH', 'ELITE'] as const
+export type Programa = (typeof PROGRAMAS)[number]
+
+/**
+ * Lo que el closer elige al cerrar la llamada.
+ *
+ * En la base son dos columnas —el resultado y, si quedó en seguimiento, cómo
+ * sigue— pero para el que carga es UNA pregunta con una respuesta. Tenerlas
+ * separadas en la pantalla obligaba a completar dos desplegables para decir
+ * una sola cosa, y lo que se completa en dos pasos se completa mal.
+ *
+ * «Segunda llamada» es una salida propia y no un seguimiento cualquiera: la
+ * reunión de hoy termina y queda agendada otra, con su fecha. Es lo que hace
+ * que el mes que viene la segunda no le pise la agenda a la primera.
+ */
+export const SALIDAS = [
+  'pendiente', 'venta', 'sena', 'segunda',
+  'seguimiento_largo', 'seguimiento_cadencia', 'perdida', 'no_calificado',
+] as const
+export type Salida = (typeof SALIDAS)[number]
+
+export const NOMBRE_DE_SALIDA: Record<Salida, string> = {
+  pendiente: 'Todavía no se sabe',
+  venta: 'Venta',
+  sena: 'Seña',
+  segunda: 'Segunda llamada',
+  seguimiento_largo: 'Seguimiento largo',
+  seguimiento_cadencia: 'Seguimiento · 12 toques',
+  perdida: 'Perdido',
+  no_calificado: 'No calificado',
+}
+
+export type ComoSigue = 'cadencia' | 'largo' | 'ninguno'
+
+/** De lo que se elige en la pantalla a lo que se guarda. */
+export function desdeSalida(salida: Salida): { resultado: Resultado; comoSigue: ComoSigue | null } {
+  switch (salida) {
+    case 'seguimiento_cadencia': return { resultado: 'seguimiento', comoSigue: 'cadencia' }
+    case 'seguimiento_largo':    return { resultado: 'seguimiento', comoSigue: 'largo' }
+    // La segunda llamada queda agendada: perseguirla con toques es perseguir
+    // a alguien que ya tiene reunión.
+    case 'segunda':              return { resultado: 'seguimiento', comoSigue: 'ninguno' }
+    default:                     return { resultado: salida, comoSigue: null }
+  }
+}
+
+/** Y al revés, para abrir la ficha en lo que el lead ya tiene cargado. */
+export function salidaDe(resultado: Resultado, seguimientoLargo?: boolean): Salida {
+  if (resultado !== 'seguimiento') return resultado
+  return seguimientoLargo ? 'seguimiento_largo' : 'seguimiento_cadencia'
 }
 
 /** Un lead sigue abierto mientras no se haya vendido ni perdido. La seña NO lo cierra. */

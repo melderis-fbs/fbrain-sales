@@ -213,7 +213,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                 contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
         {verPlata ? (
           <Numero etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} chico
-                  contra="vendido en el período"
+                  contra={<>vendido · <a href="#ventas">ver cuáles →</a></>}
                   comoSeCalcula={DEFINICIONES.facturacion!.formula} />
         ) : null}
         {verPlata ? (
