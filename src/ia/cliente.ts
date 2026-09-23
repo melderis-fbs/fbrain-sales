@@ -41,6 +41,53 @@ function costo(modelo: string, u: { entrada: number; salida: number; cacheLeido:
           u.cacheEscrito * p.cacheEscrito + u.cacheLeido * p.cacheLeido) / 1_000_000
 }
 
+/**
+ * Qué dijo de verdad la API cuando contestó mal.
+ *
+ * El cuerpo viene como {"type":"error","error":{"type":..,"message":".."}}. El
+ * mensaje de adentro es la única parte útil, y hasta ahora se guardaba en la
+ * base y no se mostraba: la persona veía «El modelo contestó 400.» y nadie
+ * podía hacer nada con eso sin entrar a Supabase.
+ */
+export function motivoDeLaApi(cuerpo: string): string | null {
+  try {
+    const j = JSON.parse(cuerpo) as { error?: { message?: string } }
+    return j.error?.message ?? null
+  } catch { return null }
+}
+
+/**
+ * Traducir el motivo a algo con lo que se pueda hacer algo.
+ *
+ * Cada una de estas la vimos o la puede tirar la API, y todas se arreglan en un
+ * lugar distinto: una en Vercel, otra pegando una transcripción más corta, otra
+ * cargando crédito. Decir «400» las junta a todas en un callejón sin salida.
+ */
+export function enCastellano(estado: number, motivo: string | null, modelo: string): string {
+  const m = (motivo ?? '').toLowerCase()
+
+  if (estado === 401 || estado === 403) {
+    return 'La clave de Anthropic no es válida o no tiene permiso. Se cambia en Vercel, ' +
+           'en Settings → Environment Variables → ANTHROPIC_API_KEY, y hay que volver a desplegar.'
+  }
+  if (m.includes('credit') || m.includes('billing')) {
+    return 'La cuenta de Anthropic no tiene crédito. Se carga en console.anthropic.com, en Billing.'
+  }
+  if (m.includes('model') && (m.includes('not found') || m.includes('does not exist') || m.includes('invalid'))) {
+    return `El modelo configurado no existe: «${modelo}». Si pusiste MODELO_ANALIZADOR en Vercel, ` +
+           'sacala o corregila; sin esa variable usa el modelo por defecto.'
+  }
+  if (m.includes('prompt is too long') || m.includes('too many tokens')) {
+    return 'La transcripción es demasiado larga para una sola pasada. Cortala en dos y analizá cada parte.'
+  }
+  if (m.includes('rate limit')) {
+    return 'La cuenta de Anthropic llegó a su límite de pedidos por minuto. Probá de nuevo en un minuto.'
+  }
+  return motivo
+    ? `El modelo rechazó el pedido (${estado}): ${motivo}`
+    : `El modelo contestó ${estado} y no dijo por qué.`
+}
+
 export class ErrorDelModelo extends Error {
   constructor(mensaje: string, readonly detalle?: unknown) {
     super(mensaje)
@@ -78,6 +125,11 @@ export async function pedirJson<T>(opciones: {
   const modelo = opciones.modelo ?? MODELO_POR_DEFECTO
   const comienzo = Date.now()
   let ultimo: unknown = null
+  // Los modelos más nuevos rechazan obligar una herramienta. En vez de pedirle
+  // a alguien que cambie una variable de entorno, se pide igual y, si la API
+  // dice que no, se vuelve a preguntar dejándolo elegir: el esquema sigue
+  // siendo obligatorio, así que la respuesta llega igual de estructurada.
+  let forzarHerramienta = true
 
   for (let intento = 0; intento < 4; intento++) {
     if (intento > 0) await esperar(1000 * 2 ** intento)
@@ -99,7 +151,9 @@ export async function pedirJson<T>(opciones: {
           description: opciones.herramienta.descripcion,
           input_schema: opciones.herramienta.esquema,
         }],
-        tool_choice: { type: 'tool', name: opciones.herramienta.nombre },
+        tool_choice: forzarHerramienta
+          ? { type: 'tool', name: opciones.herramienta.nombre }
+          : { type: 'auto' },
       }),
     })
 
@@ -109,8 +163,17 @@ export async function pedirJson<T>(opciones: {
     }
     if (!respuesta.ok) {
       const cuerpo = await respuesta.text()
+      const motivo = motivoDeLaApi(cuerpo)
+
+      // «Este modelo no acepta que le obligues la herramienta»: se reintenta
+      // dejándolo elegir, sin que nadie tenga que enterarse.
+      if (forzarHerramienta && respuesta.status === 400 && (motivo ?? '').includes('tool_choice')) {
+        forzarHerramienta = false
+        continue
+      }
+
       await anotarUso(opciones.para, modelo, ceroUso(modelo, Date.now() - comienzo), opciones, cuerpo.slice(0, 500))
-      throw new ErrorDelModelo(`El modelo contestó ${respuesta.status}.`, cuerpo.slice(0, 500))
+      throw new ErrorDelModelo(enCastellano(respuesta.status, motivo, modelo), cuerpo.slice(0, 500))
     }
 
     const cuerpo = await respuesta.json() as {
