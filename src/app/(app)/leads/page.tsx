@@ -13,6 +13,7 @@ import {
   RESULTADOS, ESTADOS, type Resultado, type Estado,
 } from '@/dominio/resultados'
 import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
+import { Cargado, cargoElSetter, cargoElCloser } from '@/componentes/Cargado'
 
 type Busqueda = Promise<Record<string, string | undefined>>
 
@@ -155,8 +156,14 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
                           : <span className="sindato">sin calificar</span>}
                       </td>
                       <td style={{ fontSize: 12.5 }}>{l.fuente ?? <span className="sindato">—</span>}</td>
-                      <td style={{ fontSize: 12.5 }}>{l.setter ?? <span className="sindato">—</span>}</td>
-                      <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
+                      <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        <Cargado quien="setter" hecho={cargoElSetter(l)} />
+                        {l.setter ?? <span className="sindato">—</span>}
+                      </td>
+                      <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        <Cargado quien="closer" hecho={cargoElCloser(l)} />
+                        {l.closer ?? <span className="sindato">sin asignar</span>}
+                      </td>
                       <td style={{ fontSize: 12.5 }}>{fechaCorta(l.fechaSesion)}</td>
                       <td><Pildora color={COLOR_DE_ESTADO[l.estado]}>{NOMBRE_DE_ESTADO[l.estado]}</Pildora></td>
                       <td><Pildora color={COLOR_DE_RESULTADO[l.resultado]}>{NOMBRE_DE_RESULTADO[l.resultado]}</Pildora></td>
@@ -200,6 +207,15 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
           </div>
         )}
       </Tarjeta>
+
+      {/* La leyenda de los puntos, una sola vez y acá abajo. Repetirla en cada
+          fila es lo que convierte una tabla en un cartel. */}
+      <p className="ayuda">
+        El punto al lado de cada nombre dice si esa persona ya cargó lo suyo:{' '}
+        <Cargado quien="setter" hecho /> el setter, la calificación;{' '}
+        <Cargado quien="closer" hecho /> el closer, el resultado de la llamada.
+        Hueco quiere decir que falta.
+      </p>
     </div>
   )
 }

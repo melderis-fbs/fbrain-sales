@@ -4,7 +4,7 @@ import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib
 import { clave, plegar, soloDigitos, colaDelTelefono, emailPlegado, oNulo } from '@/lib/texto'
 import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { anotar, type Cambio } from './cambios'
-import type { Resultado, Estado, TipoSesion } from '@/dominio/resultados'
+import type { Resultado, Estado, TipoSesion, MotivoPerdida } from '@/dominio/resultados'
 import type { NivelDeCalidad } from '@/dominio/calidad'
 
 /**
@@ -386,6 +386,25 @@ export type LeadEnLista = {
   cobrado: number
   calidadScore: number | null
   calidadNivel: NivelDeCalidad | null
+  /**
+   * Lo que hace falta para reportar la llamada sin abrir la ficha. Son los
+   * campos que el reporte del closer modula según el resultado: sin ellos el
+   * formulario abre en blanco y pisa lo que ya estaba cargado.
+   */
+  huboOferta: boolean
+  motivoPerdida: MotivoPerdida | null
+  seguimientoLargo: string | null
+  ventaFecha: string | null
+  ventaPrograma: string | null
+  ventaCuotas: number | null
+  /**
+   * El plan de pagos ya cargado. Viaja con la lista para que el reporte del
+   * closer abra mostrándolo: un formulario que dibuja cuatro cuotas vacías
+   * sobre una venta que ya tiene su plan cargado no se lee como «esto ya
+   * está», se lee como «esto no se guardó», y lo que parece no guardado se
+   * vuelve a escribir.
+   */
+  plan: { n: number; importe: number; fecha: string; medio: string | null; pagado: boolean }[]
   llamadas: number
   /** La última llamada registrada, para poder subirle la transcripción. */
   llamadaId: number | null
@@ -398,6 +417,8 @@ export type LeadEnLista = {
 const SELECT_LISTA = `
   select l.id, l.nombre, l.empresa, l.fecha_sesion, l.hora_sesion, l.estado, l.resultado, l.ciclo,
          l.proximo_contacto, l.valor_potencial, l.moneda, l.creado_en,
+         l.hubo_oferta, l.motivo_perdida,
+         case when se.situacion = 'largo' then se.fecha_larga end as seguimiento_largo,
          fu.nombre as fuente, fn.nombre as funnel, s.nombre as setter, c.nombre as closer,
          q.score as calidad_score, q.nivel as calidad_nivel,
          -- La plata REAL del lead, no la estimada. Sin esto la lista mostraba
@@ -406,6 +427,8 @@ const SELECT_LISTA = `
          -- como «—» si nadie la había estimado. La columna decía «Valor» y no
          -- era el valor de nada.
          vn.importe as venta_importe, vn.moneda as venta_moneda,
+         vn.fecha as venta_fecha, vn.programa as venta_programa, vn.cuotas as venta_cuotas,
+         vn.plan as venta_plan,
          sn.importe as sena_importe, sn.moneda as sena_moneda,
          coalesce((select sum(p.importe) from pagos p
                      join ventas v2 on v2.id = p.venta_id and v2.borrado_en is null
@@ -432,9 +455,19 @@ const SELECT_LISTA = `
     left join closers c  on c.id  = l.closer_id
     left join lateral (select score, nivel from lead_quality q2
                         where q2.lead_id = l.id order by q2.creado_en desc, q2.id desc limit 1) q on true
-    left join lateral (select importe, moneda from ventas v
-                        where v.lead_id = l.id and v.borrado_en is null
-                        order by v.fecha desc, v.id desc limit 1) vn on true
+    left join seguimiento_estado se on se.lead_id = l.id
+    left join lateral (
+         select v.importe, v.moneda, v.fecha, v.programa, v.cuotas,
+                (select json_agg(json_build_object(
+                          'n', pg.n_cuota, 'importe', pg.importe, 'fecha', pg.fecha,
+                          'medio', pg.medio, 'pagado', pg.estado = 'cobrado')
+                        order by pg.n_cuota)
+                   from pagos pg
+                  where pg.venta_id = v.id and pg.borrado_en is null and pg.n_cuota is not null
+                ) as plan
+           from ventas v
+          where v.lead_id = l.id and v.borrado_en is null
+          order by v.fecha desc, v.id desc limit 1) vn on true
     left join lateral (select importe, moneda from senias sx
                         where sx.lead_id = l.id and sx.borrado_en is null and sx.estado <> 'convertida'
                         order by sx.fecha desc, sx.id desc limit 1) sn on true`
@@ -447,6 +480,18 @@ function aLeadEnLista(x: Record<string, any>): LeadEnLista {
     estado: x.estado, resultado: x.resultado, ciclo: Number(x.ciclo),
     proximoContacto: x.proximo_contacto,
     valorPotencial: x.valor_potencial === null ? null : Number(x.valor_potencial),
+    huboOferta: x.hubo_oferta === true,
+    motivoPerdida: x.motivo_perdida,
+    seguimientoLargo: x.seguimiento_largo,
+    ventaFecha: x.venta_fecha,
+    ventaPrograma: x.venta_programa,
+    ventaCuotas: x.venta_cuotas === null || x.venta_cuotas === undefined ? null : Number(x.venta_cuotas),
+    plan: Array.isArray(x.venta_plan)
+      ? x.venta_plan.map((c: Record<string, any>) => ({
+          n: Number(c.n), importe: Number(c.importe), fecha: String(c.fecha),
+          medio: c.medio ?? null, pagado: c.pagado === true,
+        }))
+      : [],
     moneda: x.venta_moneda ?? x.sena_moneda ?? x.moneda,
     vendido: x.venta_importe === null || x.venta_importe === undefined ? null : Number(x.venta_importe),
     senado: x.sena_importe === null || x.sena_importe === undefined ? null : Number(x.sena_importe),

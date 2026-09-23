@@ -518,50 +518,120 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('comisiones')
 })
 
-await paso('el closer carga con un toque desde la ficha', async () => {
+await paso('el closer reporta la llamada del día sin salir de Llamadas', async () => {
   await p.goto(`${RAIZ}/leads/nuevo`)
   await p.fill('#nombre', `Un Toque ${marca}`)
   await p.selectOption('#closerId', { label: 'Kevin' })
   await p.fill('#fechaSesion', HOY)
+  await p.fill('#horaSesion', '11:00')
   await p.click(enLaPantalla('form button[type=submit]'))
   await p.waitForURL(/leads\/\d+/)
   const unToque = p.url().match(/leads\/(\d+)/)?.[1]
 
-  comprobar(await p.locator('.contenido .acciones-closer').count() === 1,
-            'la ficha abre con la acción del closer a la vista')
-  comprobar(await p.locator('.contenido .botonera .accion').count() === 6,
-            'con los seis resultados posibles, incluida la segunda llamada')
-  comprobar(await p.locator('.contenido .botonera .accion:has-text("Segunda llamada")').count() === 1,
-            'y «Segunda llamada» es uno de ellos')
+  // La botonera se fue de la ficha: había tres formas de cargar lo mismo.
+  comprobar(await p.locator('.contenido .acciones-closer').count() === 0,
+            'la ficha ya no repite la carga del resultado')
 
-  // «No Show» no necesita nada más: un toque y queda cargado.
-  await p.locator('.contenido .botonera .accion:has-text("No Show")').click()
-  await p.locator('.contenido .confirmar button[type=submit]').click()
-  await esperar()
-  await p.waitForTimeout(700)
-  comprobar((await p.locator('.cabecera-ficha').textContent())?.includes('No show'),
-            'No Show se carga con un toque, sin pedir nada')
+  await p.goto(`${RAIZ}/llamadas`)
+  const hoy = p.locator('.contenido .tarjeta:has-text("Hoy ·")').first()
+  comprobar(await hoy.count() === 1, 'Llamadas abre con las llamadas de hoy')
+  comprobar(await hoy.locator('.titulo-seccion').count() >= 1,
+            'agrupadas por closer, que es como las mira cada uno')
+  comprobar(await hoy.locator('button:has-text("Reportar")').count()
+              === await hoy.locator('.turno').count(),
+            'y cada una con su botón para reportarla')
 
-  // La venta sí pide el importe, y sólo el importe.
-  await p.goto(`${RAIZ}/leads/${unToque}`)
-  await p.locator('.contenido .botonera .accion:has-text("Venta")').click()
-  comprobar(await p.locator('.contenido .confirmar input[name=importe]').count() === 1,
+  const fila = hoy.locator(`.turno:has-text("Un Toque ${marca}")`)
+  await fila.locator('button:has-text("Reportar")').click()
+  await p.waitForTimeout(400)
+  const hoja = p.locator('dialog.hoja[open]')
+  comprobar(await hoja.count() === 1, 'el botón abre la hoja de reporte')
+
+  const pasos = async () =>
+    (await hoja.locator('.paso .cabeza strong').allTextContents()).map((t) => t.trim())
+  comprobar((await pasos()).join(' · ')
+              === 'Asistencia · Oferta · Resultado · Notas para el equipo · Transcripción',
+            'con las cinco cosas a reportar, en el orden en que pasaron')
+
+  // La venta pide el importe; el motivo de pérdida es de otro resultado.
+  await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("Asistió")').click()
+  await hoja.locator('.pastilla:has-text("Sí, se presentó")').click()
+  await hoja.locator('.paso .cabeza:has-text("Resultado") ~ .botonera .accion:has-text("Venta")')
+    .first().click()
+  await p.waitForTimeout(300)
+  comprobar(await hoja.locator('input[name=importe]').count() === 1,
             'al elegir Venta pide el importe')
-  comprobar(await p.locator('.contenido .confirmar select[name=motivoPerdida]').count() === 0,
-            'y no pide el motivo de pérdida, que no viene al caso')
-  await p.fill('.contenido .confirmar input[name=importe]', '3500')
-  await p.locator('.contenido .confirmar button[type=submit]').click()
-  await esperar()
-  await p.waitForTimeout(700)
-  comprobar((await p.locator('.cabecera-ficha').textContent())?.includes('Venta'),
-            'y la venta queda cargada desde la misma pantalla')
-  await foto('ficha-lead')
+  comprobar(await hoja.locator('select[name=motivoPerdida]').count() === 0,
+            'y no el motivo de pérdida, que es de otro resultado')
 
-  // Perdido pide el motivo: sin él, el número de «por qué se pierde» no existe.
-  await p.goto(`${RAIZ}/leads/${unToque}`)
-  await p.locator('.contenido .botonera .accion:has-text("Perdido")').click()
-  comprobar(await p.locator('.contenido .confirmar select[name=motivoPerdida]').count() === 1,
-            'al elegir Perdido pide el motivo')
+  await hoja.locator('input[name=importe]').fill('3500')
+  await hoja.locator('select[name=cuotas]').selectOption('2')
+  await p.waitForTimeout(300)
+  comprobar(await hoja.locator('input[name=cuota2Importe]').count() === 1,
+            'dos cuotas dibujan las dos filas de pago, con su fecha')
+  await hoja.locator('input[name=cuota1Importe]').fill('2000')
+  await hoja.locator('input[name=cuota1Fecha]').fill(HOY)
+  await hoja.locator('select[name=cuota1Pagado]').selectOption('si')
+
+  await hoja.locator('textarea[name=notas]').fill('Cerró en la primera llamada.')
+  const alCanal = await hoja.locator('.slack pre').textContent() ?? ''
+  comprobar(alCanal.includes('Resultado: Venta · 3.500 USD'),
+            'el mensaje para el canal se arma solo con lo que se va cargando')
+  comprobar(alCanal.includes('Cerró en la primera llamada.'),
+            'y termina con lo que escribió el closer')
+
+  await hoja.locator('button:has-text("Guardar el reporte")').click()
+  await p.waitForSelector('dialog.hoja .aviso', { timeout: 15000 }).catch(() => {})
+  await p.waitForTimeout(600)
+  comprobar((await hoja.locator('.aviso').first().textContent())?.includes('Reportado'),
+            'y al guardar dice qué guardó')
+  await foto('reporte-del-closer')
+
+  // Lo reportado ES lo que hay en la ficha: no son dos cargas distintas.
+  await p.goto(`${RAIZ}/leads/${unToque}?pestana=resultado`)
+  comprobar(await p.inputValue('#salida') === 'venta', 'la ficha del lead quedó en Venta')
+  comprobar(await p.inputValue('#importe') === '3500', 'con su importe')
+  await p.goto(`${RAIZ}/leads/${unToque}?pestana=notas`)
+  comprobar((await p.locator('.contenido').textContent())?.includes('Cerró en la primera llamada.'),
+            'y la nota del reporte quedó en el lead')
+
+  // Y el plan de pagos vuelve a salir cargado: un formulario que muestra las
+  // cuotas vacías sobre una venta que ya las tiene se lee como «no se guardó».
+  await p.goto(`${RAIZ}/llamadas`)
+  await p.locator(`.turno:has-text("Un Toque ${marca}") button:has-text("Reportar")`).click()
+  await p.waitForTimeout(400)
+  const otra = p.locator('dialog.hoja[open]')
+  comprobar(await otra.locator('input[name=cuota1Importe]').inputValue() === '2000',
+            'al reabrirlo, el plan de pagos sale como se cargó')
+  comprobar(await otra.locator('select[name=cuota1Pagado]').inputValue() === 'si',
+            'con lo que ya se cobró marcado')
+})
+
+await paso('al que no vino no se le pregunta el resto', async () => {
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `No Vino ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.fill('#fechaSesion', HOY)
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+
+  await p.goto(`${RAIZ}/llamadas`)
+  await p.locator(`.turno:has-text("No Vino ${marca}") button:has-text("Reportar")`).click()
+  await p.waitForTimeout(400)
+  const hoja = p.locator('dialog.hoja[open]')
+  await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("No show")').click()
+  await p.waitForTimeout(300)
+  const titulos = (await hoja.locator('.paso .cabeza strong').allTextContents()).map((t) => t.trim())
+  comprobar(!titulos.includes('Resultado'),
+            'con «No show» desaparece el paso del resultado')
+  comprobar(!titulos.includes('Oferta'), 'y el de la oferta: no hubo oferta que mostrar')
+  comprobar(titulos.includes('Notas para el equipo'), 'y queda qué contarle al equipo')
+
+  await hoja.locator('textarea[name=notas]').fill('No se conectó, le escribí por WhatsApp.')
+  await hoja.locator('button:has-text("Guardar el reporte")').click()
+  await p.waitForSelector('dialog.hoja .aviso.dato', { timeout: 15000 }).catch(() => {})
+  comprobar((await hoja.locator('.aviso').first().textContent())?.includes('Reportado'),
+            'y se guarda igual, con lo poco que hay para decir')
 })
 
 await paso('desde Mis Llamadas se entra a la ficha del lead', async () => {
@@ -573,8 +643,8 @@ await paso('desde Mis Llamadas se entra a la ficha del lead', async () => {
   const primera = p.locator(`.contenido table a:has-text("Un Toque ${marca}")`).first()
   await primera.click()
   await p.waitForURL(/leads\/\d+/)
-  comprobar(await p.locator('.contenido .acciones-closer').count() === 1,
-            'y tocar el nombre abre la ficha con las acciones')
+  comprobar(await p.locator('.contenido .cabecera-ficha').count() === 1,
+            'y tocar el nombre abre su ficha')
   comprobar((await p.locator('.contenido .volver').textContent())?.includes('Volver a Llamadas'),
             'con el camino de vuelta a donde estaba')
   // Subir una transcripción no tiene que obligar a «registrar la llamada»
@@ -643,19 +713,31 @@ await paso('una venta cargada por error se puede sacar de la facturación', asyn
   await p.waitForURL(/leads\/\d+/)
   const errada = p.url().match(/leads\/(\d+)/)?.[1]
 
-  await p.locator('.contenido .botonera .accion:has-text("Venta")').click()
-  await p.fill('.contenido .confirmar input[name=importe]', '9900')
-  await p.locator('.contenido .confirmar button[type=submit]').click()
-  await esperar()
-  await p.waitForTimeout(700)
+  // Se carga la venta desde el reporte, que es por donde entra de verdad.
+  const reportar = async (armar) => {
+    await p.goto(`${RAIZ}/llamadas`)
+    await p.locator(`.turno:has-text("Venta Mal Cargada ${marca}") button:has-text("Reportar")`).click()
+    await p.waitForTimeout(400)
+    const hoja = p.locator('dialog.hoja[open]')
+    await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("Asistió")').click()
+    await armar(hoja)
+    await hoja.locator('button:has-text("Guardar el reporte")').click()
+    await p.waitForSelector('dialog.hoja .aviso.dato', { timeout: 15000 }).catch(() => {})
+    await p.waitForTimeout(500)
+  }
+
+  await reportar(async (hoja) => {
+    await hoja.locator('.paso .cabeza:has-text("Resultado") ~ .botonera .accion:has-text("Venta")')
+      .first().click()
+    await hoja.locator('input[name=importe]').fill('9900')
+  })
 
   // El closer se da cuenta y corrige el resultado.
-  await p.goto(`${RAIZ}/leads/${errada}`)
-  await p.locator('.contenido .botonera .accion:has-text("Perdido")').click()
-  await p.selectOption('.contenido .confirmar select[name=motivoPerdida]', 'precio')
-  await p.locator('.contenido .confirmar button[type=submit]').click()
-  await esperar()
-  await p.waitForTimeout(700)
+  await reportar(async (hoja) => {
+    await hoja.locator('.paso .cabeza:has-text("Resultado") ~ .botonera .accion:has-text("Perdido")')
+      .first().click()
+    await hoja.locator('select[name=motivoPerdida]').selectOption('precio')
+  })
 
   await p.goto(`${RAIZ}/leads/${errada}`)
   const alerta = await p.locator('.contenido .aviso.problema').first().textContent()

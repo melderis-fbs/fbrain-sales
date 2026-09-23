@@ -471,12 +471,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   clip: rect(0 0 0 0); white-space: nowrap;
 }
 
-/* ── La acción del closer ───────────────────────────────────────────────── */
-
-.acciones-closer {
-  background: var(--acento-suave); border: 1px solid var(--acento-borde);
-  border-radius: var(--radio); padding: 14px;
-}
+/* ── Elegir qué pasó ────────────────────────────────────────────────────── */
+/* La botonera del reporte: lo que pasó se toca, no se busca en un desplegable
+ * de ocho opciones. */
 .botonera { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; }
 .botonera .accion {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
@@ -503,10 +500,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .botonera .accion { position: relative; }
 .botonera .accion.puesta::after {
   content: '✓'; position: absolute; top: 7px; right: 9px; font-size: 12px; line-height: 1;
-}
-
-.confirmar {
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--acento-borde);
 }
 
 /* ── La cabecera de una ficha ───────────────────────────────────────────── */
@@ -693,6 +686,81 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .desglose .apagado { color: var(--gris-claro); font-weight: 500; }
 .desglose .cierre { font-size: 17px; font-weight: 700; }
 
+
+/* ── La hoja de reporte ─────────────────────────────────────────────────── */
+/* Un `<dialog>` nativo y no una capa nuestra: cierra con Escape, atrapa el
+ * foco y bloquea el fondo sin que haya que escribir nada de eso —y lo que hay
+ * que escribir a mano en un modal es exactamente lo que después no funciona
+ * con el teclado. */
+.hoja {
+  width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 64px);
+  padding: 0; border: 1px solid var(--borde); border-radius: var(--radio);
+  background: var(--blanco); color: var(--tinta);
+  box-shadow: 0 20px 50px rgba(17, 17, 17, .16);
+  overflow: hidden;
+}
+.hoja::backdrop { background: rgba(17, 17, 17, .38); }
+
+.hoja-cabeza {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--borde);
+  position: sticky; top: 0; background: var(--blanco); z-index: 1;
+}
+.hoja-cabeza strong { font-size: 16px; letter-spacing: -.01em; }
+.hoja-cabeza .meta { font-size: 12.5px; color: var(--gris); margin-top: 2px; }
+
+.hoja-cuerpo { padding: 16px 18px; overflow-y: auto; max-height: calc(100vh - 190px); }
+
+/* Un paso del reporte: el número afuera, como las fases del informe. Las dos
+ * cosas son listas en orden y se leen igual. */
+.paso { display: grid; grid-template-columns: 30px 1fr; gap: 12px; }
+.paso + .paso { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--borde-suave); }
+.paso .orden {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 99px;
+  background: var(--gris-fondo); color: var(--gris); font-size: 12px; font-weight: 700;
+}
+.paso .cabeza { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+.paso .cabeza strong { font-size: 14.5px; letter-spacing: -.01em; }
+.paso .cabeza span { font-size: 12.5px; color: var(--gris); }
+.paso .cuota { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--borde); }
+
+/* Sí o no, tocando. Un desplegable de dos opciones es un clic de más. */
+.pastilla {
+  background: var(--blanco); border: 1.5px solid var(--borde); color: var(--gris);
+  border-radius: 99px; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.pastilla:hover { border-color: var(--gris-claro); color: var(--negro); }
+.pastilla.elegida { background: var(--acento-suave); border-color: var(--acento); color: var(--acento); }
+
+/* El mensaje tal como va a salir al canal. A la vista y no escondido detrás
+ * de «copiar»: lo que se manda sin leer se manda mal. */
+.slack {
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--gris-fondo); border-radius: var(--radio-chico);
+}
+.slack pre {
+  margin: 0; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  font-family: inherit; color: var(--tinta);
+}
+
+.hoja-pie {
+  display: flex; gap: 10px; align-items: center;
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--borde);
+}
+
+/* ── Quién cargó qué ────────────────────────────────────────────────────── */
+/* Un punto pegado al nombre: lleno si esa persona ya cargó lo suyo, hueco si
+ * falta. Cada rol tiene su color y lo tiene en todas las pantallas: un color
+ * que significa una cosa acá y otra allá no significa nada. */
+.cargado {
+  display: inline-block; width: 7px; height: 7px; border-radius: 99px;
+  margin-right: 6px; vertical-align: middle; flex: 0 0 7px;
+}
+.cargado.setter.hecho { background: var(--acento); }
+.cargado.closer.hecho { background: var(--verde); }
+.cargado.setter.falta { box-shadow: inset 0 0 0 1.5px var(--acento-borde); }
+.cargado.closer.falta { box-shadow: inset 0 0 0 1.5px var(--borde); }
 
 /* ── El informe de una llamada ──────────────────────────────────────────── */
 

@@ -13,7 +13,6 @@ import { hoyEn } from '@/motor/periodos'
 import { plataQueNoCuadra } from '@/dominio/resultados'
 import { Iconos, type NombreDeIcono } from '@/componentes/Iconos'
 import { CabeceraDeLead } from '@/componentes/CabeceraDeLead'
-import { AccionDelCloser } from '@/componentes/AccionDelCloser'
 import { PlataQueNoCuadra } from '@/componentes/PlataQueNoCuadra'
 import { Resumen } from '@/componentes/ficha/Resumen'
 import { Calificacion } from '@/componentes/ficha/Calificacion'
@@ -107,10 +106,11 @@ export default async function FichaDeLead({
           puedeConPlata={puede(usuario, 'editarDinero')} />
       ) : null}
 
-      {puede(usuario, 'cargarResultado') ? (
-        <AccionDelCloser leadId={leadId} moneda={lead.moneda} hoy={hoy}
-                         resultadoActual={lead.resultado} />
-      ) : null}
+      {/* Acá vivía la botonera de «Acción del closer». Se fue a Llamadas, que
+          es donde el closer reporta: repetida en la ficha era una tercera
+          forma de cargar lo mismo —con la pestaña Resultado justo abajo,
+          pidiendo los mismos datos con otros campos— y tres formas de cargar
+          una cosa son tres formas de cargarla distinto. */}
 
       <nav className="pestanas">
         {PESTANAS.map((p) => {

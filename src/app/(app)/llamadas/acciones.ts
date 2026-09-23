@@ -5,8 +5,13 @@ import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, exigir, puede } from '@/lib/permisos'
 import { exigirAccesoAlLead } from '@/datos/leads'
-import { crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead } from '@/datos/llamadas'
+import {
+  crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead, transcripcionDe,
+} from '@/datos/llamadas'
 import { guardarPlaybook } from '@/datos/playbooks'
+import { cargarResultado, agendarSegundaLlamada } from '@/datos/resultado'
+import { leerResultado } from '@/datos/formularioDeResultado'
+import { agregarNota } from '@/datos/notas'
 import { analizarLlamada } from '@/ia/correr'
 import { recalcular } from '@/datos/analisis'
 import type { TipoSesion } from '@/dominio/resultados'
@@ -195,4 +200,90 @@ export async function recalibrarAccion(datos: FormData): Promise<void> {
   await recalcular(configId)
   revalidatePath('/llamadas')
   revalidatePath('/configuracion')
+}
+
+/**
+ * El reporte del closer, entero y de una vez.
+ *
+ * Cinco preguntas en el orden en que pasaron las cosas —vino, mostró el
+ * precio, en qué quedó, qué contarle al equipo, la transcripción— y UN
+ * guardado. Es la diferencia con lo que había: el resultado se cargaba en la
+ * ficha, la nota en otra pestaña y la transcripción en una tercera pantalla,
+ * así que reportar bien una llamada eran tres viajes y en la práctica se hacía
+ * el primero.
+ *
+ * Todo se valida ANTES de escribir nada. Una transcripción corta que revienta
+ * después de haber guardado la venta deja el reporte a medias sin decirlo, y
+ * lo que queda a medias se vuelve a cargar: ahí aparecen los duplicados.
+ */
+export async function reportarAccion(_previo: Guardado, datos: FormData): Promise<Guardado> {
+  const usuario = await exigirUsuario()
+  if (!puede(usuario, 'cargarResultado')) {
+    return { ok: false, mensaje: 'Tu rol no puede cargar resultados.' }
+  }
+
+  const leadId = Number(datos.get('leadId'))
+  try {
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+  } catch {
+    return { ok: false, mensaje: 'No tenés acceso a ese lead.' }
+  }
+
+  const transcripcion = String(datos.get('transcripcion') ?? '').trim()
+  const nota = texto(datos, 'notas')
+
+  let leido
+  try {
+    leido = leerResultado(datos)
+    if (transcripcion !== '' && transcripcion.length < 200) {
+      throw new Error('La transcripción es muy corta para analizar: pegá la conversación entera, ' +
+                      'o dejá el campo vacío y subila después.')
+    }
+  } catch (error) {
+    return { ok: false, mensaje: error instanceof Error ? error.message : 'No se pudo guardar.' }
+  }
+
+  const hecho: string[] = []
+  try {
+    await cargarResultado(leadId, leido.cambios, usuario.id)
+    hecho.push('el resultado')
+
+    if (leido.salida === 'segunda' && leido.fechaSegunda !== null) {
+      await agendarSegundaLlamada(
+        leadId,
+        { fecha: leido.fechaSegunda, hora: leido.horaSegunda, nota: leido.proximoPaso },
+        usuario.id,
+      )
+      hecho.push('la segunda llamada')
+    }
+
+    if (nota !== null) {
+      await agregarNota(leadId, nota, usuario.id)
+      hecho.push('la nota')
+    }
+
+    if (transcripcion !== '') {
+      const existentes = await llamadasDelLead(leadId)
+      const llamadaId = existentes[0]?.id ?? await crearLlamada(leadId, {
+        fecha: texto(datos, 'fechaLlamada'),
+        tipoSesion: 'primera',
+      })
+      const ya = await transcripcionDe(llamadaId)
+      // Volver a guardar la misma transcripción no agrega nada y ensucia el
+      // historial de la llamada con copias idénticas.
+      if (ya?.texto.trim() !== transcripcion) {
+        await guardarTranscripcion(llamadaId, transcripcion, 'pegado', usuario.id)
+        hecho.push('la transcripción')
+      }
+    }
+  } catch (error) {
+    return { ok: false, mensaje: error instanceof Error ? error.message : 'No se pudo guardar.' }
+  }
+
+  for (const donde of ['/llamadas', '/leads', `/leads/${leadId}`, '/tracker', '/dashboard',
+                       '/seguimientos', '/metricas', '/comisiones', '/analizador']) {
+    revalidatePath(donde)
+  }
+
+  return { ok: true, mensaje: `Reportado: ${hecho.join(', ')}. Ya está en el tablero y en la ficha.` }
 }
