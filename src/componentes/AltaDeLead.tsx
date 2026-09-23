@@ -81,18 +81,15 @@ export function AltaDeLead({ catalogos, yo }: {
               {estado.duplicados.map((d) => (
                 <tr key={d.id}>
                   <td>
-                    {d.tuyo
-                      ? <Link href={`/leads/${d.id}`} style={{ fontWeight: 650 }}>{d.nombre}</Link>
-                      : <strong>{d.nombre}</strong>}
+                    <Link href={`/leads/${d.id}`} style={{ fontWeight: 650 }}>{d.nombre}</Link>
                   </td>
                   <td style={{ fontSize: 12.5 }}>{d.porque}</td>
+                  <td style={{ fontSize: 12.5 }}>
+                    {d.closer ?? <span className="sindato">sin closer</span>}
+                  </td>
                   <td style={{ fontSize: 12.5 }}>{d.resultado}</td>
                   <td className="num">
-                    {!d.tuyo ? (
-                      <span className="sindato">
-                        {d.sinAsignar ? 'sin asignar · pedí que te lo pasen' : 'de otro · no lo ves'}
-                      </span>
-                    ) : d.cerrado ? (
+                    {d.cerrado ? (
                       <Link href={`/leads/${d.id}?pestana=resultado`} style={{ fontWeight: 650, color: 'var(--acento)' }}>
                         Reflotarlo →
                       </Link>
@@ -105,14 +102,11 @@ export function AltaDeLead({ catalogos, yo }: {
             </tbody>
           </table>
           <p style={{ margin: '8px 0 0', fontSize: 12.5 }}>
-            Si uno de esos está cerrado y es la misma persona, <strong>reflotalo</strong> en vez de crear
-            otra ficha: así no se parte la historia y queda registrado que la repesca la hiciste vos.
-            Si es otra persona, seguí abajo.
-            {estado.duplicados.some((d) => !d.tuyo) ? (
-              <> Los que no podés abrir están a nombre de otra persona del equipo, o sin asignar.
-              Si es el mismo cliente, pedí que te lo pasen en vez de crear otra ficha: si creás
-              otra, la historia queda partida en dos y ninguna de las dos está completa.</>
-            ) : null}
+            Todos se pueden abrir, esté con quien esté: si es el mismo cliente,{' '}
+            <strong>trabajá sobre esa ficha</strong> —cambiale el closer si hace falta— en vez de
+            crear otra. Dos fichas de la misma persona son dos historias a medias, y ninguna de
+            las dos sirve. Si está cerrado, <strong>reflotalo</strong>: queda registrado que la
+            repesca la hiciste vos. Si es otra persona, seguí abajo.
           </p>
         </div>
       ) : null}

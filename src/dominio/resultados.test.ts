@@ -53,35 +53,43 @@ describe('permisos', () => {
     expect(PUEDE.coach.cargarResultado).toBe(false)
   })
 
-  it('un closer no reasigna leads ni toca importes, pero ve toda la operación', () => {
-    expect(PUEDE.closer.reasignarCloser).toBe(false)
-    expect(PUEDE.closer.editarDinero).toBe(false)
-    // Ver y poder tocar no son lo mismo. El equipo es chico y los leads se
-    // pasan: un setter que ve «está duplicado» y no puede ver contra qué no
-    // lee un permiso, lee que el sistema está roto.
-    expect(PUEDE.closer.verTodo).toBe(true)
-    expect(PUEDE.setter.verTodo).toBe(true)
+  it('el closer y el setter trabajan toda la operación, sin segmentación', () => {
+    // No importa quién cargó el dato: lo ven y lo usan todos. Cada permiso que
+    // decía «esto no es tuyo» se pagaba con un dato peor —el setter que no
+    // podía reasignar terminaba cargando el lead de nuevo—, y un permiso que
+    // empuja a duplicar el dato no protege nada: rompe el dato.
+    for (const rol of ['closer', 'setter'] as const) {
+      expect(PUEDE[rol].verTodo).toBe(true)
+      expect(PUEDE[rol].editarLead).toBe(true)
+      expect(PUEDE[rol].reasignarCloser).toBe(true)
+      expect(PUEDE[rol].cargarResultado).toBe(true)
+      expect(PUEDE[rol].editarDinero).toBe(true)
+      expect(PUEDE[rol].restaurarLead).toBe(true)
+    }
   })
 
-  it('un setter no carga resultados de venta', () => {
-    expect(PUEDE.setter.cargarResultado).toBe(false)
+  it('lo único que no tocan es la configuración, que es cómo se mide a todos', () => {
+    expect(PUEDE.closer.configurar).toBe(false)
+    expect(PUEDE.setter.configurar).toBe(false)
+    expect(PUEDE.direccion.configurar).toBe(true)
   })
 
-  it('el setter y el closer dan de baja lo suyo, pero no lo restauran', () => {
-    // Si el que se equivocó pudiera deshacerlo solo, el error no dejaría
-    // rastro. El punto de que la baja sea reversible es que el error se vea.
+  it('dan de baja y también vuelven a poner en juego: nada se pierde, todo se firma', () => {
+    // El control no es impedir el error: es que se vea. Cada baja y cada
+    // restauración queda en el historial con quién y por qué, y eso sirve más
+    // que un permiso que obliga a esperar a que alguien esté disponible.
     for (const rol of ['setter', 'closer'] as const) {
       expect(PUEDE[rol].borrarLead).toBe(true)
-      expect(PUEDE[rol].restaurarLead).toBe(false)
+      expect(PUEDE[rol].restaurarLead).toBe(true)
     }
-    expect(PUEDE.direccion.restaurarLead).toBe(true)
   })
 
   it('dar de baja un lead con plata necesita permiso sobre la plata', () => {
-    // La regla vive en la acción, pero se apoya en esto: quien no puede tocar
-    // importes tampoco puede hacerlos desaparecer dando de baja el lead.
-    expect(PUEDE.setter.editarDinero).toBe(false)
-    expect(PUEDE.closer.editarDinero).toBe(false)
+    // La regla vive en la acción y sigue en pie: quien no puede tocar importes
+    // tampoco los hace desaparecer dando de baja el lead. Hoy el único que no
+    // puede es el coach, que mira y no toca.
+    expect(PUEDE.coach.editarDinero).toBe(false)
+    expect(PUEDE.coach.borrarLead).toBe(false)
     expect(PUEDE.head.editarDinero).toBe(true)
   })
 

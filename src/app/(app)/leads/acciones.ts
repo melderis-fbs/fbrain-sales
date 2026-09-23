@@ -7,7 +7,6 @@ import { alcanceDe, asignarAQuienCarga, figuraDe, exigir, puede } from '@/lib/pe
 import {
   crearLead, editarLead, posiblesDuplicados, reflotarLead, reasignarCloser,
   exigirAccesoAlLead, borrarLead, restaurarLead, loQueCuelgaDelLead, puedeVerLeadDeBaja,
-  puedeVerLead,
   type DatosDeLead, type ClaveEditable,
 } from '@/datos/leads'
 import {
@@ -58,10 +57,8 @@ export type EstadoDeAlta =
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'duplicados'; mensaje: string
       duplicados: { id: number; nombre: string; porque: string; cerrado: boolean; resultado: string
-                    /** Si el que pregunta lo puede abrir. Un closer no ve el lead de otro closer. */
-                    tuyo: boolean
-                    /** Y si no lo puede abrir, si es porque no es de nadie. */
-                    sinAsignar: boolean }[] }
+                    /** Quién lo tiene hoy. Todos los pueden abrir: el equipo ve toda la operación. */
+                    closer: string | null }[] }
   | null
 
 /**
@@ -99,8 +96,6 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   }
   if (lead.nombre === '') return { tipo: 'error', mensaje: 'El lead necesita un nombre.' }
 
-  const alcance = alcanceDe(usuario)
-
   // El lead que carga un closer es suyo; el que carga un setter, suyo. Sin
   // esto quedaba sin dueño y desaparecía de su pantalla — ver `asignarAQuienCarga`.
   const suyo = asignarAQuienCarga(figuraDe(usuario), lead)
@@ -108,13 +103,11 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
   if (datos.get('confirmado') !== '1') {
     const encontrados = await posiblesDuplicados(suyo)
     if (encontrados.length > 0) {
-      // Los duplicados se buscan en TODA la operación —si no, dos closers
-      // cargan dos fichas de la misma persona— pero el que pregunta puede no
-      // tener acceso a la que encontró. Ofrecerle un enlace que le va a dar
-      // «no encontrado» es peor que no ofrecerle nada.
-      const conAcceso = await Promise.all(
-        encontrados.map((d) => puedeVerLead(d.id, alcance)),
-      )
+      // Los duplicados se buscan en TODA la operación —si no, dos personas
+      // cargan dos fichas del mismo cliente— y ahora también se pueden ABRIR
+      // todos. Antes el que preguntaba podía no tener acceso al que se
+      // encontró: veía «está duplicado» y una fila muerta, que se lee como que
+      // el aviso miente. El aviso sólo sirve si lleva a la ficha que ya está.
       return {
         tipo: 'duplicados',
         mensaje: 'Puede que esta persona ya esté cargada. Mirá antes de crear otra ficha.',
@@ -125,8 +118,7 @@ export async function crearLeadAccion(_previo: EstadoDeAlta, datos: FormData): P
             : d.porque === 'telefono' ? 'mismo teléfono' : 'nombre parecido',
           cerrado: d.resultado === 'perdida' || d.resultado === 'no_calificado',
           resultado: NOMBRE_DE_RESULTADO[d.resultado] ?? d.resultado,
-          tuyo: conAcceso[i] ?? false,
-          sinAsignar: d.sinAsignar,
+          closer: d.closer,
         })),
       }
     }

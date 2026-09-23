@@ -29,7 +29,8 @@ const OTRO = `Pedro Gómez ${marca}`
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
 const p = await b.newPage({ viewport: { width: 1440, height: 950 } })
 const fallos = []
-p.on('pageerror', (e) => fallos.push(`pageerror: ${e.message}`))
+// Con la URL: un error de página sin saber en cuál pasó no se puede perseguir.
+p.on('pageerror', (e) => fallos.push(`pageerror en ${p.url()}: ${e.message}`))
 p.on('response', (r) => { if (r.status() >= 500) fallos.push(`${r.status()} ${r.url()}`) })
 
 const paso = async (n, f) => { console.log(`\n▶ ${n}`); await f() }

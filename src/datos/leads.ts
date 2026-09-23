@@ -81,6 +81,8 @@ export type PosibleDuplicado = {
   porque: 'email' | 'telefono' | 'nombre'
   resultado: Resultado
   creadoEn: string
+  /** Quién lo tiene hoy. Es lo que hace que el aviso sirva: «ya lo tiene Kevin». */
+  closer: string | null
   /** Sin closer ni setter. No es «de otro»: es de nadie, y eso se dice distinto. */
   sinAsignar: boolean
 }
@@ -104,18 +106,20 @@ export async function posiblesDuplicados(datos: DatosDeLead): Promise<PosibleDup
   const f = await filas<{
     id: number; nombre: string; email: string | null; telefono: string | null
     creado_en: Date; porque: string; resultado: Resultado; sin_asignar: boolean
+    closer: string | null
   }>(
-    `select id, nombre, email, telefono, creado_en, resultado,
-            (closer_id is null and setter_id is null) as sin_asignar,
-            case when $1::text is not null and email_pleg = $1 then 'email'
-                 when $2::text is not null and right(telefono_pleg, 8) = $2 then 'telefono'
+    `select l.id, l.nombre, l.email, l.telefono, l.creado_en, l.resultado, c.nombre as closer,
+            (l.closer_id is null and l.setter_id is null) as sin_asignar,
+            case when $1::text is not null and l.email_pleg = $1 then 'email'
+                 when $2::text is not null and right(l.telefono_pleg, 8) = $2 then 'telefono'
                  else 'nombre' end as porque
-       from leads
-      where borrado_en is null
-        and (($1::text is not null and email_pleg = $1)
-          or ($2::text is not null and right(telefono_pleg, 8) = $2)
-          or nombre_pleg = $3)
-      order by creado_en desc
+       from leads l
+       left join closers c on c.id = l.closer_id
+      where l.borrado_en is null
+        and (($1::text is not null and l.email_pleg = $1)
+          or ($2::text is not null and right(l.telefono_pleg, 8) = $2)
+          or l.nombre_pleg = $3)
+      order by l.creado_en desc
       limit 10`,
     [email, tel, pleg],
   )
@@ -123,7 +127,7 @@ export async function posiblesDuplicados(datos: DatosDeLead): Promise<PosibleDup
   return f.map((x) => ({
     id: x.id, nombre: x.nombre, email: x.email, telefono: x.telefono,
     porque: x.porque as PosibleDuplicado['porque'], resultado: x.resultado,
-    creadoEn: x.creado_en.toISOString(), sinAsignar: x.sin_asignar,
+    creadoEn: x.creado_en.toISOString(), closer: x.closer, sinAsignar: x.sin_asignar,
   }))
 }
 

@@ -106,6 +106,18 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await leads.posiblesDuplicados({ nombre: 'Pedro Gómez' })).toEqual([])
   })
 
+  it('el aviso de duplicado dice quién lo tiene, que es lo que evita la segunda ficha', async () => {
+    // Sin esto el aviso decía «está duplicado» y nada más. El que lo veía no
+    // podía hacer nada con esa información, así que creaba la ficha igual —y
+    // dos fichas del mismo cliente son dos historias a medias.
+    await leads.crearLead(
+      { nombre: 'María Fernández', email: 'm@e.com', closerId: closerKevin }, usuarioId)
+
+    const [d] = await leads.posiblesDuplicados({ nombre: 'Otra', email: 'm@e.com' })
+    expect(d?.closer).toBe('Kevin')
+    expect(d?.sinAsignar).toBe(false)
+  })
+
   it('el lead ES la oportunidad: tres llamadas no son tres leads', async () => {
     const id = await alta('María')
     const llamadas = await import('./llamadas')
