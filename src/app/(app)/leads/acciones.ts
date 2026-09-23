@@ -238,9 +238,22 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
   if (programa !== null && !PROGRAMAS.includes(programa as Programa)) {
     throw new Error('El programa es GROWTH o ELITE.')
   }
-  const cobradoAhora = numero(datos, 'cobradoAhora')
-  if (cobradoAhora !== null && importe !== null && cobradoAhora > importe) {
-    throw new Error('No se puede haber cobrado más de lo que se vendió.')
+  // El plan de pagos: una fila por cuota, con lo que ya entró marcado como
+  // cobrado. Sólo entran las que tienen monto y fecha; una cuota a medio
+  // escribir no es un pago y guardarla igual ensucia la cobranza.
+  const cuotas = numero(datos, 'cuotas')
+  const plan: { n: number; importe: number; fecha: string; medio: string | null; pagado: boolean }[] = []
+  for (let n = 1; n <= (cuotas ?? 1); n++) {
+    const m = numero(datos, `cuota${n}Importe`)
+    const f = texto(datos, `cuota${n}Fecha`)
+    if (m === null || m <= 0) continue
+    if (f === null) throw new Error(`Falta la fecha del pago ${n}: el cash se cuenta el mes en que entra.`)
+    plan.push({ n, importe: m, fecha: f, medio: texto(datos, `cuota${n}Medio`),
+                pagado: datos.get(`cuota${n}Pagado`) === 'si' })
+  }
+  const pactado = plan.reduce((a, c) => a + c.importe, 0)
+  if (importe !== null && pactado > importe) {
+    throw new Error(`Las cuotas suman más que la venta: ${pactado} contra ${importe}.`)
   }
 
   // Una segunda llamada necesita su fecha antes de tocar nada: si falla a la
@@ -265,8 +278,7 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
     ...(datos.has('proximoPaso') ? { proximoPaso: texto(datos, 'proximoPaso') } : {}),
     ...(datos.has('observaciones') ? { observaciones: texto(datos, 'observaciones') } : {}),
     ...(resultado === 'venta' && importe !== null && fecha !== null
-      ? { venta: { importe, moneda, fecha, programa,
-                   cuotas: numero(datos, 'cuotas'), cobradoAhora } }
+      ? { venta: { importe, moneda, fecha, programa, cuotas, plan } }
       : {}),
     ...(resultado === 'sena' && importe !== null && fecha !== null
       ? { sena: {
@@ -388,6 +400,43 @@ export async function registrarPagoAccion(datos: FormData): Promise<void> {
     nCuota: numero(datos, 'nCuota'),
   }, usuario.id)
   refrescar(leadId)
+}
+
+/**
+ * Cargar el cobro sin salir de la lista de ventas.
+ *
+ * Es el camino para poner al día lo que ya se vendió. Facturación y cash son
+ * dos números distintos y el segundo sólo sabe lo que alguien cargó: una venta
+ * marcada y el cobro «para después» deja el cash mintiendo hacia abajo, que es
+ * peor que no tenerlo porque igual se mira.
+ *
+ * Pide importe y fecha y nada más. La fecha importa: el cash se cuenta el mes
+ * en que entró la plata, no el mes en que se firmó.
+ */
+export async function cobrarRapidoAccion(
+  _previo: string | null, datos: FormData,
+): Promise<string | null> {
+  try {
+    const usuario = await exigirUsuario()
+    exigir(usuario, 'editarDinero')
+
+    const leadId = Number(datos.get('leadId'))
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+
+    const importe = numero(datos, 'importe')
+    const fecha = texto(datos, 'fecha')
+    if (importe === null || importe <= 0) return 'Poné cuánto entró.'
+    if (fecha === null) return 'Poné la fecha del cobro.'
+
+    await registrarPago(leadId, {
+      importe, fecha, moneda: texto(datos, 'moneda') ?? 'USD',
+      medio: texto(datos, 'medio'), nCuota: numero(datos, 'nCuota'),
+    }, usuario.id)
+    refrescar(leadId)
+    return null
+  } catch (e) {
+    return e instanceof Error ? e.message : 'No se pudo registrar el cobro.'
+  }
 }
 
 // ── Anular plata cargada por error ──────────────────────────────────────────

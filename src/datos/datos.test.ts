@@ -250,23 +250,71 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(medidas.facturacion).toBe(3000)
   })
 
-  it('lo que se cobró al firmar es el cash collected del día', async () => {
+  it('el plan de cuotas: sólo lo cobrado es cash, lo que falta queda escrito', async () => {
     const id = await alta('María')
     await resultado.cargarResultado(id, {
       estado: 'asistio', resultado: 'venta',
-      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 3, cobradoAhora: 1000 },
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 3, plan: [
+        { n: 1, importe: 1000, fecha: '2026-09-10', medio: 'transferencia', pagado: true },
+        { n: 2, importe: 1000, fecha: '2026-09-25', pagado: false },
+        { n: 3, importe: 1000, fecha: '2026-09-30', pagado: false },
+      ] },
     }, usuarioId)
 
     const { medidas } = await metricas.metricas(rango, TODO)
     expect(medidas.facturacion).toBe(3000)   // lo que se vendió
-    expect(medidas.cashCollected).toBe(1000) // lo que entró
+    expect(medidas.cashCollected).toBe(1000) // lo que entró: una sola cuota
 
-    const pago = await db.fila<{ n_cuota: number; cuotas_totales: number; origen: string }>(
-      `select p.n_cuota, p.cuotas_totales, p.origen from pagos p
-         join ventas v on v.id = p.venta_id where v.lead_id = $1`, [id])
-    expect(pago?.origen).toBe('cuota')
-    expect(pago?.n_cuota).toBe(1)
-    expect(pago?.cuotas_totales).toBe(3)
+    const lead = await leads.verLead(id)
+    expect(lead?.pagos).toHaveLength(3)
+    expect(lead?.pagos.filter((x) => x.estado === 'cobrado')).toHaveLength(1)
+    expect(lead?.pagos[0]?.medio).toBe('transferencia')
+    expect(lead?.cobrado).toBe(1000)
+  })
+
+  it('volver a guardar el plan lo corrige, y cobrar una cuota la suma', async () => {
+    // El cash collected no puede subir porque alguien abrió la venta a mirarla:
+    // cada cuota se identifica por su número y se corrige, no se duplica.
+    const id = await alta('María')
+    const conPlan = (pagada2: boolean) => resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 2000, moneda: 'USD', fecha: '2026-09-10', cuotas: 2, plan: [
+        { n: 1, importe: 1000, fecha: '2026-09-10', pagado: true },
+        { n: 2, importe: 1000, fecha: '2026-09-25', pagado: pagada2 },
+      ] },
+    }, usuarioId)
+
+    await conPlan(false)
+    await conPlan(false)
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
+
+    await conPlan(true)
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(2000)
+    expect((await leads.verLead(id))?.pagos).toHaveLength(2)
+  })
+
+  it('achicar el plan saca las cuotas que sobran, pero nunca las ya cobradas', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 3, plan: [
+        { n: 1, importe: 1000, fecha: '2026-09-10', pagado: true },
+        { n: 2, importe: 1000, fecha: '2026-09-20', pagado: true },
+        { n: 3, importe: 1000, fecha: '2026-09-30', pagado: false },
+      ] },
+    }, usuarioId)
+    // Se renegocia a una sola cuota. La 3 nunca entró y se va; la 2 ya entró
+    // y sacarla bajaría el cash de un mes que ya se reportó.
+    await resultado.cargarResultado(id, {
+      resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 1, plan: [
+        { n: 1, importe: 1000, fecha: '2026-09-10', pagado: true },
+      ] },
+    }, usuarioId)
+
+    const lead = await leads.verLead(id)
+    expect(lead?.pagos.map((x) => x.nCuota)).toEqual([1, 2])
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(2000)
   })
 
   it('una venta al contado sin cobro no inventa cash', async () => {
@@ -349,13 +397,15 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
       { nombre: 'Llamó en agosto', closerId: closerKevin, fechaSesion: '2026-08-20' }, usuarioId)
     await resultado.cargarResultado(deAgosto, {
       estado: 'asistio', resultado: 'venta',
-      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-05', cobradoAhora: 1000 },
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-05', cuotas: 1,
+               plan: [{ n: 1, importe: 1000, fecha: '2026-09-05', pagado: true }] },
     }, usuarioId)
 
     const deSeptiembre = await alta('Llamó y firmó en septiembre')
     await resultado.cargarResultado(deSeptiembre, {
       estado: 'asistio', resultado: 'venta',
-      venta: { importe: 6000, moneda: 'USD', fecha: '2026-09-12', cobradoAhora: 3000 },
+      venta: { importe: 6000, moneda: 'USD', fecha: '2026-09-12', cuotas: 1,
+               plan: [{ n: 1, importe: 3000, fecha: '2026-09-12', pagado: true }] },
     }, usuarioId)
 
     const { medidas } = await metricas.metricas(rango, TODO)
@@ -370,6 +420,57 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     const lista = await metricas.ventasDelPeriodo(rango, TODO)
     expect(lista).toHaveLength(2)
     expect(lista.reduce((a, v) => a + v.importe, 0)).toBe(10000)
+  })
+
+  it('el cash del mes es lo cobrado de las ventas del mes, entrara cuando entrara', async () => {
+    // Antes se contaba por la fecha del cobro y no cuadraba con la lista de
+    // ventas de abajo: una venta de septiembre con la seña cobrada en agosto
+    // figuraba cobrada en la lista y faltaba en el cash de septiembre. Dos
+    // números correctos que no cuadran entre sí terminan en que no se cree en
+    // ninguno, así que los dos cuentan sobre las mismas ventas.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 500, moneda: 'USD', fecha: '2026-08-20' },   // seña de agosto
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta',
+      venta: { importe: 3000, moneda: 'USD', fecha: '2026-09-10', cuotas: 2, plan: [
+        { n: 1, importe: 1000, fecha: '2026-09-10', pagado: true },
+        { n: 2, importe: 1500, fecha: '2026-10-10', pagado: false },   // todavía no entró
+      ] },
+    }, usuarioId)
+
+    const [venta] = await metricas.ventasDelPeriodo(rango, TODO)
+    expect(venta?.cobrado).toBe(1500)   // los 500 de la seña más los 1000 de la cuota 1
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.facturacion).toBe(3000)
+    // La tarjeta dice exactamente lo que suma la lista: no hay dos cuentas.
+    expect(medidas.cashCollected).toBe(1500)
+    expect(medidas.cobranzaPct).toBe(50)
+  })
+
+  it('y la tarjeta, la lista y el desglose por closer dicen los tres lo mismo', async () => {
+    // El invariante que hace que se pueda creer en el tablero: no hay dos
+    // cuentas del mismo número en dos pantallas.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-10', cuotas: 2, plan: [
+        { n: 1, importe: 2500, fecha: '2026-08-28', pagado: true },   // entró antes de firmar
+        { n: 2, importe: 1500, fecha: '2026-10-05', pagado: false },
+      ] },
+    }, usuarioId)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    const lista = await metricas.ventasDelPeriodo(rango, TODO)
+    const porCloser = await metricas.recorridoPorCloser(rango, TODO, '2026-09-30')
+
+    expect(lista.reduce((a, v) => a + v.importe, 0)).toBe(medidas.facturacion)
+    expect(lista.reduce((a, v) => a + v.cobrado, 0)).toBe(medidas.cashCollected)
+    expect(porCloser.reduce((a, c) => a + c.cash, 0)).toBe(medidas.cashCollected)
+    expect(porCloser.reduce((a, c) => a + c.facturacion, 0)).toBe(medidas.facturacion)
   })
 
   it('el embudo y las tasas salen de los datos, no de una suma a mano', async () => {

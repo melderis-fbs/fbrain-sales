@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { VentaDelPeriodo } from '@/datos/metricas'
 import { plata, fechaCorta, Pildora, Vacio } from './Piezas'
+import { CobroRapido } from './CobroRapido'
 
 /**
  * Las ventas del período, una por una.
@@ -13,10 +14,16 @@ import { plata, fechaCorta, Pildora, Vacio } from './Piezas'
  * septiembre que se firma en octubre es una venta de octubre. Es la misma
  * fecha con la que se suma la facturación, así que la lista y el total de
  * arriba no pueden discrepar — y si alguna vez lo hicieran, se ve acá.
+ *
+ * Y el cobro se carga desde acá, en el mismo renglón donde se ve que falta.
+ * Mandar a buscar la ficha de cada venta para poner cuánto entró es lo que
+ * hace que el cash collected quede siempre a medio cargar.
  */
-export function VentasDelPeriodo({ ventas, etiqueta }: {
+export function VentasDelPeriodo({ ventas, etiqueta, puedeCobrar }: {
   ventas: VentaDelPeriodo[]
   etiqueta: string
+  /** Sólo quien puede tocar la plata carga cobros desde la lista. */
+  puedeCobrar?: boolean
 }) {
   if (ventas.length === 0) {
     return <Vacio>No hay ventas firmadas en {etiqueta}.</Vacio>
@@ -52,7 +59,10 @@ export function VentasDelPeriodo({ ventas, etiqueta }: {
               <td style={{ fontSize: 12.5 }}>{v.setter ?? <span className="sindato">—</span>}</td>
               <td className="num" style={{ fontWeight: 650 }}>{plata(v.importe, v.moneda)}</td>
               <td className="num" style={{ fontSize: 12.5 }}>
-                {v.cobrado === 0
+                {puedeCobrar ? (
+                  <CobroRapido leadId={v.leadId} moneda={v.moneda} fecha={v.fecha}
+                               cobrado={v.cobrado} importe={v.importe} />
+                ) : v.cobrado === 0
                   ? <span className="sindato">sin cobrar</span>
                   : plata(v.cobrado, v.moneda)}
               </td>

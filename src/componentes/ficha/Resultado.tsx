@@ -6,8 +6,9 @@ import type { Lead } from '@/datos/leads'
 import type { CloserOpcion } from '@/datos/catalogos'
 import { Tarjeta, plata, fechaCorta } from '../Piezas'
 import {
-  ESTADOS, SALIDAS, MOTIVOS_PERDIDA, PROGRAMAS,
-  NOMBRE_DE_ESTADO, NOMBRE_DE_SALIDA, NOMBRE_DE_MOTIVO, salidaDe,
+  ESTADOS, SALIDAS, MOTIVOS_PERDIDA, PROGRAMAS, MEDIOS_DE_PAGO, MAXIMO_DE_CUOTAS,
+  NOMBRE_DE_ESTADO, NOMBRE_DE_SALIDA, NOMBRE_DE_MOTIVO, NOMBRE_DE_MEDIO,
+  salidaDe, nombreDeCuota,
   type Estado, type Salida,
 } from '@/dominio/resultados'
 import {
@@ -56,6 +57,9 @@ export function Resultado({
 }) {
   const cerrado = lead.resultado === 'perdida' || lead.resultado === 'no_calificado'
   const [salida, setSalida] = useState<Salida>(salidaDe(lead.resultado, lead.seguimientoLargo !== null))
+  // Las cuotas dibujan el plan de pagos: una fila por cuota, con su fecha. Sin
+  // eso, «3 cuotas» es una nota al pie que no se puede cobrar ni contar.
+  const [cuotas, setCuotas] = useState(lead.venta?.cuotas ?? 1)
 
   return (
     <div className="rejilla g2">
@@ -116,20 +120,60 @@ export function Resultado({
                 </div>
                 <div className="campo">
                   <label htmlFor="cuotas">Cuotas</label>
-                  <input id="cuotas" name="cuotas" inputMode="numeric" placeholder="1"
-                         defaultValue={lead.venta?.cuotas ?? ''} />
+                  <select id="cuotas" name="cuotas" value={cuotas}
+                          onChange={(e) => setCuotas(Number(e.target.value))}>
+                    {Array.from({ length: MAXIMO_DE_CUOTAS }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n === 1 ? 'Un pago' : `${n} cuotas`}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-              <div className="campo">
-                <label htmlFor="cobradoAhora">Cobrado de esta venta</label>
-                <input id="cobradoAhora" name="cobradoAhora" inputMode="decimal" placeholder="0" />
-                <div className="nota">
-                  Esto es el cash collected: lo que entró, no lo que se facturó.
-                  {lead.cobrado > 0
-                    ? <> Ya hay {plata(lead.cobrado, lead.venta?.moneda ?? lead.moneda)} cobrados
-                        en este lead; lo que pongas acá se suma.</>
-                    : <> Si todavía no entró nada, dejalo vacío.</>}
-                </div>
+
+              {Array.from({ length: cuotas }, (_, i) => i + 1).map((n) => {
+                const ya = lead.pagos.find((x) => x.nCuota === n)
+                return (
+                  <div key={n}>
+                    <div className="separador" />
+                    <div className="kicker" style={{ marginBottom: 8 }}>{nombreDeCuota(n)}</div>
+                    <div className="dos">
+                      <div className="campo">
+                        <label htmlFor={`c${n}i`}>Monto</label>
+                        <input id={`c${n}i`} name={`cuota${n}Importe`} inputMode="decimal"
+                               defaultValue={ya?.importe ?? ''} placeholder="0" />
+                      </div>
+                      <div className="campo">
+                        <label htmlFor={`c${n}f`}>Fecha</label>
+                        <input id={`c${n}f`} name={`cuota${n}Fecha`} type="date"
+                               defaultValue={ya?.fecha ?? (n === 1 ? (lead.venta?.fecha ?? hoy) : '')} />
+                      </div>
+                      <div className="campo">
+                        <label htmlFor={`c${n}m`}>Método</label>
+                        <select id={`c${n}m`} name={`cuota${n}Medio`} defaultValue={ya?.medio ?? ''}>
+                          <option value="">— Elegir —</option>
+                          {MEDIOS_DE_PAGO.map((x) => (
+                            <option key={x} value={x}>{NOMBRE_DE_MEDIO[x]}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="campo">
+                        <label htmlFor={`c${n}p`}>¿Ya entró?</label>
+                        <select id={`c${n}p`} name={`cuota${n}Pagado`}
+                                defaultValue={ya?.estado === 'cobrado' ? 'si' : 'no'}>
+                          <option value="no">No · todavía se espera</option>
+                          <option value="si">Sí · ya se cobró</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="nota" style={{ marginTop: 8 }}>
+                Sólo lo que dice <strong>«Sí · ya se cobró»</strong> suma al cash collected.
+                Lo demás queda escrito con su fecha: es la cobranza que hay que ir a buscar,
+                y no es plata hasta que entra.
+                {lead.cobrado > 0
+                  ? <> Cobrado hasta hoy: {plata(lead.cobrado, lead.venta?.moneda ?? lead.moneda)}.</>
+                  : null}
               </div>
             </>
           ) : null}

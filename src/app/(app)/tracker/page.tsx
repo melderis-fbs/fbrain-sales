@@ -233,8 +233,9 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
       {verPlata ? (
         <div id="ventas">
           <Tarjeta titulo={`Ventas de ${r.etiqueta} (${ventas.length})`}
-                   ayuda="Por fecha de venta, no por la fecha de la reunión: una llamada de septiembre firmada en octubre es una venta de octubre. Tocá el nombre para abrir la ficha.">
-            <VentasDelPeriodo ventas={ventas} etiqueta={r.etiqueta} />
+                   ayuda="Por fecha de venta, no por la fecha de la reunión: una llamada de septiembre firmada en octubre es una venta de octubre. Tocá el nombre para abrir la ficha, o cargá el cobro acá mismo.">
+            <VentasDelPeriodo ventas={ventas} etiqueta={r.etiqueta}
+                              puedeCobrar={puede(usuario, 'editarDinero')} />
           </Tarjeta>
         </div>
       ) : null}

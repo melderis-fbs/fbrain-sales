@@ -109,6 +109,44 @@ export const PROGRAMAS = ['GROWTH', 'ELITE'] as const
 export type Programa = (typeof PROGRAMAS)[number]
 
 /**
+ * Cómo entró la plata. Lista cerrada por el mismo motivo que los motivos de
+ * pérdida: «transfer», «Transferencia» y «transf.» escritos por tres personas
+ * no se pueden contar.
+ */
+export const MEDIOS_DE_PAGO = [
+  'transferencia', 'stripe', 'tarjeta', 'efectivo', 'mercadopago', 'paypal', 'cripto', 'otro',
+] as const
+export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
+
+export const NOMBRE_DE_MEDIO: Record<MedioDePago, string> = {
+  transferencia: 'Transferencia',
+  stripe: 'Stripe',
+  tarjeta: 'Tarjeta',
+  efectivo: 'Efectivo',
+  mercadopago: 'Mercado Pago',
+  paypal: 'PayPal',
+  cripto: 'Cripto',
+  otro: 'Otro',
+}
+
+/**
+ * Hasta cuántas cuotas se puede pactar una venta. No es un límite del negocio:
+ * es que un desplegable con cincuenta números no se elige, se sufre.
+ */
+export const MAXIMO_DE_CUOTAS = 12
+
+/** «Primer pago», «Segundo pago»… Un «Pago 1» se lee peor y se completa igual. */
+const ORDINALES = [
+  'Primer', 'Segundo', 'Tercer', 'Cuarto', 'Quinto', 'Sexto',
+  'Séptimo', 'Octavo', 'Noveno', 'Décimo', 'Undécimo', 'Duodécimo',
+]
+
+export function nombreDeCuota(n: number): string {
+  const o = ORDINALES[n - 1]
+  return o ? `${o} pago` : `Pago ${n}`
+}
+
+/**
  * Lo que el closer elige al cerrar la llamada.
  *
  * En la base son dos columnas —el resultado y, si quedó en seguimiento, cómo

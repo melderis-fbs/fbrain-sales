@@ -217,12 +217,22 @@ await paso('la ficha pregunta sólo lo del resultado que se eligió', async () =
   comprobar(await cuantos('#importe') === 0, 'y no pide un importe que no existe')
 
   await p.selectOption('#salida', 'venta')
-  comprobar(await cuantos('#importe') === 1 && await cuantos('#cuotas') === 1
-            && await cuantos('#cobradoAhora') === 1,
-            'la venta pide monto, cuotas y lo que se cobró')
+  comprobar(await cuantos('#importe') === 1 && await cuantos('#cuotas') === 1,
+            'la venta pide monto y cuotas')
   comprobar(await cuantos('#motivoPerdida') === 0, 'y ya no pregunta por qué se perdió')
   comprobar(await p.locator('#programa option').count() === 3,
             'el programa es GROWTH o ELITE, no texto libre')
+
+  // Las cuotas dibujan el plan de pagos: una fila por cuota, con su fecha.
+  comprobar(await cuantos('#c1i') === 1 && await cuantos('#c2i') === 0,
+            'con un pago hay un solo bloque de cobro')
+  await p.selectOption('#cuotas', '3')
+  comprobar(await cuantos('#c1i') === 1 && await cuantos('#c2i') === 1 && await cuantos('#c3i') === 1,
+            'al poner tres cuotas aparecen las tres, con monto y fecha')
+  comprobar(await cuantos('#c2f') === 1 && await cuantos('#c2m') === 1 && await cuantos('#c2p') === 1,
+            'cada una con su fecha, su método y si ya entró')
+  await p.selectOption('#cuotas', '1')
+  comprobar(await cuantos('#c3i') === 0, 'y al volver a un pago, las otras se van')
 
   await p.selectOption('#salida', 'segunda')
   comprobar(await cuantos('#fechaSegunda') === 1, 'la segunda llamada pide su fecha')

@@ -33,14 +33,20 @@ export type ResultadoCargado = {
     importe: number; moneda: string; fecha: string
     /** GROWTH o ELITE. */
     programa?: string | null
-    /** En cuántas cuotas se pactó. Los pagos guardan cuál es cada uno; esto es el total. */
+    /** En cuántas cuotas se pactó. */
     cuotas?: number | null
     /**
-     * Lo que se cobró al firmar. Es el cash collected del día, y el número que
-     * más se perdía: quedaba «para cargarlo después» en otra pantalla y
-     * después no se cargaba.
+     * El plan de pagos, una fila por cuota.
+     *
+     * Es el número que más se perdía: la venta quedaba marcada y el cobro
+     * «para cargarlo después» en otra pantalla, así que el cash collected
+     * mentía siempre hacia abajo. Se carga en el mismo momento que la venta.
+     *
+     * `pagado` es la diferencia entre plata que entró y plata que se va a ir a
+     * buscar: sólo la cobrada suma al cash. Las pendientes quedan escritas
+     * —con su fecha— porque son la cobranza del mes que viene.
      */
-    cobradoAhora?: number | null
+    plan?: { n: number; importe: number; fecha: string; medio?: string | null; pagado: boolean }[]
   }
   /**
    * Cómo sigue un lead que queda en seguimiento.
@@ -195,21 +201,53 @@ export async function cargarResultado(
                            anterior: 'abierta', nuevo: 'convertida' })
       }
 
-      // Lo que entró el día de la firma. Un cobro se SUMA siempre —dos cobros
-      // son dos cobros— así que este campo viene vacío cada vez que se abre la
-      // ficha: lo que ya está cargado se ve al lado.
-      const cobrado = datos.venta.cobradoAhora ?? 0
-      if (cobrado > 0) {
-        const enCuotas = (datos.venta.cuotas ?? 1) > 1
-        await escribir(
-          `insert into pagos (venta_id, importe, moneda, fecha, origen, n_cuota, cuotas_totales, estado)
-           values ($1,$2,$3,$4,$5,$6,$7,'cobrado')`,
-          [ventaId, cobrado, datos.venta.moneda, datos.venta.fecha,
-           enCuotas ? 'cuota' : 'contado', enCuotas ? 1 : null, datos.venta.cuotas ?? null],
-          { esperadas: 1, cliente: cx },
+      // El plan de pagos. Cada cuota se identifica por su NÚMERO, así que
+      // volver a guardar la ficha la corrige en vez de cargar otra: si no, el
+      // cash collected subía cada vez que alguien abría la venta a mirarla.
+      const total = datos.venta.cuotas ?? null
+      const enCuotas = (total ?? 1) > 1
+      for (const c of datos.venta.plan ?? []) {
+        const ya = await fila<{ id: number; estado: string; importe: string | number }>(
+          `select id, estado, importe from pagos
+            where venta_id = $1 and n_cuota = $2 and borrado_en is null limit 1`,
+          [ventaId, c.n], cx,
         )
-        anotaciones.push({ entidad: 'venta', entidadId: leadId, campo: 'cobro',
-                           anterior: null, nuevo: `${datos.venta.moneda} ${cobrado}` })
+        const estado = c.pagado ? 'cobrado' : 'pendiente'
+        if (ya) {
+          await escribir(
+            `update pagos set importe = $1, moneda = $2, fecha = $3, medio = $4,
+                              estado = $5, cuotas_totales = $6
+              where id = $7`,
+            [c.importe, datos.venta.moneda, c.fecha, oNulo(c.medio ?? null), estado, total, ya.id],
+            { esperadas: 1, cliente: cx },
+          )
+        } else {
+          await escribir(
+            `insert into pagos (venta_id, importe, moneda, fecha, medio, origen,
+                                n_cuota, cuotas_totales, estado)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [ventaId, c.importe, datos.venta.moneda, c.fecha, oNulo(c.medio ?? null),
+             enCuotas ? 'cuota' : 'contado', c.n, total, estado],
+            { esperadas: 1, cliente: cx },
+          )
+        }
+        // Al historial va el cobro, no la promesa: una cuota que todavía no
+        // entró no es plata y anotarla como tal es el mismo error de siempre.
+        if (c.pagado && ya?.estado !== 'cobrado') {
+          anotaciones.push({ entidad: 'venta', entidadId: leadId, campo: 'cobro',
+                             anterior: null, nuevo: `${datos.venta.moneda} ${c.importe}` })
+        }
+      }
+
+      // Si el plan se achica —eran cuatro cuotas y son dos— las que sobran se
+      // van. Las YA COBRADAS no: esa plata entró, y sacarla porque alguien
+      // cambió un desplegable es exactamente lo que no puede pasar.
+      if (total !== null) {
+        await escribir(
+          `update pagos set borrado_en = now()
+            where venta_id = $1 and n_cuota > $2 and estado <> 'cobrado' and borrado_en is null`,
+          [ventaId, total], { esperadas: 'cualquiera', cliente: cx },
+        )
       }
     }
 

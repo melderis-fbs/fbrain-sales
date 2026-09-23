@@ -567,6 +567,14 @@ export type Lead = {
   cobrado: number
   /** Si quedó en seguimiento largo, el día en que hay que volver. */
   seguimientoLargo: string | null
+  /**
+   * El plan de pagos de la venta: una fila por cuota, cobrada o no.
+   *
+   * Las pendientes NO son cash —no entraron— pero son la cobranza que viene, y
+   * tenerlas escritas es lo que deja saber qué hay que ir a buscar este mes.
+   */
+  pagos: { nCuota: number | null; importe: number; moneda: string; fecha: string
+           medio: string | null; estado: string; origen: string }[]
 }
 
 export async function verLead(leadId: number): Promise<Lead | null> {
@@ -599,6 +607,18 @@ export async function verLead(leadId: number): Promise<Lead | null> {
   )
   if (!x) return null
 
+  // El plan de pagos de la venta vigente. Va aparte porque son varias filas y
+  // la ficha las muestra una por una.
+  const cuotas = x.venta_id === null || x.venta_id === undefined ? [] : await filas<{
+    n_cuota: number | null; importe: string; moneda: string; fecha: string
+    medio: string | null; estado: string; origen: string
+  }>(
+    `select n_cuota, importe, moneda, fecha, medio, estado, origen
+       from pagos where venta_id = $1 and borrado_en is null
+      order by n_cuota nulls last, fecha`,
+    [x.venta_id],
+  )
+
   return {
     id: x.id, nombre: x.nombre, email: x.email, telefono: x.telefono, pais: x.pais,
     empresa: x.empresa, industria: x.industria,
@@ -626,6 +646,11 @@ export async function verLead(leadId: number): Promise<Lead | null> {
           comprometida: x.sena_comprometida, estado: x.sena_estado },
     cobrado: Number(x.cobrado),
     seguimientoLargo: x.seguimiento_largo ?? null,
+    pagos: cuotas.map((c) => ({
+      nCuota: c.n_cuota === null ? null : Number(c.n_cuota),
+      importe: Number(c.importe), moneda: c.moneda, fecha: c.fecha,
+      medio: c.medio, estado: c.estado, origen: c.origen,
+    })),
   }
 }
 
