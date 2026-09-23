@@ -4,3 +4,6 @@ node_modules
 .env*.local
 *.tsbuildinfo
 next-env.d.ts
+
+# Capturas sueltas del recorrido: se miran y se tiran.
+*.png
