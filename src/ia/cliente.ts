@@ -26,10 +26,24 @@ export type Uso = {
   ms: number
 }
 
-/** Precios por millón de tokens. Se actualizan acá y en un solo lugar. */
+/**
+ * Precios por millón de tokens. Se actualizan acá y en un solo lugar.
+ *
+ * Estaban con los precios de la generación anterior —Sonnet a 3/15 y Opus a
+ * 15/75— así que el costo anotado en `llamadas_modelo` venía inflado: Sonnet
+ * un 50% de más, Opus el triple. Un gasto que se mira para decidir y está mal
+ * hace tomar la decisión al revés, y encima para el lado de gastar menos de lo
+ * que se podría.
+ *
+ * Lo escrito es lo de la lista pública: la escritura de caché es 1,25 veces la
+ * entrada y la lectura una décima parte.
+ */
 const PRECIOS: Record<string, { entrada: number; salida: number; cacheEscrito: number; cacheLeido: number }> = {
-  'claude-sonnet-5': { entrada: 3, salida: 15, cacheEscrito: 3.75, cacheLeido: 0.3 },
-  'claude-opus-5': { entrada: 15, salida: 75, cacheEscrito: 18.75, cacheLeido: 1.5 },
+  'claude-sonnet-5': { entrada: 2, salida: 10, cacheEscrito: 2.5, cacheLeido: 0.2 },
+  'claude-opus-5': { entrada: 5, salida: 25, cacheEscrito: 6.25, cacheLeido: 0.5 },
+  'claude-haiku-4-5': { entrada: 1, salida: 5, cacheEscrito: 1.25, cacheLeido: 0.1 },
+  // El id con fecha sigue andando: hay análisis viejos anotados con ése, y un
+  // modelo desconocido caía en el precio de Sonnet y volvía a mentir.
   'claude-haiku-4-5-20251001': { entrada: 1, salida: 5, cacheEscrito: 1.25, cacheLeido: 0.1 },
 }
 
@@ -45,7 +59,8 @@ export const MODELO_POR_DEFECTO = process.env.MODELO_ANALIZADOR ?? 'claude-sonne
  */
 const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID?.trim() || null
 
-function costo(modelo: string, u: { entrada: number; salida: number; cacheLeido: number; cacheEscrito: number }): number {
+/** Lo que costó una llamada al modelo, en dólares. Exportado para poder probarlo. */
+export function costoDe(modelo: string, u: { entrada: number; salida: number; cacheLeido: number; cacheEscrito: number }): number {
   const p = PRECIOS[modelo] ?? PRECIOS['claude-sonnet-5']!
   return (u.entrada * p.entrada + u.salida * p.salida +
           u.cacheEscrito * p.cacheEscrito + u.cacheLeido * p.cacheLeido) / 1_000_000
@@ -227,7 +242,7 @@ export async function pedirJson<T>(opciones: {
       cacheLeido: u.cache_read_input_tokens ?? 0,
       cacheEscrito: u.cache_creation_input_tokens ?? 0,
     }
-    const uso: Uso = { modelo, ...partes, costoUsd: costo(modelo, partes), ms: Date.now() - comienzo }
+    const uso: Uso = { modelo, ...partes, costoUsd: costoDe(modelo, partes), ms: Date.now() - comienzo }
     await anotarUso(opciones.para, modelo, uso, opciones, null)
 
     const herramienta = cuerpo.content.find((c) => c.type === 'tool_use')

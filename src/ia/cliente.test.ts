@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { motivoDeLaApi, enCastellano } from './cliente'
+import { motivoDeLaApi, enCastellano, costoDe } from './cliente'
 
 describe('el motivo que manda la API', () => {
   it('sale del cuerpo del error, que es lo único útil que trae', () => {
@@ -72,5 +72,32 @@ describe('la clave que no está en un workspace', () => {
     expect(texto).toContain('wrkspc_abc123')
     expect(texto).toContain('rechaza igual')
     expect(texto).toContain('desplegar')
+  })
+})
+
+
+describe('lo que cuesta cada análisis', () => {
+  it('sale de la lista de precios vigente, no de la anterior', () => {
+    // Estaban los de la generación pasada: Sonnet a 3/15 y Opus a 15/75. El
+    // gasto anotado venía inflado —Sonnet 50% de más, Opus el triple— y un
+    // gasto que se mira para decidir y está mal hace decidir al revés.
+    expect(costoDe('claude-sonnet-5', { entrada: 1_000_000, salida: 0, cacheLeido: 0, cacheEscrito: 0 }))
+      .toBeCloseTo(2)
+    expect(costoDe('claude-sonnet-5', { entrada: 0, salida: 1_000_000, cacheLeido: 0, cacheEscrito: 0 }))
+      .toBeCloseTo(10)
+    expect(costoDe('claude-opus-5', { entrada: 1_000_000, salida: 1_000_000, cacheLeido: 0, cacheEscrito: 0 }))
+      .toBeCloseTo(30)
+  })
+
+  it('la lectura de caché es una décima parte de la entrada: por eso conviene', () => {
+    expect(costoDe('claude-sonnet-5', { entrada: 0, salida: 0, cacheLeido: 1_000_000, cacheEscrito: 0 }))
+      .toBeCloseTo(0.2)
+  })
+
+  it('un análisis de una llamada larga cuesta centavos, y el número lo dice', () => {
+    // 25.000 tokens de transcripción y 2.000 de análisis con Sonnet.
+    const c = costoDe('claude-sonnet-5', { entrada: 25_000, salida: 2_000, cacheLeido: 0, cacheEscrito: 0 })
+    expect(c).toBeGreaterThan(0.06)
+    expect(c).toBeLessThan(0.08)
   })
 })
