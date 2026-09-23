@@ -525,6 +525,67 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('comisiones')
 })
 
+await paso('el cierre se mide sobre las asistencias, no sobre las agendas', async () => {
+  // Cuatro agendas, tres asistencias, un cierre: sobre asistencias da 33,3%
+  // y sobre agendas daría 25%. Los dos números existen, así que la prueba
+  // sirve sólo si distingue cuál se muestra.
+  // Con un closer propio, para que los leads de los pasos anteriores no se
+  // mezclen: una cuenta que sólo da bien cuando el resto de la corrida
+  // colabora no comprueba nada.
+  const SOLO = `Cierre ${marca}`
+  await p.goto(`${RAIZ}/configuracion`)
+  const suyo = '.contenido .tarjeta:has-text("Dar de alta a alguien")'
+  await p.fill(`${suyo} #nombre`, SOLO)
+  await p.selectOption(`${suyo} #funcion`, 'closer')
+  await p.uncheck(`${suyo} input[name=entra]`)
+  await p.click(`${suyo} button[type=submit]`)
+  await esperar()
+  await p.waitForTimeout(400)
+
+  const nombres = ['Vino Y Compró', 'Vino Y No', 'Vino Tampoco', 'No Vino Nunca']
+  for (const n of nombres) {
+    await p.goto(`${RAIZ}/leads/nuevo`)
+    await p.fill('#nombre', `${n} ${marca}`)
+    await p.selectOption('#closerId', { label: SOLO })
+    await p.fill('#fechaSesion', HOY)
+    await p.click(enLaPantalla('form button[type=submit]'))
+    await p.waitForURL(/leads\/\d+/)
+    const id = p.url().match(/leads\/(\d+)/)?.[1]
+
+    await p.goto(`${RAIZ}/leads/${id}?pestana=resultado`)
+    await p.selectOption('.contenido #estado', n === 'No Vino Nunca' ? 'no_show' : 'asistio')
+    if (n === 'Vino Y Compró') {
+      await p.selectOption('.contenido #salida', 'venta')
+      await p.fill('.contenido #importe', '1000')
+      await p.fill('.contenido #fecha', HOY)
+    } else if (n !== 'No Vino Nunca') {
+      await p.selectOption('.contenido #salida', 'seguimiento_cadencia')
+    }
+    await p.click('.contenido form button:has-text("Guardar el resultado")')
+    await esperar()
+    await p.waitForTimeout(500)
+  }
+
+  await p.goto(`${RAIZ}/llamadas?periodo=hoy`)
+  await p.locator(`[aria-label="Filtrar por closer"] a:has-text("${SOLO}")`).click()
+  await esperar()
+  await p.waitForTimeout(500)
+
+  const { pct, contra } = await p.evaluate(() => {
+    const tarjeta = [...document.querySelectorAll('.contenido .tarjeta')]
+      .find((t) => t.querySelector('.etiqueta')?.textContent?.trim() === 'Cierre')
+    return {
+      pct: tarjeta?.querySelector('.numero')?.textContent?.trim() ?? '',
+      contra: tarjeta?.querySelector('.contra')?.textContent?.trim() ?? '',
+    }
+  })
+  comprobar(pct.startsWith('33'),
+            `con 4 agendas, 3 asistencias y 1 venta el cierre da ${pct}: sobre las asistencias, ` +
+            `no sobre las agendas —que daría 25%—`)
+  comprobar(contra.includes('asistencias'),
+            `y la pantalla dice contra qué mide: «${contra}»`)
+})
+
 await paso('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {
   // El reporte: «a Kevin no le está tomando la fecha de cierre, le toma la
   // fecha de llamada». La llamada fue el mes pasado y la firma es de hoy.

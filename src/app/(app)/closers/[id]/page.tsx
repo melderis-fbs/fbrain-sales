@@ -89,7 +89,7 @@ export default async function FichaDeCloser({
             pueden mirar juntos. */}
         <Numero etiqueta="Cierres" valor={m.ventasCerradas} contra="firmados en el período" />
         <Numero etiqueta="Cierre" valor={porcentaje(m.cierrePct)}
-                contra={`${m.ventas} de ${m.asistencias} reuniones del período`} />
+                contra={`${m.ventas} de ${m.asistencias} asistencias del período`} />
         <Numero etiqueta="Cierre sobre oferta" valor={m.cierreSobreOfertaPct} unidad="%"
                 contra="de los que vieron el precio" />
         <Numero etiqueta="Lead quality recibido" valor={suyo?.calidadPromedio ?? null}
@@ -130,7 +130,8 @@ export default async function FichaDeCloser({
               <table>
                 <thead>
                   <tr><th>Calidad del lead</th><th className="num">Asistencias</th>
-                      <th className="num">Ventas</th><th className="num">Cierre</th></tr>
+                      <th className="num">Ventas</th>
+                      <th className="num" title="Ventas ÷ asistencias de ese nivel de lead.">Cierre / asist.</th></tr>
                 </thead>
                 <tbody>
                   {suyo.ajuste.mezcla.map((x) => (

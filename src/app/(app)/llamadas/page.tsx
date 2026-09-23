@@ -158,7 +158,7 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
         <Numero etiqueta="Cierres" valor={m.ventasCerradas}
                 contra="firmados en el período" />
         <Numero etiqueta="Cierre" valor={`${m.cierrePct ?? 0}%`}
-                contra={`${m.ventas} de ${m.asistencias} reuniones del período`} />
+                contra={`${m.ventas} de ${m.asistencias} asistencias del período`} />
         <Numero etiqueta="Call score" valor={promedio}
                 contra={promedio === null ? 'sin llamadas analizadas' : `${comoSeLee(promedio)} · ${conNota.length} analizadas`} />
         <Numero etiqueta="Transcripciones" valor={conTranscripcion}

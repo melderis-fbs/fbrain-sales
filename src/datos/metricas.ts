@@ -142,7 +142,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   ofertas:      { nombre: 'Ofertas', formula: 'De esos, los que tienen marcado que hubo oferta.', universo: 'reunión' },
   senas:        { nombre: 'Señas', formula: 'De esos, los que tienen una seña cargada.', universo: 'reunión' },
   ventas:       { nombre: 'Ventas', formula: 'De esos, los que quedaron en «venta».', universo: 'reunión' },
-  cierrePct:    { nombre: 'Cierre', formula: 'De las reuniones de este período, cuántas terminaron en venta, sobre sus asistencias. Las dos del mismo universo, así que nunca pasa de 100%. No es la cantidad de cierres del mes: ésa va por fecha de venta.', universo: 'reunión' },
+  cierrePct:    { nombre: 'Cierre', formula: 'Ventas ÷ ASISTENCIAS, no sobre las agendadas: al que no vino no se le pudo vender, así que no es del closer. Las dos cifras salen de las reuniones de este período, así que nunca pasa de 100%. No es la cantidad de cierres del mes: ésa va por fecha de venta.', universo: 'reunión' },
   asistenciasValidas: { nombre: 'Asistencias válidas', formula: 'Asistencias que no quedaron en «no calificado».', universo: 'reunión' },
   noCalificadas:{ nombre: 'No calificadas', formula: 'De los que asistieron, los que quedaron en «no calificado».', universo: 'reunión' },
   cancelados:   { nombre: 'Canceladas', formula: 'De los agendados, los que quedaron en «cancelado».', universo: 'reunión' },

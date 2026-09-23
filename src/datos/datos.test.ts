@@ -608,10 +608,26 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(medidas.cierrePct).toBe(33.3)     // 1 venta sobre 3 asistencias
     expect(etapas.find((e) => e.clave === 'asistidas')?.paso).toBe(75)
 
+    // El cierre se mide sobre las ASISTENCIAS, no sobre las agendadas. Con
+    // estos números las dos cuentas dan distinto, que es lo que hace que esta
+    // prueba sirva: sobre agendadas daría 25%.
+    expect(medidas.cierrePct).not.toBe(25)
+
     // La apertura por closer suma exactamente el total: sale de la misma consulta.
     const porCloser = await metricas.apertura('closer', rango, TODO)
     expect(porCloser.reduce((s, c) => s + c.agendadas, 0)).toBe(medidas.agendadas)
     expect(porCloser.reduce((s, c) => s + c.ventas, 0)).toBe(medidas.ventas)
+    expect(porCloser.find((c) => c.id === closerKevin)?.cierrePct).toBe(33.3)
+
+    // Y las tablas de equipo hacen su propia consulta, así que se comprueban
+    // aparte: el mismo mes tiene que dar el mismo cierre en las tres.
+    const equipo = await import('./equipo')
+    const kevin = (await equipo.performanceDeClosers(rango)).find((c) => c.id === closerKevin)
+    expect(kevin?.asistencias).toBe(3)
+    expect(kevin?.cierrePct).toBe(33.3)
+
+    const elSetter = (await equipo.performanceDeSetters(rango))[0]
+    if (elSetter) expect(elSetter.cierrePct).toBe(elSetter.asistencias === 0 ? null : 33.3)
   })
 
   it('marcar «seguimiento» mete el lead en el pipeline solo', async () => {
