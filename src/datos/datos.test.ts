@@ -263,7 +263,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
     const { medidas } = await metricas.metricas(rango, TODO)
     expect(medidas.facturacion).toBe(3000)   // lo que se vendió
-    expect(medidas.cashCollected).toBe(1000) // lo que entró: una sola cuota
+    expect(medidas.cashCollected).toBe(1000) // lo que entró por la venta nueva
 
     const lead = await leads.verLead(id)
     expect(lead?.pagos).toHaveLength(3)
@@ -288,9 +288,13 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     await conPlan(false)
     expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
 
+    // Cobrar la segunda cuota NO mueve el cash del mes: no es venta nueva, es
+    // cobranza de algo ya vendido. Queda en la ficha, que es donde sirve.
     await conPlan(true)
-    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(2000)
-    expect((await leads.verLead(id))?.pagos).toHaveLength(2)
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
+    const ficha = await leads.verLead(id)
+    expect(ficha?.pagos).toHaveLength(2)
+    expect(ficha?.cobrado).toBe(2000)
   })
 
   it('achicar el plan saca las cuotas que sobran, pero nunca las ya cobradas', async () => {
@@ -314,7 +318,9 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
     const lead = await leads.verLead(id)
     expect(lead?.pagos.map((x) => x.nCuota)).toEqual([1, 2])
-    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(2000)
+    // La 2 está cobrada y se ve en la ficha, pero el cash del mes cuenta lo
+    // que entró por la venta nueva: la cuota 1.
+    expect((await metricas.metricas(rango, TODO)).medidas.cashCollected).toBe(1000)
   })
 
   it('una venta al contado sin cobro no inventa cash', async () => {
@@ -442,7 +448,7 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     }, usuarioId)
 
     const [venta] = await metricas.ventasDelPeriodo(rango, TODO)
-    expect(venta?.cobrado).toBe(1500)   // los 500 de la seña más los 1000 de la cuota 1
+    expect(venta?.cobrado).toBe(1500)   // los 500 de la seña más los 1000 de la firma
 
     const { medidas } = await metricas.metricas(rango, TODO)
     expect(medidas.facturacion).toBe(3000)

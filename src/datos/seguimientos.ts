@@ -26,11 +26,23 @@ export async function toques(): Promise<Toque[]> {
 
 // ── Entrar y salir ──────────────────────────────────────────────────────────
 
-/** Al marcar «seguimiento». Idempotente: volver a cargar el resultado no lo reinicia. */
+/**
+ * Al marcar «seguimiento». Idempotente: volver a cargar el resultado no lo
+ * reinicia.
+ *
+ * La cadencia arranca el día de la REUNIÓN, no el día en que alguien cargó el
+ * resultado. Arrancaba el día de la carga y se veía enseguida al subir un
+ * histórico: treinta llamadas de todo un mes entraban con fecha de hoy y el
+ * pipeline decía que a las treinta les tocaba el primer toque hoy. Era mentira
+ * —la mitad ya tenía que ir por el toque 6— y un pipeline que miente sobre
+ * qué hay que hacer hoy se deja de mirar el segundo día.
+ */
 export async function entrarAlPipeline(leadId: number, cx?: PoolClient): Promise<void> {
   await escribir(
     `insert into seguimiento_estado (lead_id, toque_actual, desde, ingreso_en, situacion)
-     values ($1, 1, current_date, current_date, 'activo')
+     select l.id, 1, coalesce(l.fecha_sesion, current_date),
+            coalesce(l.fecha_sesion, current_date), 'activo'
+       from leads l where l.id = $1
      on conflict (lead_id) do update
         set situacion = case when seguimiento_estado.situacion = 'fuera' then 'activo'
                              else seguimiento_estado.situacion end,
@@ -158,7 +170,9 @@ export async function ponerSeguimientoLargo(
 ): Promise<void> {
   await escribir(
     `insert into seguimiento_estado (lead_id, toque_actual, desde, ingreso_en, situacion, fecha_larga)
-     values ($1, 1, current_date, current_date, 'largo', $2)
+     select l.id, 1, coalesce(l.fecha_sesion, current_date),
+            coalesce(l.fecha_sesion, current_date), 'largo', $2
+       from leads l where l.id = $1
      on conflict (lead_id) do update
         set situacion = 'largo', fecha_larga = excluded.fecha_larga,
             salio_en = null, actualizado_en = now()`,

@@ -300,40 +300,40 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   await p.goto(`${RAIZ}/seguimientos`)
   comprobar(await p.locator(`.contenido .ficha:has-text("${OTRO}")`).count() === 1,
             'apareció en el pipeline sin que nadie lo agregue a mano')
-  comprobar(await p.locator('.contenido .pista .nodo').count() === 12,
-            'la pista dibuja los doce toques')
+  comprobar(await p.locator('.contenido .tablero .columna').count() >= 12,
+            'el tablero tiene una columna por toque')
 
+  // En un tablero la posición ES el paso: la tarjeta tiene que estar en la
+  // columna del toque que le toca, y moverse de columna al registrarlo.
+  const enColumna = (n) => p.locator(`.contenido .tablero .columna[data-toque="${n}"] .ficha:has-text("${OTRO}")`)
   const suya = () => p.locator(`.contenido .ficha:has-text("${OTRO}")`)
-  const progresoDe = async () => ({
-    hechos: await suya().locator('.progreso i.hecho').count(),
-    actual: await suya().locator('.progreso i.actual').count(),
-    total: await suya().locator('.progreso i').count(),
-  })
 
-  const antesDelToque = await progresoDe()
-  comprobar(antesDelToque.total === 12 && antesDelToque.hechos === 0 && antesDelToque.actual === 1,
-            'la tarjeta muestra el progreso sobre los 12 pasos, en el primero')
-  comprobar((await suya().textContent())?.includes('Toque 1 de 12'),
-            'y dice en qué toque va')
+  comprobar(await enColumna(1).count() === 1, 'y arranca en la columna del primer toque')
 
-  await paso('registrar el toque mueve el progreso de la tarjeta', async () => {
+  await paso('registrar el toque mueve la tarjeta a la columna siguiente', async () => {
     await suya().locator('select[name=estado]').selectOption('no_contesto')
     await suya().locator('button[type=submit]').click()
     await esperar()
     await p.waitForFunction(
       (nombre) => {
-        const fichas = [...document.querySelectorAll('.contenido .ficha')]
-        const f = fichas.find((x) => x.textContent?.includes(nombre))
-        return f !== undefined && f.querySelectorAll('.progreso i.hecho').length === 1
+        const col = document.querySelector('.contenido .tablero .columna[data-toque="2"]')
+        return col !== null && [...col.querySelectorAll('.ficha')]
+          .some((f) => f.textContent?.includes(nombre))
       },
       OTRO, { timeout: 5000 },
     ).catch(() => {})
-    const despues = await progresoDe()
-    comprobar(despues.hechos === 1 && despues.actual === 1,
-              'el paso 1 quedó marcado como hecho y el actual pasó al 2')
-    comprobar((await suya().textContent())?.includes('Toque 2 de 12'),
-              'y la tarjeta lo dice')
+    comprobar(await enColumna(2).count() === 1, 'pasó a la columna del toque 2')
+    comprobar(await enColumna(1).count() === 0, 'y dejó de estar en la del 1')
     await foto('pipeline')
+  })
+
+  await paso('«Lo que toca» deja en el tablero sólo lo vencido y lo de hoy', async () => {
+    await p.goto(`${RAIZ}/seguimientos?solo=toca`)
+    comprobar(await p.locator('.contenido .tablero .columna').count() >= 12,
+              'sigue siendo el mismo tablero, con menos tarjetas')
+    comprobar(await p.locator('.contenido .barra-filtros .chips a.activo').count() === 1,
+              'y el filtro queda marcado')
+    await p.goto(`${RAIZ}/seguimientos`)
   })
 
   await paso('«no interesado» lo saca del pipeline y cierra el lead', async () => {
@@ -347,8 +347,8 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
         .some((f) => f.textContent?.includes(nombre)),
       OTRO, { timeout: 5000 },
     ).catch(() => {})
-    comprobar(await p.locator(`.contenido .tanda .ficha:has-text("${OTRO}")`).count() === 0,
-              'dejó de ocupar lugar entre las tarjetas')
+    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 0,
+              'dejó de ocupar lugar en el tablero')
     comprobar(await p.locator(`.tarjeta:has-text("Fuera del pipeline") tr:has-text("${OTRO}")`).count() === 1,
               'y quedó listado por si hay que volver a meterlo')
   })

@@ -116,6 +116,7 @@ export async function performanceDeClosers(
                          join leads lp on lp.id = v2.lead_id
                         where lp.closer_id = c.id and p.borrado_en is null
                           and p.estado = 'cobrado' and p.moneda = $3
+                          and (p.n_cuota is null or p.n_cuota <= 1)
                           and v2.fecha between $1 and $2), 0)     as cash,
               (select avg(cs.score) from call_scores cs
                  join analisis a on a.id = cs.analisis_id

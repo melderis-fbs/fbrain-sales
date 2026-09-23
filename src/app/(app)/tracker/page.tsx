@@ -218,7 +218,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         ) : null}
         {verPlata ? (
           <Numero etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} chico
-                  contra={`cobrado · ${porcentaje(m.cobranzaPct)} de lo vendido`}
+                  contra={`${porcentaje(m.cobranzaPct)} de la venta nueva`}
                   comoSeCalcula={DEFINICIONES.cobranzaPct!.formula} />
         ) : null}
       </div>

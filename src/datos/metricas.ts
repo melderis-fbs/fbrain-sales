@@ -160,9 +160,9 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   cashPorAgenda:{ nombre: 'Cash por agenda', formula: 'Cash collected del período ÷ agendadas del período. No es un porcentaje: es plata por reunión, y los dos números salen de universos distintos.', universo: 'mezcla' },
   cashPorAsistencia: { nombre: 'Cash por asistencia', formula: 'Cash collected del período ÷ asistencias del período. Tampoco es un porcentaje.', universo: 'mezcla' },
   ventasCerradas: { nombre: 'Ventas cerradas', formula: 'Ventas con fecha de venta en el período, venga la reunión del mes que venga. No es el numerador del cierre.', universo: 'venta' },
-  cobranzaPct:  { nombre: '% Cobrado de lo vendido', formula: 'De lo que se vendió en el período, cuánto se cobró. Los dos números salen de las mismas ventas, así que no puede pasar de 100%.', universo: 'venta' },
+  cobranzaPct:  { nombre: '% Cash sobre venta nueva', formula: 'Cash collected ÷ facturación del período. De lo que se vendió este mes, cuánto entró. Los dos números salen de las mismas ventas, así que no puede pasar de 100%.', universo: 'venta' },
   facturacion:  { nombre: 'Facturación', formula: 'Suma de las ventas con fecha de venta en el período.', universo: 'venta' },
-  cashCollected:{ nombre: 'Cash collected', formula: 'Lo cobrado de las ventas del período, entrara cuando entrara. La seña convertida entra acá, una sola vez. Comisiones lo cuenta distinto —por fecha del cobro— porque una comisión se paga sobre la plata que entró ese mes.', universo: 'venta' },
+  cashCollected:{ nombre: 'Cash collected', formula: 'Lo cobrado de las ventas del período por la venta misma: el pago de la firma, la seña convertida, el contado. Las cuotas siguientes no entran acá —son cobranza de algo ya vendido— y se ven en la ficha del lead. Comisiones lo cuenta distinto, por fecha del cobro, porque una comisión se paga sobre la plata que entró ese mes.', universo: 'venta' },
   senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas del período. No es facturación ni cash.', universo: 'reunión' },
   ticketPromedio:{ nombre: 'Ticket promedio', formula: 'Facturación ÷ cantidad de ventas del período de venta.', universo: 'venta' },
   valorEnJuego: { nombre: 'Valor en juego', formula: 'Valor potencial de los leads que siguen abiertos.', universo: 'abierto' },
@@ -321,9 +321,9 @@ export async function metricas(
  * La plata de un período, por la fecha de la VENTA.
  *
  * Las dos —lo facturado y lo cobrado— se cuentan sobre las mismas ventas: las
- * que se firmaron en el período. Así «cobrado ÷ vendido» es una pregunta que
- * se puede contestar, y la lista de ventas que hay debajo del número suma
- * exactamente lo mismo que el número.
+ * que se firmaron en el período, y sólo lo que entró por esas ventas. Así
+ * «cobrado ÷ vendido» es una pregunta que se puede contestar, y la lista de
+ * ventas que hay debajo del número suma exactamente lo mismo que el número.
  *
  * Contar el cash por la fecha del cobro era defendible y era peor: una venta
  * de septiembre con la seña cobrada en agosto figuraba cobrada en la lista y
@@ -355,7 +355,15 @@ async function dinero(
   // misma, en `pagos` es la venta de la que cuelga el cobro.
   const cuando = tabla === 'ventas' ? 'm.fecha' : 'v.fecha'
   const condiciones = ['m.borrado_en is null', 'l.borrado_en is null', `${cuando} between $1 and $2`]
-  if (tabla === 'pagos') condiciones.push(`m.estado = 'cobrado'`)
+  if (tabla === 'pagos') {
+    condiciones.push(`m.estado = 'cobrado'`)
+    // Sólo lo que entró POR LA VENTA NUEVA: el pago de la firma, la seña que
+    // se convirtió, el contado. Las cuotas que vienen después no son cash de
+    // negocio nuevo —son la cobranza de algo ya vendido— y sumarlas al KPI
+    // del mes hace que un mes flojo parezca bueno porque cobró cuotas viejas.
+    // El plan completo vive en la ficha del lead, que es donde sirve.
+    condiciones.push('(m.n_cuota is null or m.n_cuota <= 1)')
+  }
 
   const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, valores.length + 1)
   valores.push(...alc.parametros)
@@ -762,6 +770,7 @@ export async function recorridoPorCloser(
          join leads l on l.id = v.lead_id and l.borrado_en is null
          left join closers c on c.id = l.closer_id
         where p.borrado_en is null and p.estado = 'cobrado'
+          and (p.n_cuota is null or p.n_cuota <= 1)
           and v.fecha between $1 and $2 and p.moneda = $3 and ${alc.condicion}
         group by 1`, valoresPlata),
   ])
@@ -822,7 +831,11 @@ export type VentaDelPeriodo = {
   fecha: string
   importe: number
   moneda: string
-  /** Lo cobrado de esta venta. Suma al cash del período, como en la tarjeta. */
+  /**
+   * Lo que entró POR ESTA VENTA: el pago de la firma, la seña convertida, el
+   * contado. Es exactamente lo que suma la tarjeta de cash de arriba. Las
+   * cuotas siguientes se ven en la ficha del lead.
+   */
   cobrado: number
   programa: string | null
   /** Si cerró en una segunda llamada. */
@@ -856,7 +869,8 @@ export async function ventasDelPeriodo(
             v.fecha, v.importe, v.moneda, v.programa,
             coalesce((select sum(p.importe) from pagos p
                        where p.venta_id = v.id and p.borrado_en is null
-                         and p.estado = 'cobrado'), 0) as cobrado
+                         and p.estado = 'cobrado'
+                         and (p.n_cuota is null or p.n_cuota <= 1)), 0) as cobrado
        from ventas v
        join leads l on l.id = v.lead_id
        left join closers c on c.id = l.closer_id

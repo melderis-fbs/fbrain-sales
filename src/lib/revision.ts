@@ -57,7 +57,11 @@ const ESPERADO: { tabla: string; migracion: string }[] = [
  * toda migración figure en este archivo, y una lista de excepciones escrita a
  * mano es lo que separa «no cambia el esquema» de «me olvidé de declararla».
  */
-export const SIN_ESQUEMA = ['0008_leads_sin_dueno.sql', '0009_cada_reunion_su_fila.sql']
+export const SIN_ESQUEMA = [
+  '0008_leads_sin_dueno.sql',
+  '0009_cada_reunion_su_fila.sql',
+  '0012_la_cadencia_arranca_el_dia_de_la_llamada.sql',
+]
 
 /**
  * Columnas que una migración AGREGA a una tabla que ya existía.

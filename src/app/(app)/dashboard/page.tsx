@@ -181,7 +181,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
                 contra={`${porcentaje(m.ofertaPct)} de las asistencias`}
                 comoSeCalcula={DEFINICIONES.ofertas!.formula} />
         <Numero etiqueta="Ventas" valor={m.ventasCerradas}
-                contra={verPlata ? `${porcentaje(m.cobranzaPct)} cobrado de lo vendido` : undefined}
+                contra={verPlata ? <Link href="/tracker#ventas">ver cuáles →</Link> : undefined}
                 comoSeCalcula={DEFINICIONES.ventasCerradas!.formula}
                 tendencia={{ valor: variacion(m.ventasCerradas, p.ventasCerradas), sufijo: '%' }} />
         <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
@@ -198,7 +198,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
                     comoSeCalcula={DEFINICIONES.facturacion!.formula}
                     tendencia={{ valor: variacion(m.facturacion, p.facturacion), sufijo: '%' }} />
             <Numero etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} chico
-                    contra="cobrado de verdad"
+                    contra={`${porcentaje(m.cobranzaPct)} de la venta nueva`}
                     comoSeCalcula={DEFINICIONES.cashCollected!.formula}
                     tendencia={{ valor: variacion(m.cashCollected, p.cashCollected), sufijo: '%' }} />
           </>
