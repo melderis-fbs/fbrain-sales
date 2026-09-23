@@ -9,6 +9,7 @@ import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, Barra, Vacio, fechaCorta } from '@/componentes/Piezas'
 import { comoSeLee, DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES } from '@/dominio/rubrica'
 import { SinClave } from '@/componentes/SinClave'
+import { FasesDelPlaybook } from '@/componentes/FasesDelPlaybook'
 import { ProbarModelo } from '@/componentes/ProbarModelo'
 import { guardarPlaybookAccion } from '../llamadas/acciones'
 
@@ -322,11 +323,15 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
                 <label htmlFor="pb-script">El guion</label>
                 <textarea id="pb-script" name="script" required style={{ minHeight: 200 }} />
                 <div className="nota">
-                  El analizador evalúa contra la venta consultiva, no contra el guion al pie de la
-                  letra: el guion es contexto de qué se está vendiendo.
+                  El guion completo, para que el analizador sepa qué se vende y cómo. Las fases
+                  de abajo son las que se miden una por una.
                 </div>
               </div>
-              <button type="submit">Guardar como versión nueva</button>
+
+              <div className="separador" />
+              <FasesDelPlaybook iniciales={playbooks.find((p) => p.vigente)?.fases} />
+
+              <button type="submit" style={{ marginTop: 12 }}>Guardar como versión nueva</button>
             </form>
           </Tarjeta>
         </div>

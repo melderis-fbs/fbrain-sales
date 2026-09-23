@@ -688,3 +688,39 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .quien .falta { font-size: 10.5px; color: var(--gris-claro); font-weight: 500; margin-top: 1px; }
 .desglose .apagado { color: var(--gris-claro); font-weight: 500; }
 .desglose .cierre { font-size: 17px; font-weight: 700; }
+
+
+/* ── El informe de una llamada ──────────────────────────────────────────── */
+.informe .escala { font-size: 38px; }
+.informe .fase { border-left: 2px solid var(--borde); padding-left: 12px; }
+
+/* ── Imprimir: lo que se ve es lo que se guarda ─────────────────────────── */
+/* No hay una segunda maqueta para el PDF. Una segunda maqueta se desactualiza:
+ * la de la pantalla cambia, la del papel no, y el día que alguien lo nota ya
+ * mandó tres informes viejos. */
+@media print {
+  .lateral, .encabezado .acciones, .pestanas, .barra-filtros,
+  button, .boton, form { display: none !important; }
+
+  .marco, .contenido { display: block; padding: 0; background: var(--blanco); }
+  .contenido { max-width: none; }
+
+  .tarjeta {
+    border: 1px solid var(--borde); box-shadow: none;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .informe .fase, .informe table tr { break-inside: avoid; page-break-inside: avoid; }
+  .apilado { gap: 10px; }
+
+  /* El detalle largo se imprime entero: un desplegable cerrado en papel es
+   * una página en blanco. */
+  details { display: block; }
+  details > summary { display: none; }
+
+  a { text-decoration: none; color: var(--negro); }
+  /* Los enlaces internos no llevan a ningún lado en papel: mostrar la URL
+   * sería ruido. */
+  a[href]::after { content: none; }
+}
+
+@page { margin: 14mm; }

@@ -1,6 +1,11 @@
 import 'server-only'
 import { pedirJson, type Bloque } from './cliente'
 import { DIMENSIONES, PENALIZACIONES, BONIFICACIONES } from '@/dominio/rubrica'
+import { EJECUCIONES, type Ejecucion, type Fase } from '@/dominio/fases'
+import {
+  TECHOS, APROVECHAMIENTOS,
+  type ErrorCritico, type LecturaJusta, type Recomendacion, type Techo, type Aprovechamiento,
+} from '@/dominio/informe'
 import type { EventoDetectado, Feedback, NivelConCita, ObjecionDetectada } from '@/datos/analisis'
 
 /**
@@ -34,7 +39,14 @@ Reglas que no se negocian:
    van a usar.
 4. No seas amable. Una llamada mediocre evaluada como buena le cuesta al closer
    tres meses de repetir el mismo error.
-5. Hablás en español rioplatense, en segunda persona, directo y sin adornos.`
+5. Hablás en español rioplatense, en segunda persona, directo y sin adornos.
+
+6. Un closer no elige el lead que le toca. Antes de juzgar cómo lo hizo,
+   establecé QUÉ LE TOCÓ: si el prospecto calificaba, si tenía con qué pagar,
+   si decidía solo, si venía frío. Manejar bien una llamada que no tenía venta
+   adentro es un buen trabajo, y decir lo contrario entrena a desconfiar de
+   estos informes. Esto NO es ser amable: si el lead era bueno y se
+   desperdició, decilo más fuerte todavía. Es medir contra lo que había.`
 
 // ── Pasada 1: leer ──────────────────────────────────────────────────────────
 
@@ -142,7 +154,37 @@ export async function leer(
 
 // ── Pasada 2: evaluar ───────────────────────────────────────────────────────
 
-export type Evaluacion = { niveles: NivelConCita[]; feedback: Feedback; objeciones: ObjecionDetectada[] }
+export type FaseEvaluada = {
+  clave: string
+  nombre: string
+  peso: number
+  nota: number | null
+  ejecucion: Ejecucion
+  loQueHizo: string | null
+  cita: string | null
+  loQueDebia: string | null
+  analisis: string | null
+  seDejoPasar: string | null
+}
+
+export type Evaluacion = {
+  niveles: NivelConCita[]
+  feedback: Feedback
+  objeciones: ObjecionDetectada[]
+  fases: FaseEvaluada[]
+  lecturaJusta: LecturaJusta | null
+  erroresCriticos: ErrorCritico[]
+  recomendaciones: Recomendacion[]
+  conclusion: string | null
+}
+
+/** Las fases del playbook, para que el modelo evalúe contra ellas y no contra un ideal. */
+function fasesEnTexto(fases: readonly Fase[]): string {
+  return fases.map((f, i) =>
+    `${i + 1}. [${f.clave}] ${f.nombre} · pesa ${f.peso}%\n` +
+    `   Objetivo: ${f.objetivo}\n` +
+    `   Cómo se hace acá: ${f.comoSeHace}`).join('\n\n')
+}
 
 function rubricaEnTexto(): string {
   return DIMENSIONES.map((d) => {
@@ -189,16 +231,75 @@ const ESQUEMA_EVALUACION = {
     momento_clave: { type: 'string', description: 'El momento donde se decidió la llamada, citado.' },
     frase_alternativa: { type: 'string', description: 'Una frase concreta para reemplazar la que dijo en ese momento.' },
     una_sola_cosa: { type: 'string', description: 'Si sólo pudiera cambiar una cosa en la próxima llamada, cuál.' },
+
+    lectura_justa: {
+      type: 'object',
+      description: 'Lo PRIMERO que se lee del informe: qué lead le tocó y cuánto de lo posible aprovechó.',
+      properties: {
+        que_recibio: { type: 'string', description: 'Qué prospecto le tocó, en una frase: si calificaba, si tenía con qué pagar, si decidía solo, si venía frío. Con evidencia de la llamada.' },
+        techo_realista: { type: 'string', enum: [...TECHOS], description: 'Hasta dónde se podía llegar con ESTE prospecto, no con uno ideal.' },
+        por_que_ese_techo: { type: 'string', description: 'Por qué ése y no uno más alto, citando lo que lo limitaba.' },
+        aprovecho_el_techo: { type: 'string', enum: [...APROVECHAMIENTOS] },
+        insight: { type: 'string', description: 'Tres o cuatro frases: cómo le fue MEDIDO CONTRA LO QUE TENÍA. Si manejó bien un lead imposible, se dice. Si desperdició uno bueno, se dice más fuerte.' },
+      },
+      required: ['que_recibio', 'techo_realista', 'por_que_ese_techo', 'aprovecho_el_techo', 'insight'],
+    },
+
+    fases: {
+      type: 'array',
+      description: 'Una entrada por CADA fase del guion, en orden y sin saltear ninguna.',
+      items: {
+        type: 'object',
+        properties: {
+          clave: { type: 'string', description: 'La clave de la fase, tal cual figura entre corchetes en el guion.' },
+          ejecucion: { type: 'string', enum: [...EJECUCIONES], description: '¿Se hizo este paso? Es otra pregunta que qué tan bien se hizo.' },
+          nota: { type: 'number', minimum: 0, maximum: 10, description: 'Qué tan bien se hizo, de 0 a 10. Omitila si la transcripción no alcanza.' },
+          lo_que_hizo: { type: 'string', description: 'Qué hizo el closer en esta fase.' },
+          cita: { type: 'string', description: 'La frase textual que lo sostiene.' },
+          lo_que_debia: { type: 'string', description: 'Qué decía el guion que había que hacer acá.' },
+          analisis: { type: 'string', description: 'La diferencia entre las dos cosas y qué costó.' },
+          se_dejo_pasar: { type: 'string', description: 'La oportunidad que estaba ahí y no se tomó. Vacío si no hubo.' },
+        },
+        required: ['clave', 'ejecucion'],
+      },
+    },
+
+    errores_criticos: {
+      type: 'array',
+      description: 'Los errores que de verdad costaron algo. Dos o tres, no una lista de todo.',
+      items: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'El error en media línea.' },
+          detalle: { type: 'string', description: 'Qué pasó y qué costó.' },
+        },
+        required: ['titulo', 'detalle'],
+      },
+    },
+    recomendaciones: {
+      type: 'array',
+      description: 'Dos o tres cosas para la próxima, accionables y en palabras que se puedan usar tal cual.',
+      items: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string' },
+          detalle: { type: 'string' },
+        },
+        required: ['titulo', 'detalle'],
+      },
+    },
+    conclusion: { type: 'string', description: 'El cierre del informe: qué demuestra esta llamada sobre cómo trabaja este closer.' },
   },
-  required: ['niveles', 'lo_mejor', 'lo_que_costo', 'error_principal', 'una_sola_cosa'],
+  required: ['niveles', 'lo_mejor', 'lo_que_costo', 'error_principal', 'una_sola_cosa', 'lectura_justa', 'fases'],
 }
 
 export async function evaluar(
   transcripcion: string,
   lectura: Lectura,
-  playbook: { nombre: string; oferta: string | null; script: string } | null,
+  playbook: { nombre: string; oferta: string | null; script: string; fases: Fase[] } | null,
   contexto: { leadId?: number | null; usuarioId?: number | null },
 ): Promise<Evaluacion> {
+  const fases = playbook?.fases ?? []
   const { datos } = await pedirJson<{
     niveles: { dimension: string; nivel?: number; cita?: string; justificacion?: string; sin_evidencia: boolean }[]
     objeciones?: { textual: string; mejor_respuesta: string }[]
@@ -209,22 +310,45 @@ export async function evaluar(
     momento_clave?: string
     frase_alternativa?: string
     una_sola_cosa: string
+    lectura_justa?: {
+      que_recibio: string; techo_realista: string; por_que_ese_techo: string
+      aprovecho_el_techo: string; insight: string
+    }
+    fases?: {
+      clave: string; ejecucion: string; nota?: number
+      lo_que_hizo?: string; cita?: string; lo_que_debia?: string
+      analisis?: string; se_dejo_pasar?: string
+    }[]
+    errores_criticos?: { titulo: string; detalle: string }[]
+    recomendaciones?: { titulo: string; detalle: string }[]
+    conclusion?: string
   }>({
     sistema: [
       { type: 'text', text: REGLAS },
       { type: 'text', text:
-        `Segunda pasada: EVALUAR.\n\n` +
-        `Para cada dimensión, elegí cuál de las cinco descripciones describe MEJOR lo que pasó, ` +
-        `y citá la frase que lo sostiene. No promedies entre dos niveles: elegí uno. ` +
-        `Si la transcripción no alcanza, marcá sin_evidencia.\n\n` +
+        `Segunda pasada: EVALUAR. Tres cosas distintas, en este orden.\n\n` +
+        `1. LA LECTURA JUSTA. Antes que nada, qué prospecto le tocó y hasta dónde se podía ` +
+        `llegar con ÉSE. Después, cuánto de eso aprovechó. Es lo primero que se lee del ` +
+        `informe y lo que evita que un buen trabajo con un lead malo se vea como un mal ` +
+        `trabajo.\n\n` +
+        `2. LAS FASES DEL GUION. Una entrada por cada fase, en orden y sin saltear ninguna, ` +
+        `aunque la fase no haya ocurrido —ahí justamente va «no_ejecutado»—. «Ejecución» es si ` +
+        `el paso se hizo; «nota» es qué tan bien. Son dos preguntas y se contestan por ` +
+        `separado: una fase puede estar ejecutada y mal hecha.\n\n` +
+        `3. LA RÚBRICA. Para cada dimensión, elegí cuál de las cinco descripciones describe ` +
+        `MEJOR lo que pasó, y citá la frase que lo sostiene. No promedies entre dos niveles: ` +
+        `elegí uno. Si la transcripción no alcanza, marcá sin_evidencia.\n\n` +
+        (fases.length > 0
+          ? `LAS FASES DEL GUION DE ESTE CLOSER\n\n${fasesEnTexto(fases)}\n\n`
+          : '') +
         `RÚBRICA\n\n${rubricaEnTexto()}` },
     ],
     mensaje: [
       ...(playbook ? [{
         type: 'text' as const,
-        text: `<playbook>\nEste es el guion con el que trabaja este closer. Evaluá contra la ` +
-              `venta consultiva, no contra el guion al pie de la letra — el guion es contexto de ` +
-              `qué se ofrece.\n\nOferta: ${playbook.oferta ?? 'sin especificar'}\n\n${playbook.script}\n</playbook>`,
+        text: `<playbook>\nEl guion con el que trabaja este closer. Las FASES se evalúan contra ` +
+              `esto —es el guion de este equipo, no un ideal—; la RÚBRICA se evalúa contra la ` +
+              `venta consultiva, que es otra pregunta.\n\nOferta: ${playbook.oferta ?? 'sin especificar'}\n\n${playbook.script}\n</playbook>`,
       }] : []),
       { type: 'text', text:
         `<lectura>\n${JSON.stringify({
@@ -267,9 +391,52 @@ export async function evaluar(
     mejorRespuesta: datos.objeciones?.find((x) => x.textual === o.textual)?.mejor_respuesta ?? null,
   }))
 
+  // Igual que con las dimensiones: la fase que el modelo no devolvió no se
+  // inventa. Queda como no ejecutada y sin nota, que es lo que se sabe.
+  const texto = (v: unknown): string | null => {
+    const t = typeof v === 'string' ? v.trim() : ''
+    return t === '' ? null : t
+  }
+  const fasesEvaluadas: FaseEvaluada[] = fases.map((f) => {
+    const e = datos.fases?.find((x) => x.clave === f.clave)
+    const ejecucion = EJECUCIONES.includes(e?.ejecucion as Ejecucion)
+      ? (e!.ejecucion as Ejecucion) : 'no_ejecutado'
+    const nota = typeof e?.nota === 'number' && Number.isFinite(e.nota)
+      ? Math.max(0, Math.min(10, Math.round(e.nota * 10) / 10)) : null
+    return {
+      clave: f.clave, nombre: f.nombre, peso: f.peso,
+      nota, ejecucion,
+      loQueHizo: texto(e?.lo_que_hizo),
+      cita: texto(e?.cita),
+      loQueDebia: texto(e?.lo_que_debia),
+      analisis: texto(e?.analisis),
+      seDejoPasar: texto(e?.se_dejo_pasar),
+    }
+  })
+
+  const lj = datos.lectura_justa
+  const lecturaJusta: LecturaJusta | null = lj === undefined ? null : {
+    queRecibio: lj.que_recibio,
+    techo: (TECHOS.includes(lj.techo_realista as Techo) ? lj.techo_realista : 'seguimiento') as Techo,
+    porQueEseTecho: lj.por_que_ese_techo,
+    aprovecho: (APROVECHAMIENTOS.includes(lj.aprovecho_el_techo as Aprovechamiento)
+      ? lj.aprovecho_el_techo : 'casi') as Aprovechamiento,
+    insight: lj.insight,
+  }
+
+  const conTitulo = <T extends { titulo?: unknown; detalle?: unknown }>(xs: T[] | undefined) =>
+    (xs ?? [])
+      .filter((x) => typeof x.titulo === 'string' && x.titulo.trim() !== '')
+      .map((x) => ({ titulo: String(x.titulo).trim(), detalle: String(x.detalle ?? '').trim() }))
+
   return {
     niveles,
     objeciones,
+    fases: fasesEvaluadas,
+    lecturaJusta,
+    erroresCriticos: conTitulo<ErrorCritico>(datos.errores_criticos),
+    recomendaciones: conTitulo<Recomendacion>(datos.recomendaciones),
+    conclusion: texto(datos.conclusion),
     feedback: {
       loMejor: datos.lo_mejor ?? [],
       loQueCosto: datos.lo_que_costo ?? [],

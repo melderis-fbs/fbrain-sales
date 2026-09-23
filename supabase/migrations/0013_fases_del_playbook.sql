@@ -43,3 +43,9 @@ alter table analisis add column if not exists valoracion_perfil text;
 alter table analisis add column if not exists errores_criticos jsonb not null default '[]'::jsonb;
 alter table analisis add column if not exists recomendaciones jsonb not null default '[]'::jsonb;
 alter table analisis add column if not exists conclusion text;
+
+-- La LECTURA JUSTA: qué lead le tocó al closer y hasta dónde se podía llegar
+-- con ése. Sin esto el informe juzga contra un prospecto ideal, y alguien que
+-- manejó impecablemente una llamada que no tenía venta adentro termina con una
+-- nota que lo entrena a desconfiar del analizador.
+alter table analisis add column if not exists lectura_justa jsonb;

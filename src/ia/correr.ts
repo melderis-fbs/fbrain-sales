@@ -47,7 +47,10 @@ export async function analizarLlamada(
     const evaluacion = await evaluar(
       transcripcion.texto,
       lectura,
-      playbook ? { nombre: playbook.nombre, oferta: playbook.oferta, script: playbook.script } : null,
+      playbook
+        ? { nombre: playbook.nombre, oferta: playbook.oferta, script: playbook.script,
+            fases: playbook.fases }
+        : null,
       contexto,
     )
 
@@ -57,6 +60,12 @@ export async function analizarLlamada(
       objeciones: evaluacion.objeciones,
       feedback: evaluacion.feedback,
       modelo: MODELO_POR_DEFECTO,
+      fases: evaluacion.fases,
+      fasesDelPlaybook: playbook?.fases ?? [],
+      lecturaJusta: evaluacion.lecturaJusta,
+      erroresCriticos: evaluacion.erroresCriticos,
+      recomendaciones: evaluacion.recomendaciones,
+      conclusion: evaluacion.conclusion,
     })
 
     return { analisisId, score: puntaje.score }

@@ -6,6 +6,9 @@ import { puntuar, type Modelo, type NivelAsignado, type Puntaje } from '@/motor/
 import {
   DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES, TOPE_DE_BONIFICACIONES, NIVEL_A_NOTA,
 } from '@/dominio/rubrica'
+import { adherencia, notaDeFases, type Ejecucion, type Fase } from '@/dominio/fases'
+import type { ErrorCritico, LecturaJusta, Recomendacion } from '@/dominio/informe'
+import type { FaseEvaluada } from '@/ia/analizar'
 
 /**
  * El analizador, del lado de los datos.
@@ -174,6 +177,14 @@ export async function guardarEvaluacion(
     objeciones: ObjecionDetectada[]
     feedback: Feedback
     modelo?: string | null
+    /** Lo que el modelo dijo de cada fase del guion. */
+    fases?: FaseEvaluada[]
+    /** Las fases del playbook, para calcular adherencia sobre los pesos reales. */
+    fasesDelPlaybook?: Fase[]
+    lecturaJusta?: LecturaJusta | null
+    erroresCriticos?: ErrorCritico[]
+    recomendaciones?: Recomendacion[]
+    conclusion?: string | null
   },
 ): Promise<Puntaje> {
   const vigente = await modeloVigente()
@@ -239,11 +250,46 @@ export async function guardarEvaluacion(
       { esperadas: 1, cliente: cx },
     )
 
+    // ── Las fases del guion ────────────────────────────────────────────
+    const fases = datos.fases ?? []
+    await escribir('delete from analisis_fases where analisis_id = $1', [analisisId],
+      { esperadas: 'cualquiera', cliente: cx })
+    for (const [i, f] of fases.entries()) {
+      await escribir(
+        `insert into analisis_fases
+           (analisis_id, clave, nombre, peso, orden, nota, ejecucion,
+            lo_que_hizo, cita, lo_que_debia, analisis, se_dejo_pasar)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [analisisId, f.clave, f.nombre, f.peso, i, f.nota, f.ejecucion,
+         f.loQueHizo, f.cita, f.loQueDebia, f.analisis, f.seDejoPasar],
+        { esperadas: 1, cliente: cx },
+      )
+    }
+
+    const delPlaybook = datos.fasesDelPlaybook ?? []
+    const pct = delPlaybook.length === 0 ? null
+      : adherencia(delPlaybook, fases.map((f) => ({ clave: f.clave, ejecucion: f.ejecucion })))
+    const notaFases = delPlaybook.length === 0 ? null
+      : notaDeFases(delPlaybook, fases.map((f) => ({ clave: f.clave, nota: f.nota })))
+
     await guardarPuntaje(analisisId, vigente.id, puntaje, cx)
 
+    const lj = datos.lecturaJusta ?? null
     await escribir(
-      `update analisis set estado = 'analizada', error = null, modelo = coalesce($1, modelo) where id = $2`,
-      [datos.modelo ?? null, analisisId], { esperadas: 1, cliente: cx },
+      `update analisis set estado = 'analizada', error = null,
+              modelo = coalesce($1, modelo),
+              adherencia_pct = $3, nota_fases = $4,
+              valoracion_perfil = $5,
+              errores_criticos = $6::jsonb, recomendaciones = $7::jsonb, conclusion = $8,
+              lectura_justa = $9::jsonb
+        where id = $2`,
+      [datos.modelo ?? null, analisisId, pct, notaFases,
+       lj?.queRecibio ?? null,
+       JSON.stringify(datos.erroresCriticos ?? []),
+       JSON.stringify(datos.recomendaciones ?? []),
+       datos.conclusion ?? null,
+       lj === null ? null : JSON.stringify(lj)],
+      { esperadas: 1, cliente: cx },
     )
   })
 
@@ -351,6 +397,23 @@ export type AnalisisCompleto = {
   eventos: (EventoDetectado & { nombre: string; valor: number })[]
   objeciones: ObjecionDetectada[]
   feedback: Feedback | null
+
+  // ── El informe por fases del guion ────────────────────────────────────
+  /** Cuánto del guion se ejecutó, ponderado por peso. */
+  adherenciaPct: number | null
+  /** Qué tan bien se hizo lo que se hizo. Es otra pregunta que la de arriba. */
+  notaFases: number | null
+  fases: {
+    clave: string; nombre: string; peso: number; orden: number
+    nota: number | null; ejecucion: Ejecucion
+    loQueHizo: string | null; cita: string | null; loQueDebia: string | null
+    analisis: string | null; seDejoPasar: string | null
+  }[]
+  /** Qué lead le tocó y hasta dónde se podía llegar con ése. */
+  lecturaJusta: LecturaJusta | null
+  erroresCriticos: ErrorCritico[]
+  recomendaciones: Recomendacion[]
+  conclusion: string | null
 }
 
 export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> {
@@ -370,7 +433,7 @@ export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> 
   )
   if (!a) return null
 
-  const [niveles, eventos, objeciones, feedback, aportes] = await Promise.all([
+  const [niveles, eventos, objeciones, feedback, aportes, fases] = await Promise.all([
     filas<Record<string, any>>('select * from analisis_niveles where analisis_id = $1', [id]),
     filas<Record<string, any>>('select * from analisis_eventos where analisis_id = $1', [id]),
     filas<Record<string, any>>('select * from analisis_objeciones where analisis_id = $1', [id]),
@@ -378,9 +441,26 @@ export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> 
     a.score_id
       ? filas<Record<string, any>>('select * from score_dimensiones where call_score_id = $1', [a.score_id])
       : Promise.resolve([]),
+    filas<Record<string, any>>(
+      'select * from analisis_fases where analisis_id = $1 order by orden', [id]),
   ])
 
   return {
+    adherenciaPct: a.adherencia_pct === null || a.adherencia_pct === undefined
+      ? null : Number(a.adherencia_pct),
+    notaFases: a.nota_fases === null || a.nota_fases === undefined ? null : Number(a.nota_fases),
+    fases: fases.map((f) => ({
+      clave: f.clave, nombre: f.nombre, peso: Number(f.peso), orden: Number(f.orden),
+      nota: f.nota === null ? null : Number(f.nota),
+      ejecucion: f.ejecucion as Ejecucion,
+      loQueHizo: f.lo_que_hizo, cita: f.cita, loQueDebia: f.lo_que_debia,
+      analisis: f.analisis, seDejoPasar: f.se_dejo_pasar,
+    })),
+    lecturaJusta: (a.lectura_justa ?? null) as LecturaJusta | null,
+    erroresCriticos: (a.errores_criticos ?? []) as ErrorCritico[],
+    recomendaciones: (a.recomendaciones ?? []) as Recomendacion[],
+    conclusion: a.conclusion ?? null,
+
     id: a.id, llamadaId: a.llamada_id, leadId: a.lead_id, lead: a.lead, closer: a.closer,
     fecha: a.fecha, estado: a.estado, error: a.error, modelo: a.modelo, version: a.version ?? null,
     creadoEn: a.creado_en.toISOString(),

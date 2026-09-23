@@ -125,12 +125,26 @@ export async function guardarPlaybookAccion(datos: FormData): Promise<void> {
   // Un closer carga el suyo; quien configura, el de cualquiera.
   if (usuario.closerId !== closerId) exigir(usuario, 'configurar')
 
+  // Las fases vienen numeradas desde la pantalla. Se leen mientras haya
+  // alguna: la cantidad la decide quien carga, no una constante de acá.
+  const fases: { nombre: string; peso: unknown; objetivo: string; comoSeHace: string }[] = []
+  for (let i = 0; datos.has(`fase${i}Nombre`); i++) {
+    fases.push({
+      nombre: String(datos.get(`fase${i}Nombre`) ?? ''),
+      peso: datos.get(`fase${i}Peso`),
+      objetivo: String(datos.get(`fase${i}Objetivo`) ?? ''),
+      comoSeHace: String(datos.get(`fase${i}Como`) ?? ''),
+    })
+  }
+
   await guardarPlaybook(closerId, {
     nombre: String(datos.get('nombre') ?? 'Playbook').trim(),
     oferta: texto(datos, 'oferta'),
     script: String(datos.get('script') ?? ''),
+    fases,
   })
   revalidatePath('/llamadas')
+  revalidatePath('/analizador')
   revalidatePath('/configuracion')
 }
 

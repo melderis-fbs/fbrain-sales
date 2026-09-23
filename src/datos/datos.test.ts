@@ -106,6 +106,34 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(await leads.posiblesDuplicados({ nombre: 'Pedro Gómez' })).toEqual([])
   })
 
+  it('el playbook guarda sus fases, y sin fases usa las de por defecto', async () => {
+    // Es contra las fases que se mide la adherencia: un playbook sin ninguna
+    // daría 0% sin que eso signifique nada, y un cero que sólo dice «no
+    // configuraste esto» se lee como «el closer no siguió el guión».
+    const playbooks = await import('./playbooks')
+    const largo = 'x'.repeat(150)
+
+    const sinFases = await playbooks.guardarPlaybook(closerKevin, { nombre: 'P', script: largo })
+    const a = await playbooks.verPlaybook(sinFases)
+    expect(a?.fasesPorDefecto).toBe(true)
+    expect(a!.fases.length).toBeGreaterThan(5)
+
+    const conFases = await playbooks.guardarPlaybook(closerKevin, {
+      nombre: 'P', script: largo,
+      fases: [
+        { nombre: 'Encuadre', peso: 40, objetivo: 'Marcar las reglas', comoSeHace: '«¿te parece?»' },
+        { nombre: 'Cierre', peso: 60, objetivo: 'Pedir la decisión', comoSeHace: 'Escala del 1 al 10' },
+      ],
+    })
+    const b = await playbooks.verPlaybook(conFases)
+    expect(b?.fasesPorDefecto).toBe(false)
+    expect(b?.fases.map((f) => f.clave)).toEqual(['encuadre', 'cierre'])
+    expect(b?.fases[0]?.peso).toBe(40)
+
+    // Y la versión nueva es la vigente: las notas viejas quedan atadas a la suya.
+    expect((await playbooks.playbookVigente(closerKevin))?.id).toBe(conFases)
+  })
+
   it('una reunión de hoy no está «sin cargar» hasta que termine el día', async () => {
     // El reporte: «las sesiones del día las muestra como pasadas y todavía no
     // pasó la hora». Pedir el resultado de una llamada que no ocurrió enseña
