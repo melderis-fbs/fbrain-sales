@@ -73,7 +73,10 @@ export function motivoDeLaApi(cuerpo: string): string | null {
  * lugar distinto: una en Vercel, otra pegando una transcripción más corta, otra
  * cargando crédito. Decir «400» las junta a todas en un callejón sin salida.
  */
-export function enCastellano(estado: number, motivo: string | null, modelo: string): string {
+export function enCastellano(
+  estado: number, motivo: string | null, modelo: string,
+  workspace: string | null = WORKSPACE,
+): string {
   const m = (motivo ?? '').toLowerCase()
 
   if (estado === 401 || estado === 403) {
@@ -84,14 +87,23 @@ export function enCastellano(estado: number, motivo: string | null, modelo: stri
   // clave desde la pantalla de la organización en vez de entrar primero al
   // workspace, y el mensaje de la API es correcto e inservible para quien no
   // sabe qué es un workspace.
+  //
+  // El mensaje cambia según lo que la aplicación TENGA CARGADO, que es la
+  // diferencia entre «falta hacer algo» y «lo hiciste y está mal». Decir lo
+  // mismo en los dos casos manda a repetir el paso que ya se hizo.
   if (m.includes('workspace')) {
-    return 'La clave de Anthropic no está asociada a un workspace. Dos formas de arreglarlo, ' +
-           'y la primera es la más simple: entrá a console.anthropic.com, abrí el workspace ' +
-           'que quieras usar y creá la clave DESDE ADENTRO de ese workspace (Settings → API keys), ' +
-           'y reemplazá ANTHROPIC_API_KEY en Vercel con esa. La otra: dejá la clave que tenés y ' +
-           'agregá en Vercel la variable ANTHROPIC_WORKSPACE_ID con el id del workspace ' +
-           '(empieza con «wrkspc_», está en la URL de la consola). En los dos casos hay que ' +
-           'volver a desplegar.'
+    if (workspace) {
+      return `Hay un ANTHROPIC_WORKSPACE_ID cargado («${workspace}») y la API lo rechaza igual. ` +
+             'O el id no es el del workspace donde vive la clave, o el deploy todavía no lo tomó. ' +
+             'El id está en la URL de console.anthropic.com cuando entrás al workspace, y empieza ' +
+             'con «wrkspc_». Si lo cambiás en Vercel, acordate de volver a desplegar.'
+    }
+    return 'La clave de Anthropic es de la organización y no de un workspace, así que la API ' +
+           'no sabe a cuál cobrarle. Lo más simple: entrá a console.anthropic.com, abrí el ' +
+           'workspace que uses y creá la clave DESDE ADENTRO (Settings → API keys); ' +
+           'reemplazá ANTHROPIC_API_KEY en Vercel y volvé a desplegar. Si preferís no cambiar ' +
+           'la clave, agregá en Vercel ANTHROPIC_WORKSPACE_ID con el id del workspace ' +
+           '—empieza con «wrkspc_» y está en la URL de la consola— y desplegá igual.'
   }
   if (m.includes('credit') || m.includes('billing')) {
     return 'La cuenta de Anthropic no tiene crédito. Se carga en console.anthropic.com, en Billing.'
