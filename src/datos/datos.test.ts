@@ -1095,6 +1095,40 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(soloEstimado).toBeGreaterThan(0)
   })
 
+  it('el closer elige cómo se sigue: no todo entra a los 12 toques', async () => {
+    // Antes entraba todo. Un cliente que pidió que lo llamen en marzo no
+    // necesita doce toques, y meterlo igual llena el pipeline de tarjetas que
+    // nadie va a tocar — y un pipeline con ruido se deja de mirar.
+    const enCadencia = await alta('Con cadencia')
+    await resultado.cargarResultado(enCadencia, {
+      estado: 'asistio', resultado: 'seguimiento', comoSigue: 'cadencia' }, usuarioId)
+    expect((await seguimientos.seguimientoDelLead(enCadencia, '2026-09-15'))?.situacion).toBe('activo')
+
+    const largo = await alta('Volver en marzo')
+    await resultado.cargarResultado(largo, {
+      estado: 'asistio', resultado: 'seguimiento', comoSigue: 'largo', volverEl: '2027-03-01' }, usuarioId)
+    const suyo = await seguimientos.seguimientoDelLead(largo, '2026-09-15')
+    expect(suyo?.situacion).toBe('largo')
+    expect((await leads.verLead(largo))?.proximoContacto).toBe('2027-03-01')
+
+    const suelto = await alta('Sin perseguir')
+    await resultado.cargarResultado(suelto, {
+      estado: 'asistio', resultado: 'seguimiento', comoSigue: 'ninguno' }, usuarioId)
+    // Sin perseguirlo no hay tarjeta en el pipeline: ni siquiera una «fuera».
+    const sinTarjeta = await seguimientos.seguimientoDelLead(suelto, '2026-09-15')
+    expect(sinTarjeta === null || sinTarjeta.situacion === 'fuera').toBe(true)
+
+    // Los tres siguen en seguimiento: lo que cambia es quién los persigue.
+    for (const id of [enCadencia, largo, suelto]) {
+      expect((await leads.verLead(id))?.resultado).toBe('seguimiento')
+    }
+
+    // Y sin decir nada, la cadencia: lo que se hacía siempre.
+    const porDefecto = await alta('Sin elegir')
+    await resultado.cargarResultado(porDefecto, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+    expect((await seguimientos.seguimientoDelLead(porDefecto, '2026-09-15'))?.situacion).toBe('activo')
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

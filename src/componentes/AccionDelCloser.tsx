@@ -28,7 +28,7 @@ type Accion = {
   estado: Estado
   resultado: Resultado
   /** Qué hace falta además del botón. */
-  pide: 'plata' | 'motivo' | null
+  pide: 'plata' | 'motivo' | 'comoSigue' | null
   ayuda: string
 }
 
@@ -40,8 +40,8 @@ const ACCIONES: Accion[] = [
     estado: 'asistio', resultado: 'sena', pide: 'plata',
     ayuda: 'Comprometió plata pero no cerró. NO entra a facturación ni a cash hasta que se convierta.' },
   { clave: 'seguimiento', texto: 'Seguimiento', color: 'ambar', icono: 'seguimientos',
-    estado: 'asistio', resultado: 'seguimiento', pide: null,
-    ayuda: 'Queda abierto. Entra solo al pipeline de 12 toques.' },
+    estado: 'asistio', resultado: 'seguimiento', pide: 'comoSigue',
+    ayuda: 'Queda abierto. Elegí cómo se lo persigue: no todos necesitan los doce toques.' },
   { clave: 'no_show', texto: 'No Show', color: 'rojo', icono: 'tracker',
     estado: 'no_show', resultado: 'pendiente', pide: null,
     ayuda: 'No vino. La reunión queda cargada y no aparece más como pendiente.' },
@@ -60,6 +60,11 @@ export function AccionDelCloser({
 }: { leadId: number; moneda: string; hoy: string; resultadoActual: Resultado }) {
   const [error, accion] = useActionState<string | null, FormData>(cargarRapidoAccion, null)
   const [elegida, setElegida] = useState<Accion | null>(null)
+  // Cómo sigue un lead que queda en seguimiento. Antes entraban todos a la
+  // cadencia de 12 toques sin preguntar: un cliente que pidió que lo llamen en
+  // marzo no necesita doce toques, y meterlo igual llena el pipeline de
+  // tarjetas que nadie va a tocar — y un pipeline con ruido se deja de mirar.
+  const [comoSigue, setComoSigue] = useState<'cadencia' | 'largo' | 'ninguno'>('cadencia')
 
   return (
     <section className="acciones-closer">
@@ -104,6 +109,32 @@ export function AccionDelCloser({
                 </div>
               </>
             ) : <input type="hidden" name="fecha" value={hoy} />}
+
+            {elegida.pide === 'comoSigue' ? (
+              <>
+                <input type="hidden" name="comoSigue" value={comoSigue} />
+                <div className="campo" style={{ marginBottom: 0, minWidth: 260 }}>
+                  <label htmlFor="comoSigue">¿Cómo lo seguimos?</label>
+                  <select id="comoSigue" value={comoSigue} autoFocus
+                          onChange={(e) => setComoSigue(e.target.value as typeof comoSigue)}>
+                    <option value="cadencia">Cadencia de 12 toques</option>
+                    <option value="largo">Volver en una fecha puntual</option>
+                    <option value="ninguno">Sin perseguirlo · sólo queda abierto</option>
+                  </select>
+                  <div className="nota">
+                    {comoSigue === 'cadencia' ? 'Entra al pipeline y aparece cuando toca cada toque.'
+                      : comoSigue === 'largo' ? 'Sale de la cadencia y vuelve a aparecer ese día.'
+                      : 'No aparece en el pipeline. Queda abierto en su ficha y en la lista.'}
+                  </div>
+                </div>
+                {comoSigue === 'largo' ? (
+                  <div className="campo" style={{ marginBottom: 0 }}>
+                    <label htmlFor="volverEl">Volver el</label>
+                    <input id="volverEl" name="volverEl" type="date" required style={{ width: 160 }} />
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             {elegida.pide === 'motivo' ? (
               <div className="campo" style={{ marginBottom: 0, minWidth: 230 }}>

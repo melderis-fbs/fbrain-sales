@@ -2,7 +2,7 @@ import 'server-only'
 import { escribir, escribirDevolviendo, fila, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
 import { anotar, type Cambio } from './cambios'
-import { entrarAlPipeline, salirDelPipeline } from './seguimientos'
+import { entrarAlPipeline, salirDelPipeline, ponerSeguimientoLargo } from './seguimientos'
 import type { Estado, Resultado, MotivoPerdida } from '@/dominio/resultados'
 
 /**
@@ -29,6 +29,21 @@ export type ResultadoCargado = {
   observaciones?: string | null
   /** Cuando el resultado es venta. */
   venta?: { importe: number; moneda: string; fecha: string; programa?: string | null }
+  /**
+   * Cómo sigue un lead que queda en seguimiento.
+   *
+   *   'cadencia'  entra al pipeline de 12 toques (lo que se hacía siempre)
+   *   'largo'     vuelve a aparecer una fecha puntual, fuera de la cadencia
+   *   'ninguno'   queda en seguimiento y nadie lo persigue
+   *
+   * Antes no se preguntaba: todo lo que se marcaba «seguimiento» entraba a los
+   * doce toques. Un cliente que pidió que lo llamen en marzo no necesita doce
+   * toques, y meterlo igual llena el pipeline de tarjetas que nadie va a tocar
+   * — y un pipeline con ruido se deja de mirar.
+   */
+  comoSigue?: 'cadencia' | 'largo' | 'ninguno'
+  /** Con 'largo', cuándo volver. */
+  volverEl?: string | null
   /** Cuando el resultado es seña. */
   sena?: { importe: number; moneda: string; fecha: string; saldoPendiente?: number | null; fechaComprometida?: string | null }
 }
@@ -144,8 +159,20 @@ export async function cargarResultado(
                          anterior: null, nuevo: `${datos.sena.moneda} ${datos.sena.importe}` })
     }
 
-    // El pipeline de seguimientos se mueve solo con el resultado.
-    if (datos.resultado === 'seguimiento') await entrarAlPipeline(leadId, cx)
+    // El pipeline de seguimientos se mueve con el resultado, pero ya no
+    // arrastra a todos: el closer dice cómo sigue cada uno.
+    if (datos.resultado === 'seguimiento') {
+      const como = datos.comoSigue ?? 'cadencia'
+      if (como === 'cadencia') await entrarAlPipeline(leadId, cx)
+      else if (como === 'largo' && datos.volverEl) {
+        await ponerSeguimientoLargo(leadId, datos.volverEl, cx)
+        anotaciones.push({ entidad: 'lead', entidadId: leadId, campo: 'seguimiento largo',
+                           anterior: null, nuevo: datos.volverEl })
+      } else {
+        // Sin cadencia y sin fecha: queda en seguimiento y nadie lo persigue.
+        await salirDelPipeline(leadId, cx)
+      }
+    }
     if (datos.resultado === 'venta' || datos.resultado === 'perdida' || datos.resultado === 'no_calificado') {
       await salirDelPipeline(leadId, cx)
     }

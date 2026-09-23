@@ -225,6 +225,10 @@ export async function cargarResultadoAccion(datos: FormData): Promise<void> {
   await cargarResultado(leadId, {
     estado: (texto(datos, 'estado') ?? undefined) as Estado | undefined,
     resultado: resultado ?? undefined,
+    ...(resultado === 'seguimiento'
+      ? { comoSigue: (texto(datos, 'comoSigue') ?? 'cadencia') as 'cadencia' | 'largo' | 'ninguno',
+          volverEl: texto(datos, 'volverEl') }
+      : {}),
     huboOferta: datos.has('huboOferta') ? datos.get('huboOferta') === 'on' : undefined,
     motivoPerdida: (texto(datos, 'motivoPerdida') ?? null) as MotivoPerdida | null,
     proximoContacto: texto(datos, 'proximoContacto'),
@@ -282,6 +286,14 @@ export async function cargarRapidoAccion(
     return 'Elegí por qué se perdió. Es lo que después dice dónde se pierde el equipo.'
   }
 
+  // Cómo se persigue un lead en seguimiento. Si no se dice nada, la cadencia
+  // de 12 toques, que es lo que se hacía siempre.
+  const comoSigue = (texto(datos, 'comoSigue') ?? 'cadencia') as 'cadencia' | 'largo' | 'ninguno'
+  const volverEl = texto(datos, 'volverEl')
+  if (resultado === 'seguimiento' && comoSigue === 'largo' && volverEl === null) {
+    return 'Poné la fecha en la que hay que volver, o elegí otra forma de seguirlo.'
+  }
+
   const moneda = texto(datos, 'moneda') ?? 'USD'
   const cuando = fecha ?? new Date().toISOString().slice(0, 10)
 
@@ -291,6 +303,7 @@ export async function cargarRapidoAccion(
     // Si vino venta o seña, hubo oferta. No hace falta preguntarlo dos veces.
     huboOferta: resultado === 'venta' || resultado === 'sena' ? true : undefined,
     motivoPerdida: (motivo ?? null) as MotivoPerdida | null,
+    ...(resultado === 'seguimiento' ? { comoSigue, volverEl } : {}),
     ...(resultado === 'venta' && importe !== null
       ? { venta: { importe, moneda, fecha: cuando } } : {}),
     ...(resultado === 'sena' && importe !== null

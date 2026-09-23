@@ -39,9 +39,12 @@ export function CargaRapida({
   const [error, accion] = useActionState<string | null, FormData>(cargarRapidoAccion, null)
   const [queEstado, setQueEstado] = useState<Estado>(estado)
   const [queResultado, setQueResultado] = useState<Resultado>(resultado)
+  const [comoSigue, setComoSigue] = useState<'cadencia' | 'largo' | 'ninguno'>('cadencia')
 
   const pidePlata = queResultado === 'venta' || queResultado === 'sena'
   const pideMotivo = queResultado === 'perdida'
+  // No todo lo que queda en seguimiento necesita los doce toques.
+  const pideComoSigue = queResultado === 'seguimiento'
   // Sin asistencia no hay resultado de venta que cargar: el desplegable queda
   // en «pendiente» y no se pregunta nada más.
   const hubollamada = queEstado === 'asistio'
@@ -75,6 +78,24 @@ export function CargaRapida({
           <label className="oculto" htmlFor={`i-${leadId}`}>Importe</label>
           <input id={`i-${leadId}`} name="importe" inputMode="decimal" required
                  placeholder={`${moneda} 0`} style={{ width: compacto ? 92 : 110 }} />
+        </>
+      ) : null}
+
+      {hubollamada && pideComoSigue ? (
+        <>
+          <label className="oculto" htmlFor={`c-${leadId}`}>¿Cómo lo seguimos?</label>
+          <select id={`c-${leadId}`} name="comoSigue" value={comoSigue}
+                  onChange={(e) => setComoSigue(e.target.value as typeof comoSigue)}>
+            <option value="cadencia">12 toques</option>
+            <option value="largo">Volver en una fecha</option>
+            <option value="ninguno">Sin perseguirlo</option>
+          </select>
+          {comoSigue === 'largo' ? (
+            <>
+              <label className="oculto" htmlFor={`v-${leadId}`}>Volver el</label>
+              <input id={`v-${leadId}`} name="volverEl" type="date" required style={{ width: 150 }} />
+            </>
+          ) : null}
         </>
       ) : null}
 

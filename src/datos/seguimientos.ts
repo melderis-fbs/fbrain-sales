@@ -146,6 +146,30 @@ export async function moverAToque(leadId: number, toque: number, usuarioId: numb
  * Sale de la cadencia y queda con una fecha. Ese día le vuelve a aparecer al
  * closer, en vez de estorbar en la grilla doce semanas.
  */
+/**
+ * Poner un lead en seguimiento largo, dentro de una transacción que ya existe.
+ *
+ * Es la mitad de `marcarSeguimientoLargo`: la que escribe. Separarla es lo que
+ * deja marcar el seguimiento largo en el mismo movimiento en que se carga el
+ * resultado, sin abrir una transacción adentro de otra.
+ */
+export async function ponerSeguimientoLargo(
+  leadId: number, fecha: string, cx: PoolClient,
+): Promise<void> {
+  await escribir(
+    `insert into seguimiento_estado (lead_id, toque_actual, desde, ingreso_en, situacion, fecha_larga)
+     values ($1, 1, current_date, current_date, 'largo', $2)
+     on conflict (lead_id) do update
+        set situacion = 'largo', fecha_larga = excluded.fecha_larga,
+            salio_en = null, actualizado_en = now()`,
+    [leadId, fecha], { esperadas: 1, cliente: cx },
+  )
+  await escribir(
+    `update leads set proximo_contacto = $1, actualizado_en = now() where id = $2`,
+    [fecha, leadId], { esperadas: 1, cliente: cx },
+  )
+}
+
 export async function marcarSeguimientoLargo(
   leadId: number,
   fecha: string,
@@ -153,18 +177,7 @@ export async function marcarSeguimientoLargo(
   nota: string | null,
 ): Promise<void> {
   await enTransaccion(async (cx) => {
-    await escribir(
-      `insert into seguimiento_estado (lead_id, toque_actual, desde, ingreso_en, situacion, fecha_larga)
-       values ($1, 1, current_date, current_date, 'largo', $2)
-       on conflict (lead_id) do update
-          set situacion = 'largo', fecha_larga = excluded.fecha_larga,
-              salio_en = null, actualizado_en = now()`,
-      [leadId, fecha], { esperadas: 1, cliente: cx },
-    )
-    await escribir(
-      `update leads set proximo_contacto = $1, actualizado_en = now() where id = $2`,
-      [fecha, leadId], { esperadas: 1, cliente: cx },
-    )
+    await ponerSeguimientoLargo(leadId, fecha, cx)
     await anotar([{ entidad: 'lead', entidadId: leadId, campo: 'seguimiento largo',
                     anterior: null, nuevo: fecha, motivo: oNulo(nota) }], usuarioId, cx)
   })
