@@ -60,7 +60,7 @@ export default async function Setters({ searchParams }: { searchParams: Busqueda
                   <th className="num">Agendas</th><th className="num">Objetivo</th><th className="num">Cumpl.</th>
                   <th className="num">Asist.</th><th className="num">%</th>
                   <th className="num">No shows</th>
-                  <th className="num">Ventas</th><th className="num">Cierre</th>
+                  <th className="num">Cierres</th><th className="num">Cierre</th>
                   <th className="num">Quality</th><th className="num">Sin calificar</th>
                   <th className="num">Repescas</th>
                   {verPlata ? <th className="num">Facturación</th> : null}
@@ -78,7 +78,10 @@ export default async function Setters({ searchParams }: { searchParams: Busqueda
                     <td className="num">{s.asistencias}</td>
                     <td className="num">{porcentaje(s.asistenciaPct)}</td>
                     <td className="num">{s.noShows}</td>
-                    <td className="num">{s.ventas}</td>
+                    {/* Cierres por fecha de venta, igual que la facturación
+                        que originó. El % de cierre sigue midiendo sobre las
+                        agendas del período, que es su pregunta. */}
+                    <td className="num">{s.cerradas}</td>
                     <td className="num">{porcentaje(s.cierrePct)}</td>
                     <td className="num">
                       {s.calidadPromedio === null

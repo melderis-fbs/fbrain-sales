@@ -147,11 +147,18 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
       <FiltroDeCloser closers={cats.closers} actual={q.closer}
                       href={(closer) => con({ closer })} />
 
-      <div className="rejilla g6">
+      <div className="rejilla g4">
         <Numero etiqueta="Total llamadas" valor={m.agendadas} />
         <Numero etiqueta="Completadas" valor={m.asistencias} />
         <Numero etiqueta="No shows" valor={m.noShows} />
-        <Numero etiqueta="Ventas" valor={m.ventas} contra={`${m.cierrePct ?? 0}% de cierre`} />
+        {/* Los cierres del mes van por FECHA DE VENTA. Contarlos por la
+            fecha de la llamada dejaba a un closer con la facturación bien y
+            los cierres mal en la misma fila: una llamada de agosto firmada
+            en septiembre no es una venta de agosto. */}
+        <Numero etiqueta="Cierres" valor={m.ventasCerradas}
+                contra="firmados en el período" />
+        <Numero etiqueta="Cierre" valor={`${m.cierrePct ?? 0}%`}
+                contra={`${m.ventas} de ${m.asistencias} reuniones del período`} />
         <Numero etiqueta="Call score" valor={promedio}
                 contra={promedio === null ? 'sin llamadas analizadas' : `${comoSeLee(promedio)} · ${conNota.length} analizadas`} />
         <Numero etiqueta="Transcripciones" valor={conTranscripcion}

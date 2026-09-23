@@ -84,7 +84,12 @@ export default async function FichaDeCloser({
         <Numero etiqueta="Agendadas" valor={m.agendadas} />
         <Numero etiqueta="Asistencias" valor={m.asistencias} contra={porcentaje(m.asistenciaPct)} />
         <Numero etiqueta="Ofertas" valor={m.ofertas} contra={`${porcentaje(m.ofertaPct)} de las asistencias`} />
-        <Numero etiqueta="Ventas" valor={m.ventas} contra={`${porcentaje(m.cierrePct)} de cierre`} />
+        {/* Cierres por FECHA DE VENTA, igual que la facturación de abajo.
+            Por fecha de llamada, esta fila mostraba dos números que no se
+            pueden mirar juntos. */}
+        <Numero etiqueta="Cierres" valor={m.ventasCerradas} contra="firmados en el período" />
+        <Numero etiqueta="Cierre" valor={porcentaje(m.cierrePct)}
+                contra={`${m.ventas} de ${m.asistencias} reuniones del período`} />
         <Numero etiqueta="Cierre sobre oferta" valor={m.cierreSobreOfertaPct} unidad="%"
                 contra="de los que vieron el precio" />
         <Numero etiqueta="Lead quality recibido" valor={suyo?.calidadPromedio ?? null}

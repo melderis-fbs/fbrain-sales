@@ -61,7 +61,10 @@ export default async function Metricas({ searchParams }: { searchParams: Busqued
     { etiqueta: 'Ofertas', ahora: m.ofertas, antes: p.ofertas },
     { etiqueta: 'Tasa de oferta', ahora: m.ofertaPct, antes: p.ofertaPct, unidad: '%' },
     { etiqueta: 'Señas', ahora: m.senas, antes: p.senas },
-    { etiqueta: 'Ventas', ahora: m.ventas, antes: p.ventas },
+    { etiqueta: 'Cierres', ahora: m.ventasCerradas, antes: p.ventasCerradas,
+      como: DEFINICIONES.ventasCerradas!.formula },
+    { etiqueta: 'Cierres de las reuniones del período', ahora: m.ventas, antes: p.ventas,
+      como: 'Reuniones del período que terminaron en venta. Es el numerador del % de cierre.' },
     { etiqueta: 'Cierre', ahora: m.cierrePct, antes: p.cierrePct, unidad: '%', como: DEFINICIONES.cierrePct!.formula },
     { etiqueta: 'Cierre sobre oferta', ahora: m.cierreSobreOfertaPct, antes: p.cierreSobreOfertaPct, unidad: '%' },
     { etiqueta: 'En seguimiento', ahora: m.enSeguimiento, antes: p.enSeguimiento },
@@ -168,7 +171,7 @@ export default async function Metricas({ searchParams }: { searchParams: Busqued
                   <tr>
                     <th>{a.nombre}</th>
                     <th className="num">Agendadas</th><th className="num">Asistencias</th><th className="num">%</th>
-                    <th className="num">Ofertas</th><th className="num">Ventas</th><th className="num">Cierre</th>
+                    <th className="num">Ofertas</th><th className="num">Cierres</th><th className="num">Cierre</th>
                     {verPlata ? <th className="num">Facturación</th> : null}
                   </tr>
                 </thead>
@@ -180,7 +183,9 @@ export default async function Metricas({ searchParams }: { searchParams: Busqued
                       <td className="num">{f.asistencias}</td>
                       <td className="num">{porcentaje(f.asistenciaPct)}</td>
                       <td className="num">{f.ofertas}</td>
-                      <td className="num">{f.ventas}</td>
+                      {/* Cierres por fecha de venta; el % de cierre, sobre las
+                          reuniones del período. */}
+                      <td className="num">{f.cerradas}</td>
                       <td className="num">{porcentaje(f.cierrePct)}</td>
                       {verPlata ? <td className="num">{plata(f.facturacion, monedaBase)}</td> : null}
                     </tr>
@@ -193,7 +198,7 @@ export default async function Metricas({ searchParams }: { searchParams: Busqued
                     <td className="num">{m.asistencias}</td>
                     <td className="num">{porcentaje(m.asistenciaPct)}</td>
                     <td className="num">{m.ofertas}</td>
-                    <td className="num">{m.ventas}</td>
+                    <td className="num">{m.ventasCerradas}</td>
                     <td className="num">{porcentaje(m.cierrePct)}</td>
                     {verPlata ? <td className="num">{plata(m.facturacion, monedaBase)}</td> : null}
                   </tr>

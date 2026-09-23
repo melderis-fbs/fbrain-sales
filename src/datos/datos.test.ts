@@ -258,6 +258,46 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(sena?.estado).toBe('convertida')
   })
 
+  it('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {
+    // El reporte fue «a Kevin no le está tomando la fecha de cierre, le toma
+    // la fecha de llamada». La llamada fue en agosto y la firma en
+    // septiembre: es agenda de agosto y cierre de septiembre, y las dos cosas
+    // son ciertas a la vez.
+    const id = await alta('Cerró Tarde', { fechaSesion: '2026-08-20' })
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta', huboOferta: true,
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+
+    const agosto = { desde: '2026-08-01', hasta: '2026-08-31', etiqueta: 'agosto' }
+    const a = (await metricas.metricas(agosto, TODO)).medidas
+    const sep = (await metricas.metricas(rango, TODO)).medidas
+
+    // El cierre y su plata son de septiembre, que es cuando entraron.
+    expect(sep.ventasCerradas).toBe(1)
+    expect(sep.facturacion).toBe(4000)
+    expect(a.ventasCerradas).toBe(0)
+    expect(a.facturacion).toBe(0)
+
+    // La reunión sigue siendo de agosto, y su conversión también: si no, el
+    // cierre de septiembre se mediría contra asistencias que no tuvo.
+    expect(a.agendadas).toBe(1)
+    expect(a.asistencias).toBe(1)
+    expect(a.ventas).toBe(1)
+    expect(sep.ventas).toBe(0)
+
+    // Y el detalle por closer cuenta igual que el total: si no suman, la
+    // tabla de abajo desmiente a la tarjeta de arriba.
+    const detalle = await metricas.apertura('closer', rango, TODO)
+    const kevin = detalle.find((x) => x.id === closerKevin)
+    expect(kevin?.cerradas).toBe(1)
+    expect(kevin?.facturacion).toBe(4000)
+
+    // Y el día del tablero es el día en que se firmó.
+    const dias = await metricas.porDia(rango, TODO)
+    expect(dias.find((d) => d.dia === '2026-09-05')?.cerradas).toBe(1)
+  })
+
   it('corregir una venta la corrige: no carga una segunda', async () => {
     // El error caro: el closer se equivocaba en un dígito, volvía a guardar la
     // ficha y quedaban DOS ventas. La facturación del mes contaba la plata dos

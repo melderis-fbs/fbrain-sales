@@ -203,7 +203,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                 contra={<a href="#ventas">ver cuáles →</a>}
                 comoSeCalcula={DEFINICIONES.ventasCerradas!.formula} />
         <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
-                contra={`${m.ventas} ventas sobre ${m.asistencias} asistencias`}
+                contra={`${m.ventas} de ${m.asistencias} reuniones del período`}
                 comoSeCalcula={DEFINICIONES.cierrePct!.formula} />
         <Numero etiqueta="Cierre en segunda" valor={m.cierresEnSegunda}
                 contra="de los cierres, en segunda llamada"
@@ -417,11 +417,12 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         )}
       </Tarjeta>
 
-      <Tarjeta titulo="Día por día">
+      <Tarjeta titulo="Día por día"
+               ayuda="Las agendas y las asistencias son las reuniones de ese día; los cierres, los que se firmaron ese día.">
           {dias.length === 0 ? <p className="ayuda">Sin reuniones en el período.</p> : (
             <table>
               <thead>
-                <tr><th>Día</th><th className="num">Agendadas</th><th className="num">Asistencias</th><th className="num">Ventas</th></tr>
+                <tr><th>Día</th><th className="num">Agendadas</th><th className="num">Asistencias</th><th className="num">Cierres</th></tr>
               </thead>
               <tbody>
                 {dias.map((d) => (
@@ -432,7 +433,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                     </td>
                     <td className="num">{d.agendadas}</td>
                     <td className="num">{d.asistencias}</td>
-                    <td className="num">{d.ventas}</td>
+                    <td className="num">{d.cerradas}</td>
                   </tr>
                 ))}
               </tbody>

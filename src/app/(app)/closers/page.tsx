@@ -67,7 +67,7 @@ export default async function Closers({ searchParams }: { searchParams: Busqueda
                 <tr>
                   <th>Closer</th>
                   <th className="num">Agend.</th><th className="num">Asist.</th><th className="num">%</th>
-                  <th className="num">Ofertas</th><th className="num">Ventas</th>
+                  <th className="num">Ofertas</th><th className="num">Cierres</th>
                   <th className="num">Cierre</th>
                   <th className="num">Quality</th>
                   <th className="num">Índice</th>
@@ -83,7 +83,10 @@ export default async function Closers({ searchParams }: { searchParams: Busqueda
                     <td className="num">{c.asistencias}</td>
                     <td className="num">{porcentaje(c.asistenciaPct)}</td>
                     <td className="num">{c.ofertas}</td>
-                    <td className="num">{c.ventas}</td>
+                    {/* Cierres por fecha de venta; el % de cierre, sobre las
+                        reuniones del período. Son dos preguntas distintas y
+                        ahora cada columna dice cuál contesta. */}
+                    <td className="num">{c.cerradas}</td>
                     <td className="num">{porcentaje(c.cierrePct)}</td>
                     <td className="num">
                       {c.calidadPromedio === null ? <span className="sindato">—</span> : c.calidadPromedio}

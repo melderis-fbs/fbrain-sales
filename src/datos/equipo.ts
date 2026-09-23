@@ -76,7 +76,20 @@ export type FilaDeCloser = {
   ofertas: number
   ofertaPct: number | null
   senas: number
+  /**
+   * Los cierres de las reuniones DE ESTE PERÍODO. Es el numerador del cierre,
+   * y por eso va contra sus propias asistencias.
+   */
   ventas: number
+  /**
+   * Los cierres FIRMADOS en este período, venga la reunión del mes que venga.
+   *
+   * Es lo que el closer quiere decir con «este mes cerré tres», y es el número
+   * que va arriba en las pantallas. Sale de la fecha de venta, igual que la
+   * facturación: contarlo por la fecha de la llamada dejaba a alguien con la
+   * facturación bien y los cierres mal en la misma fila.
+   */
+  cerradas: number
   cierrePct: number | null
   cierreSobreOfertaPct: number | null
   /** El cierre puesto en contexto de los leads que recibió. */
@@ -107,6 +120,15 @@ export async function performanceDeClosers(
               count(l.id) filter (where l.resultado = 'venta')    as ventas,
               avg((select q.score from lead_quality q where q.lead_id = l.id
                     order by q.congelado desc, q.creado_en desc limit 1)) as calidad,
+              -- Los cierres del mes van por FECHA DE VENTA, como la
+              -- facturación. Van en subconsulta y no en un filter sobre el
+              -- join de arriba porque el join ya está acotado a las reuniones
+              -- del período: una venta de este mes cuya llamada fue el mes
+              -- pasado no está en esas filas.
+              (select count(*) from ventas vc
+                 join leads lc on lc.id = vc.lead_id and lc.borrado_en is null
+                where lc.closer_id = c.id and vc.borrado_en is null
+                  and vc.fecha between $1 and $2)                 as cerradas,
               coalesce((select sum(v.importe) from ventas v
                          join leads lv on lv.id = v.lead_id
                         where lv.closer_id = c.id and v.borrado_en is null and v.moneda = $3
@@ -154,6 +176,7 @@ export async function performanceDeClosers(
     const asistencias = Number(x.asistencias)
     const ofertas = Number(x.ofertas)
     const ventas = Number(x.ventas)
+    const cerradas = Number(x.cerradas)
     const facturacion = Number(x.facturacion)
     const mezcla: MezclaDeLeads[] = mezclas
       .filter((m) => m.closer_id === x.id)
@@ -168,12 +191,16 @@ export async function performanceDeClosers(
       asistenciaPct: tasa(asistencias, agendadas),
       ofertas, ofertaPct: tasa(ofertas, asistencias),
       senas: Number(x.senas),
-      ventas, cierrePct: tasa(ventas, asistencias),
+      ventas, cerradas, cierrePct: tasa(ventas, asistencias),
       cierreSobreOfertaPct: tasa(ventas, ofertas),
       ajuste: cierreAjustado(mezcla, generales.porNivel, generales.general),
       calidadPromedio: x.calidad === null ? null : Math.round(Number(x.calidad)),
       facturacion, cash: Number(x.cash),
-      ticketPromedio: ventas === 0 ? null : Math.round(facturacion / ventas),
+      // Ticket = facturación ÷ cierres, las dos cosas por fecha de venta.
+      // Dividir la facturación del mes por los cierres de las reuniones del
+      // mes son dos universos distintos, y el resultado no es el ticket de
+      // nada.
+      ticketPromedio: cerradas === 0 ? null : Math.round(facturacion / cerradas),
       notaLlamadas: x.nota === null ? null : Math.round(Number(x.nota) * 10) / 10,
       llamadasAnalizadas: Number(x.analizadas),
     }
@@ -191,7 +218,10 @@ export type FilaDeSetter = {
   asistenciaPct: number | null
   noShows: number
   ofertas: number
+  /** Cierres de las agendas de este período: el numerador de su cierre. */
   ventas: number
+  /** Cierres firmados en este período, de agendas suyas de cualquier mes. */
+  cerradas: number
   cierrePct: number | null
   /** Lead quality promedio de lo que agendó. Es el número del setter. */
   calidadPromedio: number | null
@@ -229,6 +259,13 @@ export async function performanceDeSetters(
             count(l.id) filter (where exists (
                   select 1 from lead_quality q2 where q2.lead_id = l.id))    as calificados,
             count(l.id) filter (where l.ciclo > 1)             as repescas,
+            -- Los cierres del mes, por fecha de venta: es la misma fecha con
+            -- la que se suma la facturación que originó, así que la cuenta y
+            -- la plata no pueden discrepar.
+            (select count(*) from ventas vc
+               join leads lc on lc.id = vc.lead_id and lc.borrado_en is null
+              where lc.setter_id = s.id and vc.borrado_en is null
+                and vc.fecha between $1 and $2)                as cerradas,
             (select valor from objetivos ob
               where ob.ambito = 'setter' and ob.ambito_id = s.id and ob.tipo = 'agendas'
                 and ob.desde <= $1 and ob.hasta >= $2
@@ -258,7 +295,8 @@ export async function performanceDeSetters(
       cumplimiento: objetivo === null || objetivo === 0 ? null : tasa(agendas, objetivo),
       asistencias, asistenciaPct: tasa(asistencias, agendas),
       noShows: Number(x.no_shows),
-      ofertas: Number(x.ofertas), ventas, cierrePct: tasa(ventas, asistencias),
+      ofertas: Number(x.ofertas), ventas, cerradas: Number(x.cerradas),
+      cierrePct: tasa(ventas, asistencias),
       calidadPromedio: x.calidad === null ? null : Math.round(Number(x.calidad)),
       calificados, sinCalificar: agendas - calificados,
       facturacionOriginada: Number(x.facturacion),

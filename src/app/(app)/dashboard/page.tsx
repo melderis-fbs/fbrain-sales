@@ -187,12 +187,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
         <Numero etiqueta="Ofertas" valor={m.ofertas}
                 contra={`${porcentaje(m.ofertaPct)} de las asistencias`}
                 comoSeCalcula={DEFINICIONES.ofertas!.formula} />
-        <Numero etiqueta="Ventas" valor={m.ventasCerradas}
+        <Numero etiqueta="Cierres" valor={m.ventasCerradas}
                 contra={verPlata ? <Link href="/tracker#ventas">ver cuáles →</Link> : undefined}
                 comoSeCalcula={DEFINICIONES.ventasCerradas!.formula}
                 tendencia={{ valor: variacion(m.ventasCerradas, p.ventasCerradas), sufijo: '%' }} />
         <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
-                contra={`${m.ventas} ventas sobre ${m.asistencias} asistencias`}
+                contra={`${m.ventas} de ${m.asistencias} reuniones del período`}
                 comoSeCalcula={DEFINICIONES.cierrePct!.formula}
                 tendencia={{ valor: variacion(m.cierrePct ?? 0, p.cierrePct ?? 0), sufijo: '%' }} />
         <Numero etiqueta="Señas" valor={m.senas}
@@ -293,7 +293,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
               <table>
                 <thead>
                   <tr><th>Fuente</th><th className="num">Agendadas</th><th className="num">Asistencias</th>
-                      <th className="num">Ventas</th><th className="num">Cierre</th></tr>
+                      <th className="num">Cierres</th><th className="num">Cierre</th></tr>
                 </thead>
                 <tbody>
                   {porFuente.map((f) => (
@@ -301,7 +301,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
                       <td>{f.nombre}</td>
                       <td className="num">{f.agendadas}</td>
                       <td className="num">{f.asistencias}</td>
-                      <td className="num">{f.ventas}</td>
+                      <td className="num">{f.cerradas}</td>
                       <td className="num">{porcentaje(f.cierrePct)}</td>
                     </tr>
                   ))}

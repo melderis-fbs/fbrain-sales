@@ -66,15 +66,21 @@ export function Tablero({ m, verPlata }: { m: Medidas; verPlata: boolean }) {
     { etiqueta: 'Asistencia a segunda', valor: m.segundasAsistidas, clave: 'segundasAsistidas' },
     { etiqueta: 'Ofertas hechas', valor: m.ofertas, clave: 'ofertas', corte: true },
     { etiqueta: 'Reservas', valor: m.senas, clave: 'senas' },
-    { etiqueta: 'Cierres', valor: m.ventas, clave: 'ventas', fuerte: true,
-      sobre: 'de las reuniones del período' },
+    // El cierre del período es el que se FIRMÓ en el período. El otro —cuántas
+    // de las reuniones de este mes terminaron en venta— es el numerador del %
+    // de cierre y queda abajo, con el nombre puesto: son dos preguntas y
+    // mezclarlas es lo que hacía que la facturación y los cierres no se
+    // pudieran mirar juntos.
+    { etiqueta: 'Cierres', valor: m.ventasCerradas, clave: 'ventasCerradas', fuerte: true,
+      sobre: 'firmados en el período' },
+    { etiqueta: 'Cierres de reuniones del período', valor: m.ventas, clave: 'ventas',
+      sobre: 'numerador del % de cierre' },
   ]
 
   if (verPlata) {
     cuantos.push(
-      { etiqueta: 'Ventas cerradas', valor: m.ventasCerradas, clave: 'ventasCerradas',
-        sobre: 'firmadas en el período', corte: true },
-      { etiqueta: 'Facturación', valor: plata(m.facturacion, m.moneda), clave: 'facturacion', fuerte: true },
+      { etiqueta: 'Facturación', valor: plata(m.facturacion, m.moneda), clave: 'facturacion',
+        fuerte: true, corte: true },
       { etiqueta: 'Cash collected', valor: plata(m.cashCollected, m.moneda), clave: 'cashCollected' },
       { etiqueta: 'Cash por agenda', valor: m.cashPorAgenda === null ? null : plata(m.cashPorAgenda, m.moneda),
         clave: 'cashPorAgenda', sobre: 'cash ÷ agendadas' },

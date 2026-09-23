@@ -279,8 +279,12 @@ await paso('el cierre no puede pasar de 100%', async () => {
   const cierre = await p.locator('.tarjeta:has-text("Tasa de cierre") .numero').first().textContent()
   const pct = Number((cierre ?? '').match(/([\d.]+)/)?.[1] ?? '0')
   comprobar(pct <= 100, `el cierre es ${pct}% · nunca más de 100 porque sale del mismo universo`)
-  const ventas = await p.locator('.tarjeta:has-text("Ventas") .etiqueta').first().textContent()
-  comprobar(ventas?.includes('Ventas'), 'y las ventas del período están al lado, por fecha de venta')
+  // Y al lado están los CIERRES del período, contados por fecha de venta: es
+  // el número que el closer entiende como «este mes cerré tres», y no tiene
+  // por qué coincidir con el numerador del porcentaje de acá al lado.
+  const cierres = await p.locator('.tarjeta:has-text("Cierres") .etiqueta').first().textContent()
+  comprobar(cierres?.trim() === 'Cierres',
+            'y los cierres del período están al lado, por fecha de venta')
 })
 
 await paso('un lead en seguimiento entra solo al pipeline', async () => {
@@ -465,7 +469,7 @@ await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', 
     // Métricas
     'Llamadas agendadas', 'Asistencias', 'Asistencias válidas', 'No calificadas', 'No show',
     'Canceladas', 'Reagendadas', 'Segundas llamadas', 'Asistencia a segunda', 'Ofertas hechas',
-    'Reservas', 'Cierres', 'Ventas cerradas', 'Facturación',
+    'Reservas', 'Cierres', 'Cierres de reuniones del período', 'Facturación',
     'Cash collected', 'Cash por agenda', 'Cash por asistencia',
     // Conversión
     'Asistencia', 'Asistencia válida', 'Canceladas', 'Asistencia a segunda', 'Ofertas hechas',
@@ -519,6 +523,67 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('matching')
   await p.goto(`${RAIZ}/comisiones`)
   await foto('comisiones')
+})
+
+await paso('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {
+  // El reporte: «a Kevin no le está tomando la fecha de cierre, le toma la
+  // fecha de llamada». La llamada fue el mes pasado y la firma es de hoy.
+  const mesPasado = (() => {
+    const [a, m] = HOY.split('-').map(Number)
+    const d = new Date(Date.UTC(a, m - 2, 15))
+    return d.toISOString().slice(0, 10)
+  })()
+
+  await p.goto(`${RAIZ}/leads/nuevo`)
+  await p.fill('#nombre', `Cerró Tarde ${marca}`)
+  await p.selectOption('#closerId', { label: 'Kevin' })
+  await p.fill('#fechaSesion', mesPasado)
+  await p.click(enLaPantalla('form button[type=submit]'))
+  await p.waitForURL(/leads\/\d+/)
+  const tarde = p.url().match(/leads\/(\d+)/)?.[1]
+
+  // Se reporta la venta con fecha de HOY, sobre una reunión del mes pasado.
+  await p.goto(`${RAIZ}/leads/${tarde}?pestana=resultado`)
+  await p.selectOption('.contenido #estado', 'asistio')
+  await p.selectOption('.contenido #salida', 'venta')
+  await p.fill('.contenido #importe', '4000')
+  await p.fill('.contenido #fecha', HOY)
+  await p.click('.contenido form button:has-text("Guardar el resultado")')
+  await esperar()
+  await p.waitForTimeout(700)
+
+  const numero = async (etiqueta) => {
+    const t = await p.locator(`.contenido .tarjeta:has-text("${etiqueta}") .numero`).first()
+      .textContent() ?? '0'
+    return Number(t.replace(/\D/g, ''))
+  }
+
+  await p.goto(`${RAIZ}/llamadas?periodo=mes`)
+  comprobar(await numero('Cierres') >= 1,
+            'el cierre aparece en el mes en que se firmó, aunque la llamada sea de otro mes')
+
+  await p.goto(`${RAIZ}/llamadas?periodo=mes_anterior`)
+  const enElMesDeLaLlamada = await numero('Cierres')
+  comprobar(enElMesDeLaLlamada === 0,
+            'y NO aparece en el mes de la llamada, que es lo que estaba mal')
+  comprobar(await numero('Total llamadas') >= 1,
+            'pero la reunión sí sigue siendo de ese mes: son dos cosas distintas')
+
+  // Y la facturación acompaña. Es lo que hacía que los dos números no se
+  // pudieran mirar juntos: los cierres contados por fecha de llamada y la
+  // plata por fecha de venta dan un ticket promedio que no es el ticket de
+  // nada. Si las tres columnas cierran entre sí, salen del mismo universo.
+  await p.goto(`${RAIZ}/closers?periodo=mes`)
+  const fila = await p.locator('.contenido tbody tr:has-text("Kevin")').first().innerText()
+  const celdas = fila.split('\t').map((x) => x.trim())
+  const num = (x) => Number((x ?? '').replace(/[^\d]/g, ''))
+  const cierres = num(celdas[5])
+  const facturado = num(celdas[9])
+  const ticket = num(celdas[10])
+  comprobar(cierres >= 1 && facturado > 0,
+            `Kevin tiene ${cierres} cierres y ${facturado} facturados en el mes de la firma`)
+  comprobar(cierres > 0 && Math.abs(facturado / cierres - ticket) <= 1,
+            'y el ticket cierra contra las dos: los tres números salen de la fecha de venta')
 })
 
 await paso('filtrar por closer es un clic, y está en todas las pantallas', async () => {
