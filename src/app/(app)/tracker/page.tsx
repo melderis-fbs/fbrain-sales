@@ -1,16 +1,20 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
-import { metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser } from '@/datos/metricas'
+import {
+  metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser, DEFINICIONES,
+} from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
+import { Iconos } from '@/componentes/Iconos'
 import { CargaRapida } from '@/componentes/CargaRapida'
 import { Tablero } from '@/componentes/Tablero'
 import { LoDeHoy } from '@/componentes/LoDeHoy'
-import { RecorridoDelMes } from '@/componentes/RecorridoDelMes'
+import { DesgloseDeClosers } from '@/componentes/DesgloseDeClosers'
+import { Kpi, conPct } from '@/componentes/Kpi'
 import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
@@ -95,9 +99,12 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
   // Lo que hay que cargar: la reunión ya fue y nadie dijo qué pasó. Va arriba
   // de todo porque es el trabajo pendiente, no un dato de consulta.
+  // Atrasadas: las de días ANTERIORES que siguen sin cargar. Las de hoy están
+  // arriba, en su agenda, y mostrarlas dos veces en la misma pantalla hace que
+  // no se sepa cuál de las dos hay que completar.
   const porCargar = leads.filter(
     (l) => l.estado === 'agendado' && l.resultado === 'pendiente'
-      && l.fechaSesion !== null && l.fechaSesion <= hoy,
+      && l.fechaSesion !== null && l.fechaSesion < hoy,
   )
 
   // Agrupadas por día: un período de dos semanas en una sola tabla se vuelve
@@ -112,50 +119,48 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
   return (
     <div className="apilado">
       <Encabezado kicker="Tracker" titulo={r.etiqueta}
-                  bajada="La planilla del equipo: lo que hay agendado, qué pasó y qué falta cargar.">
+                  bajada="¿Qué ocurrió comercialmente en este período?">
+        <Link className="boton secundario" href="/leads/importar">Cargar histórico</Link>
         <Link className="boton" href="/leads/nuevo">Registrar lead</Link>
       </Encabezado>
 
-      <Tarjeta titulo="Ahora" ayuda="La agenda de hoy, en orden. Lo que ya pasó y nadie cargó está primero y se carga desde acá.">
-        <LoDeHoy leads={agendaDeHoy} hoy={hoy} ahora={ahora}
-                 cerradoHoy={hoyMetricas.medidas.facturacion} moneda={monedaBase} verPlata={verPlata} />
-      </Tarjeta>
-
-      <div className="titulo-seccion">El mes</div>
-
-      <div className="entre">
-        <div className="chips">
-          {PERIODOS.map((x) => (
-            <Link key={x.clave}
-                href={con({ periodo: x.clave, dia: undefined, desde: undefined, hasta: undefined })}
-                  className={!q.dia && !aMano && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
-          ))}
+      <div className="barra-filtros">
+        <div className="arriba">
+          <div className="chips">
+            {PERIODOS.map((x) => (
+              <Link key={x.clave}
+                    href={con({ periodo: x.clave, dia: undefined, desde: undefined, hasta: undefined })}
+                    className={!q.dia && !aMano && periodo === x.clave ? 'activo' : ''}>{x.etiqueta}</Link>
+            ))}
+          </div>
+          <form method="get" className="selectores">
+            <input type="hidden" name="periodo" value={periodo} />
+            <label className="oculto" htmlFor="f-closer">Closer</label>
+            <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}
+                    >
+              <option value="">Todos los closers</option>
+              {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <label className="oculto" htmlFor="f-setter">Setter</label>
+            <select id="f-setter" name="setter" defaultValue={q.setter ?? ''}>
+              <option value="">Todos los setters</option>
+              {cats.setters.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <button type="submit" className="secundario chico">Filtrar</button>
+          </form>
         </div>
-        <form method="get" className="fila">
-          <input type="date" name="dia" defaultValue={q.dia ?? ''} style={{ width: 155 }} aria-label="Ver un día" />
-          <button type="submit" className="secundario chico">Ver ese día</button>
-        </form>
+        <div className="rango">
+          <Iconos.calendario />
+          {fechaCorta(r.desde)} — {fechaCorta(r.hasta)}
+          <form method="get" className="fila" style={{ marginLeft: 8 }}>
+            <input type="hidden" name="periodo" value={periodo} />
+            <label className="oculto" htmlFor="f-dia">Ver un día</label>
+            <input id="f-dia" type="date" name="dia" defaultValue={q.dia ?? ''}
+                   style={{ width: 150, fontSize: 12 }} />
+            <button type="submit" className="sutil chico">Ver ese día</button>
+          </form>
+        </div>
       </div>
-
-      <form className="filtros" method="get">
-        <input type="hidden" name="periodo" value={periodo} />
-        {q.dia ? <input type="hidden" name="dia" value={q.dia} /> : null}
-        <div className="campo">
-          <label htmlFor="f-closer">Closer</label>
-          <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}>
-            <option value="">Todos</option>
-            {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </div>
-        <div className="campo" style={{ minWidth: 0 }}>
-          <label htmlFor="f-pend">Sólo sin cargar</label>
-          <select id="f-pend" name="pendientes" defaultValue={soloPendientes ? '1' : ''}>
-            <option value="">No</option>
-            <option value="1">Sí</option>
-          </select>
-        </div>
-        <button type="submit" className="secundario">Filtrar</button>
-      </form>
 
       {/* Un solo renglón de pendientes. Antes eran dos avisos apilados arriba de
           todo; un tablero que saluda con dos alertas amarillas todos los días
@@ -176,6 +181,50 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           ) : null}
         </div>
       ) : null}
+
+      <div className="kpis">
+        <Kpi etiqueta="Llamadas" valor={m.agendadas} tono="azul" icono="llamadas"
+             contra="agendadas en el período" comoSeCalcula={DEFINICIONES.agendadas!.formula} />
+        <Kpi etiqueta="Asistencias" valor={m.asistencias} tono="verde" icono="tilde"
+             contra={conPct(m.asistenciaPct, 'de las agendadas')}
+             comoSeCalcula={DEFINICIONES.asistencias!.formula} />
+        <Kpi etiqueta="No shows" valor={m.noShows} tono={m.noShows > 0 ? 'rojo' : 'neutro'} icono="cruz"
+             contra={conPct(m.noShowPct, 'de las agendadas')} />
+        <Kpi etiqueta="Canceladas" valor={m.cancelados} tono={m.cancelados > 0 ? 'ambar' : 'neutro'}
+             icono="calendario" contra={conPct(m.cancelacionPct, 'de las agendadas')} />
+        <Kpi etiqueta="Ofertas" valor={m.ofertas} tono="azul" icono="analizador"
+             contra={conPct(m.ofertaPct, 'de las asistencias')} />
+        <Kpi etiqueta="Señas" valor={m.senas} tono={m.senas > 0 ? 'azul' : 'neutro'} icono="dinero"
+             contra={verPlata ? `${plata(m.senasImporte, monedaBase)} comprometidos` : 'con seña cargada'} />
+        <Kpi etiqueta="Ventas" valor={m.ventas} tono={m.ventas > 0 ? 'verde' : 'neutro'} icono="casos"
+             contra={conPct(m.cierrePct, 'de cierre sobre asistencias')}
+             comoSeCalcula={DEFINICIONES.ventas!.formula} />
+        {verPlata ? (
+          <Kpi etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} tono="azul" icono="metricas"
+               contra={`${m.ventasCerradas} ${m.ventasCerradas === 1 ? 'venta firmada' : 'ventas firmadas'} en el período`}
+               comoSeCalcula={DEFINICIONES.facturacion!.formula} destacada />
+        ) : null}
+        {verPlata ? (
+          <Kpi etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} tono="verde" icono="comisiones"
+               contra="cobrado de verdad" comoSeCalcula={DEFINICIONES.cashCollected!.formula} destacada />
+        ) : null}
+        <Kpi etiqueta="Sin cargar" valor={m.pendientesDeCargar}
+             tono={m.pendientesDeCargar > 0 ? 'ambar' : 'neutro'} icono="reloj"
+             contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
+      </div>
+
+      <Tarjeta titulo={alcance.todo ? 'Cómo viene cada closer' : 'Cómo venís'}
+               ayuda={alcance.todo
+                 ? 'De izquierda a derecha, en el orden en que se trabaja. El total, abajo.'
+                 : 'De izquierda a derecha, en el orden en que se trabaja.'}>
+        <DesgloseDeClosers filas={recorrido} verPlata={verPlata} soloUno={!alcance.todo} />
+      </Tarjeta>
+
+      <Tarjeta titulo="Hoy"
+               ayuda="La agenda del día, en orden. Lo que ya pasó y nadie cargó está primero, y se carga desde acá sin abrir la ficha.">
+        <LoDeHoy leads={agendaDeHoy} hoy={hoy} ahora={ahora}
+                 cerradoHoy={hoyMetricas.medidas.facturacion} moneda={monedaBase} verPlata={verPlata} />
+      </Tarjeta>
 
       {porCargar.length > 0 ? (
         <Tarjeta titulo={`Cargar el resultado de la llamada (${porCargar.length})`}
@@ -241,12 +290,6 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           </div>
         </Tarjeta>
       ) : null}
-
-      <Tarjeta titulo={`El recorrido de cada closer · ${r.etiqueta}`}
-               accion={<Link href="/dashboard" style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Ver el Dashboard →</Link>}>
-        <RecorridoDelMes filas={recorrido} etiqueta={r.etiqueta} verPlata={verPlata}
-                         soloUno={!alcance.todo} />
-      </Tarjeta>
 
       <Tarjeta titulo={`Las métricas de ${r.etiqueta}`}
                ayuda="A la izquierda cuántos; a la derecha qué porcentaje pasa de una etapa a la otra. Sale del mismo módulo que el Dashboard: no hay dos cuentas, hay una.">
@@ -353,43 +396,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         )}
       </Tarjeta>
 
-      <div className="rejilla g2">
-        <Tarjeta titulo="Por closer" ayuda="Del mismo período y de la misma consulta que los totales de arriba.">
-          {porCloser.length === 0 ? <p className="ayuda">Sin datos en el período.</p> : (
-            <div className="tabla-scroll">
-              <table>
-                <thead>
-                  <tr><th>Closer</th><th className="num">Agend.</th><th className="num">Asist.</th>
-                      <th className="num">Ofertas</th><th className="num">Ventas</th><th className="num">Cierre</th></tr>
-                </thead>
-                <tbody>
-                  {porCloser.map((c) => (
-                    <tr key={c.nombre}>
-                      <td>{c.id ? <Link href={`/closers/${c.id}`}>{c.nombre}</Link> : c.nombre}</td>
-                      <td className="num">{c.agendadas}</td>
-                      <td className="num">{c.asistencias}</td>
-                      <td className="num">{c.ofertas}</td>
-                      <td className="num">{c.ventas}</td>
-                      <td className="num">{porcentaje(c.cierrePct)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td>Total</td>
-                    <td className="num">{m.agendadas}</td>
-                    <td className="num">{m.asistencias}</td>
-                    <td className="num">{m.ofertas}</td>
-                    <td className="num">{m.ventas}</td>
-                    <td className="num">{porcentaje(m.cierrePct)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </Tarjeta>
-
-        <Tarjeta titulo="Día por día">
+      <Tarjeta titulo="Día por día">
           {dias.length === 0 ? <p className="ayuda">Sin reuniones en el período.</p> : (
             <table>
               <thead>
@@ -409,9 +416,8 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                 ))}
               </tbody>
             </table>
-          )}
-        </Tarjeta>
-      </div>
+        )}
+      </Tarjeta>
     </div>
   )
 }

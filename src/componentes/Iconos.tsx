@@ -140,6 +140,42 @@ export const Iconos = {
       <path d="m20 20-3.5-3.5" />
     </Base>
   ),
+  calendario: (p: Props) => (
+    <Base {...p}>
+      <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
+      <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+    </Base>
+  ),
+  dinero: (p: Props) => (
+    <Base {...p}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2.5" />
+      <circle cx="12" cy="12" r="2.5" />
+    </Base>
+  ),
+  reloj: (p: Props) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5V12l3 2" />
+    </Base>
+  ),
+  tilde: (p: Props) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 12.3l2.5 2.4 4.5-5" />
+    </Base>
+  ),
+  cruz: (p: Props) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+    </Base>
+  ),
+  agenda: (p: Props) => (
+    <Base {...p}>
+      <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
+      <path d="M3 9.5h18M8 2.5v4M16 2.5v4M9 14l1.8 1.8L15 12" />
+    </Base>
+  ),
   salir: (p: Props) => (
     <Base {...p}>
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
