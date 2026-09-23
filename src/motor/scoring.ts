@@ -20,7 +20,13 @@ export type Modelo = {
   dimensiones: { clave: string; nombre: string; peso: number }[]
   /** Nivel de rúbrica (0 a 4) → nota de 0 a 10. */
   niveles: Record<string, number>
-  penalizaciones: Record<string, number>
+  /**
+   * Cuánto resta cada evento y —cuando existe— qué dimensión lo mide.
+   *
+   * La dimensión es la que evita contar el mismo error dos veces: si la
+   * dimensión que le corresponde ya quedó floja, la penalización no entra.
+   */
+  penalizaciones: Record<string, { valor: number; dimension?: string }>
   bonificaciones: Record<string, number>
   topeBonificaciones: number
   /** Techo de la nota final cuando una dimensión quedó por debajo. */
@@ -55,6 +61,12 @@ export type Puntaje = {
   dimensiones: AporteDeDimension[]
   /** Dimensiones sin evidencia: quedaron fuera del promedio, no en cero. */
   sinEvidencia: string[]
+  /**
+   * Los eventos malos que NO restaron porque su dimensión ya los había
+   * contado. Se devuelven para poder mostrarlos: siguen siendo cierto lo que
+   * dicen, y esconderlos sería tapar el detalle que explica la nota.
+   */
+  penalizacionesAbsorbidas: string[]
 }
 
 /**
@@ -63,8 +75,17 @@ export type Puntaje = {
  * Ocho eventos malos en una llamada no la hacen ocho veces peor que uno: a
  * partir de cierto punto la nota ya dijo lo que tenía que decir, y seguir
  * restando sólo hace que todas las llamadas malas se vean iguales.
+ *
+ * Bajó de 2,5 a 1,5 junto con la regla de no contar dos veces: con las dos
+ * cosas sueltas, una llamada cuyas dimensiones promediaban 5,0 terminaba en
+ * 3,0 —«mala»— contradiciendo su propio detalle, donde ninguna dimensión
+ * bajaba de 3. Una nota que no se sostiene con lo que está escrito abajo no se
+ * discute con el closer: se descarta.
  */
-export const PENALIZACION_MAXIMA = 2.5
+export const PENALIZACION_MAXIMA = 1.5
+
+/** Una dimensión de 5 o menos ya dice que eso salió mal. */
+const YA_LO_CONTO = 5.0
 
 export function puntuar(
   niveles: readonly NivelAsignado[],
@@ -107,10 +128,26 @@ export function puntuar(
     }
   }
 
+  // Una penalización sólo entra si la dimensión que le corresponde NO la contó
+  // ya. «No pidió una decisión» con el cierre en 3 es el mismo hecho dos
+  // veces: la dimensión lo midió y el evento lo vuelve a cobrar. Lo que sigue
+  // restando es lo que ninguna dimensión mide —prometer algo que el programa
+  // no hace— y lo que pasó DENTRO de una dimensión que por lo demás salió
+  // bien, que es justo lo que el nivel no alcanza a mostrar.
+  const notaDe = (clave?: string) =>
+    clave === undefined ? null : (dimensiones.find((d) => d.dimension === clave)?.score ?? null)
+
+  const penalizacionesQueEntraron = eventos.filter((e) => {
+    const p = modelo.penalizaciones[e]
+    if (p === undefined) return false
+    const nota = notaDe(p.dimension)
+    return nota === null || nota > YA_LO_CONTO
+  })
+
   const penalizacion = redondear(
     Math.max(
       -PENALIZACION_MAXIMA,
-      eventos.reduce((s, e) => s + (modelo.penalizaciones[e] ?? 0), 0),
+      penalizacionesQueEntraron.reduce((s, e) => s + (modelo.penalizaciones[e]?.valor ?? 0), 0),
     ),
   )
   const bonificacion = redondear(
@@ -142,5 +179,7 @@ export function puntuar(
     topesQueEntraron,
     dimensiones,
     sinEvidencia,
+    penalizacionesAbsorbidas: eventos.filter(
+      (e) => modelo.penalizaciones[e] !== undefined && !penalizacionesQueEntraron.includes(e)),
   }
 }

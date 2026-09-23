@@ -8,7 +8,8 @@ import { DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES, TOPE_DE_BONIFICACIO
 const MODELO: Modelo = {
   dimensiones: DIMENSIONES.map((d) => ({ clave: d.clave, nombre: d.nombre, peso: d.peso })),
   niveles: Object.fromEntries(Object.entries(NIVEL_A_NOTA).map(([k, v]) => [k, v])),
-  penalizaciones: Object.fromEntries(Object.entries(PENALIZACIONES).map(([k, v]) => [k, v.valor])),
+  penalizaciones: Object.fromEntries(
+    Object.entries(PENALIZACIONES).map(([k, v]) => [k, { valor: v.valor, dimension: v.dimension }])),
   bonificaciones: Object.fromEntries(Object.entries(BONIFICACIONES).map(([k, v]) => [k, v.valor])),
   topeBonificaciones: TOPE_DE_BONIFICACIONES,
   topes: TOPES.map((t) => ({ dimension: t.dimension, menorA: t.menorA, tope: t.tope })),
@@ -92,8 +93,37 @@ describe('scoring de llamadas', () => {
   })
 
   it('las penalizaciones tienen piso', () => {
+    // Con todas las dimensiones en nivel 4, ninguna «ya lo contó», así que
+    // entran todas y el piso es lo que las frena.
     const p = puntuar(todos(4), Object.keys(PENALIZACIONES), MODELO)
-    expect(p.penalizacion).toBe(-2.5)
+    expect(p.penalizacion).toBe(-1.5)
+  })
+
+  it('una penalización NO resta si la dimensión que la mide ya quedó floja', () => {
+    // El error que daba notas que no se sostienen: las dimensiones promediaban
+    // 5,0 y la nota final era 3,0 «mala», con «cierre 3» restando además por
+    // «no pidió una decisión» y por «no estableció el próximo paso». Es el
+    // mismo hecho cobrado tres veces, y una nota que contradice el detalle que
+    // tiene abajo no se discute con el closer: se descarta.
+    const p = puntuar(todos(2), ['no_pide_decision', 'no_establece_proximo_paso'], MODELO)
+    expect(p.penalizacion).toBe(0)
+    expect(p.penalizacionesAbsorbidas.sort())
+      .toEqual(['no_establece_proximo_paso', 'no_pide_decision'])
+    // Y siguen siendo verdad: se devuelven para poder mostrarlas.
+  })
+
+  it('pero sí resta lo que pasó dentro de una dimensión que salió bien', () => {
+    // Un cierre de nivel 4 que igual no pidió la decisión es información que
+    // el nivel no alcanzó a mostrar, y ahí la penalización hace su trabajo.
+    const p = puntuar(todos(4), ['no_pide_decision'], MODELO)
+    expect(p.penalizacion).toBe(-0.5)
+    expect(p.penalizacionesAbsorbidas).toEqual([])
+  })
+
+  it('y lo que ninguna dimensión mide resta siempre', () => {
+    // Prometer algo que el programa no hace no lo mide ninguna dimensión.
+    const p = puntuar(todos(0), ['promesa_incorrecta'], MODELO)
+    expect(p.penalizacion).toBe(-1)
   })
 
   it('una dimensión sin evidencia no cuenta como cero', () => {

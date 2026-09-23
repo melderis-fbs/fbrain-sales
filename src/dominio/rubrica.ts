@@ -127,14 +127,15 @@ export const DIMENSIONES: readonly Dimension[] = [
  * Los eventos que restan. Vocabulario cerrado y con cita obligatoria: sin la
  * frase de la transcripción que lo sostiene, el evento no entra.
  */
-export const PENALIZACIONES: Record<string, { nombre: string; valor: number }> = {
-  no_encuentra_dolor:          { nombre: 'No encontró un dolor real',                  valor: -0.8 },
-  habla_mas_que_el_prospecto:  { nombre: 'Habló más que el prospecto sin justificación', valor: -0.4 },
-  pitch_prematuro:             { nombre: 'Presentó la oferta antes de tiempo',          valor: -0.6 },
-  no_identifica_objecion_real: { nombre: 'No identificó la objeción real',              valor: -0.7 },
-  no_pide_decision:            { nombre: 'No pidió una decisión',                       valor: -0.5 },
-  no_establece_proximo_paso:   { nombre: 'No estableció el próximo paso',               valor: -0.5 },
-  descuento_sin_trabajar:      { nombre: 'Ofreció descuento sin trabajar la objeción',  valor: -0.8 },
+export const PENALIZACIONES: Record<string, { nombre: string; valor: number; dimension?: string }> = {
+  no_encuentra_dolor:          { nombre: 'No encontró un dolor real',                  valor: -0.8, dimension: 'dolor' },
+  habla_mas_que_el_prospecto:  { nombre: 'Habló más que el prospecto sin justificación', valor: -0.4, dimension: 'control' },
+  pitch_prematuro:             { nombre: 'Presentó la oferta antes de tiempo',          valor: -0.6, dimension: 'oferta' },
+  no_identifica_objecion_real: { nombre: 'No identificó la objeción real',              valor: -0.7, dimension: 'objeciones' },
+  no_pide_decision:            { nombre: 'No pidió una decisión',                       valor: -0.5, dimension: 'cierre' },
+  no_establece_proximo_paso:   { nombre: 'No estableció el próximo paso',               valor: -0.5, dimension: 'cierre' },
+  descuento_sin_trabajar:      { nombre: 'Ofreció descuento sin trabajar la objeción',  valor: -0.8, dimension: 'objeciones' },
+  // Sin dimensión: no hay ninguna que lo mida, así que resta siempre.
   promesa_incorrecta:          { nombre: 'Prometió algo que el programa no hace',       valor: -1.0 },
 }
 

@@ -24,12 +24,31 @@ import {
 
 export type ModeloVigente = { id: number; version: string; modelo: Modelo }
 
+/**
+ * Las penalizaciones, vengan como vengan.
+ *
+ * Las configuraciones guardadas antes tienen `{clave: -0.8}`; ahora cada una
+ * lleva además qué dimensión la mide, para no cobrar dos veces el mismo error.
+ * Una config vieja se completa con la dimensión que dice el código, así no hay
+ * que migrar una tabla para arreglar una cuenta.
+ */
+function leerPenalizaciones(guardado: unknown): Modelo['penalizaciones'] {
+  const entradas = Object.entries((guardado ?? {}) as Record<string, unknown>)
+  return Object.fromEntries(entradas.map(([clave, v]) => [
+    clave,
+    typeof v === 'number'
+      ? { valor: v, dimension: PENALIZACIONES[clave]?.dimension }
+      : v as { valor: number; dimension?: string },
+  ]))
+}
+
 /** El modelo tal como está en el código. Es la versión v1. */
 export function modeloDelCodigo(): Modelo {
   return {
     dimensiones: DIMENSIONES.map((d) => ({ clave: d.clave, nombre: d.nombre, peso: d.peso })),
     niveles: Object.fromEntries(Object.entries(NIVEL_A_NOTA)),
-    penalizaciones: Object.fromEntries(Object.entries(PENALIZACIONES).map(([k, v]) => [k, v.valor])),
+    penalizaciones: Object.fromEntries(
+      Object.entries(PENALIZACIONES).map(([k, v]) => [k, { valor: v.valor, dimension: v.dimension }])),
     bonificaciones: Object.fromEntries(Object.entries(BONIFICACIONES).map(([k, v]) => [k, v.valor])),
     topeBonificaciones: TOPE_DE_BONIFICACIONES,
     topes: TOPES.map((t) => ({ dimension: t.dimension, menorA: t.menorA, tope: t.tope })),
@@ -53,7 +72,7 @@ export async function modeloVigente(): Promise<ModeloVigente> {
       modelo: {
         dimensiones: f.dimensiones,
         niveles: f.niveles,
-        penalizaciones: f.penalizaciones,
+        penalizaciones: leerPenalizaciones(f.penalizaciones),
         bonificaciones: f.bonificaciones.valores ?? f.bonificaciones,
         topeBonificaciones: Number(f.bonificaciones.tope ?? TOPE_DE_BONIFICACIONES),
         topes: f.topes,
@@ -271,7 +290,7 @@ export async function recalcular(configId: number): Promise<number> {
   const modelo: Modelo = {
     dimensiones: config.dimensiones,
     niveles: config.niveles,
-    penalizaciones: config.penalizaciones,
+    penalizaciones: leerPenalizaciones(config.penalizaciones),
     bonificaciones: config.bonificaciones.valores ?? config.bonificaciones,
     topeBonificaciones: Number(config.bonificaciones.tope ?? TOPE_DE_BONIFICACIONES),
     topes: config.topes,
