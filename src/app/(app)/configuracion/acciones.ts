@@ -10,6 +10,20 @@ import { anotar } from '@/datos/cambios'
 import { ROLES, PUEDE, type Rol } from '@/dominio/roles'
 
 /**
+ * Lo que se configura acá lo muestran todas las demás pantallas.
+ *
+ * El equipo, las fuentes y los funnels alimentan el alta de leads, los filtros
+ * del Tracker, los de Seguimientos y el desplegable de closer de cada ficha.
+ * Revalidar sólo Configuración dejaba a todas esas con la lista vieja: se daba
+ * de alta a alguien, no aparecía en ningún desplegable, y la conclusión
+ * razonable del otro lado es que el alta no funcionó.
+ */
+function refrescarTodo(): void {
+  revalidatePath('/configuracion')
+  revalidatePath('/', 'layout')
+}
+
+/**
  * Toda variable de negocio se cambia desde acá, no tocando código.
  *
  * Objetivos, fuentes, funnels, closers, setters y la moneda base. Un porcentaje
@@ -90,7 +104,7 @@ export async function crearPersonaAccion(_previo: string | null, datos: FormData
     }
   })
 
-  revalidatePath('/configuracion')
+  refrescarTodo()
   return null
 }
 
@@ -106,7 +120,7 @@ export async function cambiarClaveAccion(datos: FormData): Promise<void> {
   await escribir('update usuarios set clave_hash = $1 where id = $2', [await hashDeClave(clave), usuarioId])
   await anotar([{ entidad: 'config', entidadId: usuarioId, campo: 'clave',
                   anterior: null, nuevo: 'cambiada' }], usuario.id)
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 /**
@@ -128,7 +142,7 @@ export async function activarPersonaAccion(datos: FormData): Promise<void> {
   await anotar([{ entidad: 'config', entidadId: usuarioId, campo: 'acceso',
                   anterior: activo ? 'sin acceso' : 'con acceso',
                   nuevo: activo ? 'con acceso' : 'sin acceso' }], usuario.id)
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 /**
@@ -177,7 +191,7 @@ export async function editarCuentaAccion(_previo: string | null, datos: FormData
     ], usuario.id, cx)
   })
 
-  revalidatePath('/configuracion')
+  refrescarTodo()
   return null
 }
 
@@ -229,7 +243,7 @@ export async function eliminarCuentaAccion(datos: FormData): Promise<void> {
                     anterior: `${cuenta.nombre} · ${cuenta.email}`, nuevo: null }], usuario.id, cx)
   })
 
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 /**
@@ -287,7 +301,7 @@ export async function vincularFiguraAccion(datos: FormData): Promise<void> {
     }], usuario.id, cx)
   })
 
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 /**
@@ -322,7 +336,7 @@ export async function cambiarRolAccion(datos: FormData): Promise<void> {
                     anterior: antes.rol, nuevo: rol }], usuario.id, cx)
   })
 
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 export async function altaDeCatalogoAccion(datos: FormData): Promise<void> {
@@ -339,7 +353,7 @@ export async function altaDeCatalogoAccion(datos: FormData): Promise<void> {
     `insert into ${tabla} (nombre) values ($1) on conflict (nombre) do nothing`,
     [nombre], { esperadas: 'cualquiera' },
   )
-  revalidatePath('/configuracion')
+  refrescarTodo()
 }
 
 export async function objetivoAccion(datos: FormData): Promise<void> {
@@ -370,7 +384,7 @@ export async function objetivoAccion(datos: FormData): Promise<void> {
       usuario.id,
     ],
   )
-  revalidatePath('/configuracion')
+  refrescarTodo()
   revalidatePath('/dashboard')
 }
 
@@ -386,6 +400,6 @@ export async function monedaBaseAccion(datos: FormData): Promise<void> {
     [JSON.stringify(moneda), usuario.id],
   )
   await anotar([{ entidad: 'config', entidadId: 0, campo: 'moneda_base', anterior: null, nuevo: moneda }], usuario.id)
-  revalidatePath('/configuracion')
+  refrescarTodo()
   revalidatePath('/dashboard')
 }

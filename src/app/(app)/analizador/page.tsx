@@ -9,6 +9,7 @@ import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, Barra, Vacio, fechaCorta } from '@/componentes/Piezas'
 import { comoSeLee, DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES } from '@/dominio/rubrica'
 import { SinClave } from '@/componentes/SinClave'
+import { ProbarModelo } from '@/componentes/ProbarModelo'
 import { guardarPlaybookAccion } from '../llamadas/acciones'
 
 type Busqueda = Promise<Record<string, string | undefined>>
@@ -62,6 +63,11 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
       </Encabezado>
 
       <SinClave />
+
+      <Tarjeta titulo="¿El modelo responde?"
+               ayuda="Para cuando el analizador falla y no se sabe si es la clave, el workspace o que el deploy no tomó el cambio.">
+        <ProbarModelo />
+      </Tarjeta>
 
       <nav className="pestanas">
         {PESTANAS.map((p) => (

@@ -839,6 +839,23 @@ await paso('la ficha dice si guardó o no, y un email viejo no la bloquea', asyn
             'y si no cambió nada, también lo dice')
 })
 
+await paso('el Analizador se puede probar sin adivinar', async () => {
+  // «Lo cambié en Vercel y sigue sin andar»: entre editar una variable y que
+  // el analizador la use hay tres cosas que pueden fallar —la clave, el
+  // workspace, el deploy— y las tres dan el mismo error.
+  await p.goto(`${RAIZ}/analizador`)
+  comprobar(await p.locator('.contenido button:has-text("Probar la conexión")').count() === 1,
+            'hay un botón para probar la conexión con el modelo')
+  await p.locator('.contenido button:has-text("Probar la conexión")').click()
+  await esperarCuantos('.contenido .aviso.problema, .contenido .aviso.dato', 1, 20000)
+  const dice = await p.locator('.contenido .tarjeta:has-text("¿El modelo responde?")').textContent() ?? ''
+  // Este servidor corre sin clave, así que tiene que decir eso y no «error».
+  comprobar(dice.includes('Falta la clave'),
+            'y sin clave cargada lo dice con todas las letras')
+  comprobar(dice.includes('NO está cargada'),
+            'mostrando lo que este deploy está usando, que es la mitad de la respuesta')
+})
+
 await paso('el closer se cambia desde la misma pantalla que el resto', async () => {
   // El reporte: «no deja cambiar el nombre del closer una vez creado el lead».
   // Estaba, pero en otra pestaña, y un campo que está en otro lado es un campo
