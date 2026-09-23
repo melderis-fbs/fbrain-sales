@@ -248,13 +248,10 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                          soloUno={!alcance.todo} />
       </Tarjeta>
 
-      {/* Las 24 medidas siguen estando, pero no adelante: son para analizar, no
-          para trabajar, y adelante tapaban lo que sí hay que mirar todos los
-          días. */}
-      <details className="tarjeta desplegable">
-        <summary>Todas las métricas de {r.etiqueta}</summary>
-        <div style={{ marginTop: 12 }}><Tablero m={m} verPlata={verPlata} /></div>
-      </details>
+      <Tarjeta titulo={`Las métricas de ${r.etiqueta}`}
+               ayuda="A la izquierda cuántos; a la derecha qué porcentaje pasa de una etapa a la otra. Sale del mismo módulo que el Dashboard: no hay dos cuentas, hay una.">
+        <Tablero m={m} verPlata={verPlata} />
+      </Tarjeta>
 
       {toques.length > 0 ? (
         <Tarjeta titulo={`Seguimientos que tocan hoy (${toques.length})`}

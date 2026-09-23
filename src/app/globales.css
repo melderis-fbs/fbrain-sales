@@ -499,44 +499,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .pestanas a svg { width: 16px; height: 16px; color: var(--gris-claro); }
 .pestanas a.activo svg { color: var(--negro); }
 
-/* ── El mini tablero del Tracker ─────────────────────────────────────────────
- *
- * Veinticinco medidas tienen que entrar en una mirada, así que la tarjeta
- * grande del Dashboard no sirve acá: ocuparía tres pantallas y no se compararía
- * ninguna con ninguna. Estas son chicas, todas iguales y en grilla, que es lo
- * que deja recorrerlas con el ojo en vez de leerlas de a una.
- *
- * El número sigue siendo negro. Un tablero donde cada cifra tiene su color es
- * un tablero donde ninguna resalta. */
-.tablero { display: flex; flex-direction: column; gap: 14px; }
-.tablero-titulo {
-  font-size: 10.5px; font-weight: 700; color: var(--gris-claro);
-  letter-spacing: .14em; text-transform: uppercase; margin-bottom: 7px;
-}
-.minis {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  background: var(--blanco); border: 1px solid var(--borde);
-  border-radius: var(--radio-chico); overflow: hidden;
-}
-/* Las líneas las dibuja cada celda, no el fondo de la grilla: si la última fila
- * queda incompleta, el hueco es blanco y no un bloque gris colgando. El margen
- * negativo corre el borde de la última columna justo debajo del de la caja. */
-.mini {
-  padding: 9px 11px 10px;
-  border-right: 1px solid var(--borde); border-bottom: 1px solid var(--borde);
-  margin-right: -1px; margin-bottom: -1px;
-}
-.mini-etiqueta { font-size: 10.5px; font-weight: 600; color: var(--gris); line-height: 1.25;
-                 min-height: 26px; }
-.mini-numero {
-  font-size: 21px; font-weight: 700; letter-spacing: -.02em; color: var(--negro);
-  line-height: 1.15; font-variant-numeric: tabular-nums; margin-top: 2px;
-}
-.mini-numero .sindato { font-size: 13px; font-weight: 600; }
-.mini-unidad { font-size: .52em; font-weight: 650; margin-left: 1px; }
-.mini-contra { font-size: 10.5px; color: var(--gris-claro); margin-top: 3px; line-height: 1.3; }
-.mini.alerta .mini-numero { color: var(--rojo); }
-
 /* ── Lo de hoy: lo que está pasando en comercial ahora ───────────────────── */
 .hoy-numeros { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px; }
 .hoy-etiqueta { font-size: 11.5px; font-weight: 600; color: var(--gris); }
@@ -564,10 +526,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .pasos { display: flex; gap: 14px; font-size: 11.5px; color: var(--gris); margin-bottom: 5px; }
 .pasos b { font-size: 14px; color: var(--negro); font-weight: 700; margin-right: 3px;
            font-variant-numeric: tabular-nums; }
-.recorrido { display: flex; gap: 2px; height: 6px; }
-.recorrido .tramo { border-radius: 2px; min-width: 2px; }
-/* Un solo tono que se va oscureciendo: el escalón donde la barra cae es el que
- * dice dónde se pierde, sin que haga falta una leyenda de cuatro colores. */
+.recorrido { position: relative; height: 7px; }
+.recorrido .tramo { position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px; }
+/* Un solo tono que se va oscureciendo, cada etapa encima de la anterior: donde
+ * la barra se corta es donde se pierde, sin leyenda de cuatro colores. */
 .tramo.agendadas  { background: #E3E7EC; }
 .tramo.asistencias{ background: #B9C3CE; }
 .tramo.ofertas    { background: #7C8B9C; }
@@ -588,9 +550,39 @@ button:disabled { opacity: .45; cursor: not-allowed; }
                  letter-spacing: .12em; text-transform: uppercase; }
 .pendiente a { font-weight: 650; color: var(--negro); }
 
-/* ── Lo que se guarda plegado ────────────────────────────────────────────── */
-.desplegable > summary { cursor: pointer; font-size: 13px; font-weight: 650; color: var(--gris);
-                         list-style: none; display: flex; align-items: center; gap: 7px; }
-.desplegable > summary::before { content: '▸'; color: var(--gris-claro); }
-.desplegable[open] > summary::before { content: '▾'; }
-.desplegable > summary::-webkit-details-marker { display: none; }
+/* ── Las métricas, en dos listas ─────────────────────────────────────────────
+ *
+ * Una lista y no una grilla de tarjetas: veinticuatro tarjetas iguales no se
+ * comparan con nada, el ojo tiene que saltar de una a otra leyendo etiquetas.
+ * Acá los números quedan alineados en una columna y se recorren de arriba
+ * abajo sin leer nada. */
+.dos-listas { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 860px) { .dos-listas { grid-template-columns: 1fr; gap: 20px; } }
+
+.lista-titulo {
+  font-size: 10.5px; font-weight: 700; color: var(--gris-claro);
+  letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px;
+}
+.lista-metrica { width: 100%; border-collapse: collapse; }
+.lista-metrica th {
+  text-align: left; font-weight: 500; font-size: 13px; color: var(--tinta);
+  padding: 7px 0; border-bottom: 1px solid var(--borde); vertical-align: baseline;
+  /* Los `th` de la aplicación son encabezados de columna, en versalita. Estos
+   * son nombres de métrica: se leen como texto, no como rótulo. */
+  text-transform: none; letter-spacing: 0;
+}
+.lista-metrica td {
+  text-align: right; padding: 7px 0; border-bottom: 1px solid var(--borde);
+  font-size: 15px; font-weight: 650; color: var(--negro);
+  font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: baseline;
+}
+.lista-metrica tr:last-child th, .lista-metrica tr:last-child td { border-bottom: none; }
+/* El dato de contra qué se calcula, al lado y chiquito: «28%» no dice nada,
+ * «28% sobre asistencias» sí. */
+.lista-metrica .sobre { display: block; font-size: 10.5px; color: var(--gris-claro); margin-top: 1px; }
+.lista-metrica .unidad { font-size: .68em; font-weight: 600; margin-left: 1px; }
+.lista-metrica .sindato { font-size: 12.5px; }
+/* Las tres o cuatro líneas que se miran de verdad, un punto más grandes. */
+.lista-metrica tr.fuerte th { font-weight: 650; color: var(--negro); }
+.lista-metrica tr.fuerte td { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.lista-metrica tr.corte th, .lista-metrica tr.corte td { padding-top: 15px; }

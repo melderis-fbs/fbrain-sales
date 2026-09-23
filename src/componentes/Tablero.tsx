@@ -4,128 +4,120 @@ import { DEFINICIONES } from '@/datos/metricas'
 import { plata } from './Piezas'
 
 /**
- * El mini tablero del Tracker.
+ * Las métricas del período, en dos listas.
  *
- * Las mismas medidas que el Dashboard, apretadas, para mirarlas de un vistazo
- * sin cambiar de pantalla. Sale del MISMO módulo de métricas: no hay una
- * segunda cuenta en ninguna parte, que es lo que hacía que el sistema anterior
- * dijera 111% de cierre acá y 11% allá.
+ * A la izquierda CUÁNTOS —agendadas, asistencias, cierres, plata—; a la
+ * derecha QUÉ PORCENTAJE pasa de una etapa a la otra. Son dos preguntas
+ * distintas y se leen en dos momentos distintos: una dice cuánto trabajo hubo,
+ * la otra dice dónde se pierde.
  *
- * Tres bloques, porque son tres preguntas distintas y mezclarlas hace que
- * ninguna se conteste:
+ * Es una lista y no una grilla de tarjetas porque veinticuatro tarjetas
+ * iguales no se comparan con nada: el ojo tiene que saltar de una a otra
+ * leyendo etiquetas. En una lista los números quedan alineados en una columna
+ * y se recorren de arriba abajo sin leer nada.
  *
- *   VOLUMEN     cuántas reuniones hubo y en qué terminaron
- *   CONVERSIÓN  qué porcentaje pasó de cada etapa a la siguiente
- *   PLATA       cuánto entró, y cuánto por reunión
- *
- * Ningún número va solo: debajo de cada uno está sobre qué se calcula. «28%»
- * no dice nada; «28% de las asistencias» sí. Y `null` no es cero: cuando no
- * hay con qué dividir dice «sin datos» en vez de mentir un 0%.
+ * Ningún número va solo: al lado de cada porcentaje está sobre qué se calcula.
+ * «28%» no dice nada; «28% · sobre asistencias» sí. Y donde no hay con qué
+ * dividir dice «sin datos», no 0%: un cero inventado se usa igual que uno real.
  */
-function Mini({ etiqueta, valor, contra, clave, alerta }: {
+type Linea = {
   etiqueta: string
   valor: ReactNode
-  contra?: string
-  /** La clave en DEFINICIONES: pone la fórmula en el title, al alcance del mouse. */
+  sobre?: string
   clave?: string
-  /** Un número que pide acción, no uno que se mira. */
-  alerta?: boolean
-}) {
+  /** Una línea que se lee más que las otras. */
+  fuerte?: boolean
+  /** Un corte visual antes de esta línea. */
+  corte?: boolean
+}
+
+function Lista({ lineas }: { lineas: Linea[] }) {
   return (
-    <div className={alerta ? 'mini alerta' : 'mini'}
-         title={clave ? DEFINICIONES[clave]?.formula : undefined}>
-      <div className="mini-etiqueta">{etiqueta}</div>
-      <div className="mini-numero">{valor ?? <span className="sindato">sin datos</span>}</div>
-      {contra ? <div className="mini-contra">{contra}</div> : null}
-    </div>
+    <table className="lista-metrica">
+      <tbody>
+        {lineas.map((l) => (
+          <tr key={l.etiqueta} className={[l.fuerte ? 'fuerte' : '', l.corte ? 'corte' : ''].join(' ').trim() || undefined}>
+            <th scope="row" title={l.clave ? DEFINICIONES[l.clave]?.formula : undefined}>
+              {l.etiqueta}
+              {l.sobre ? <span className="sobre">{l.sobre}</span> : null}
+            </th>
+            <td>{l.valor ?? <span className="sindato">sin datos</span>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
 const pct = (v: number | null): ReactNode =>
-  v === null ? null : <>{v.toLocaleString('es-AR')}<span className="mini-unidad">%</span></>
+  v === null ? null : <>{v.toLocaleString('es-AR')}<span className="unidad">%</span></>
 
 export function Tablero({ m, verPlata }: { m: Medidas; verPlata: boolean }) {
-  const de = (n: number, total: number, que: string) =>
-    total === 0 ? 'sin agendadas' : `${n} de ${total} ${que}`
+  const cuantos: Linea[] = [
+    { etiqueta: 'Llamadas agendadas', valor: m.agendadas, clave: 'agendadas' },
+    { etiqueta: 'Asistencias', valor: m.asistencias, clave: 'asistencias' },
+    { etiqueta: 'Asistencias válidas', valor: m.asistenciasValidas, clave: 'asistenciasValidas',
+      sobre: 'asistió y calificaba' },
+    { etiqueta: 'No calificadas', valor: m.noCalificadas, clave: 'noCalificadas' },
+    { etiqueta: 'No show', valor: m.noShows, clave: 'noShows' },
+    { etiqueta: 'Canceladas', valor: m.cancelados, clave: 'cancelados' },
+    { etiqueta: 'Reagendadas', valor: m.reagendados, clave: 'reagendados' },
+    { etiqueta: 'Segundas llamadas', valor: m.segundas, clave: 'segundas', corte: true },
+    { etiqueta: 'Asistencia a segunda', valor: m.segundasAsistidas, clave: 'segundasAsistidas' },
+    { etiqueta: 'Ofertas hechas', valor: m.ofertas, clave: 'ofertas', corte: true },
+    { etiqueta: 'Reservas', valor: m.senas, clave: 'senas' },
+    { etiqueta: 'Cierres', valor: m.ventas, clave: 'ventas', fuerte: true,
+      sobre: 'de las reuniones del período' },
+  ]
+
+  if (verPlata) {
+    cuantos.push(
+      { etiqueta: 'Ventas cerradas', valor: m.ventasCerradas, clave: 'ventasCerradas',
+        sobre: 'firmadas en el período', corte: true },
+      { etiqueta: 'Facturación', valor: plata(m.facturacion, m.moneda), clave: 'facturacion', fuerte: true },
+      { etiqueta: 'Cash collected', valor: plata(m.cashCollected, m.moneda), clave: 'cashCollected' },
+      { etiqueta: 'Cash por agenda', valor: m.cashPorAgenda === null ? null : plata(m.cashPorAgenda, m.moneda),
+        clave: 'cashPorAgenda', sobre: 'cash ÷ agendadas' },
+      { etiqueta: 'Cash por asistencia', valor: m.cashPorAsistencia === null ? null : plata(m.cashPorAsistencia, m.moneda),
+        clave: 'cashPorAsistencia', sobre: 'cash ÷ asistencias' },
+    )
+  }
+
+  const conversiones: Linea[] = [
+    { etiqueta: 'Asistencia', valor: pct(m.asistenciaPct), sobre: 'sobre agendadas' },
+    { etiqueta: 'Asistencia válida', valor: pct(m.asistenciaValidaPct), sobre: 'sobre agendadas',
+      clave: 'asistenciaValidaPct' },
+    { etiqueta: 'No calificadas', valor: pct(m.noCalificadasPct), sobre: 'sobre asistencias',
+      clave: 'noCalificadasPct' },
+    { etiqueta: 'Canceladas', valor: pct(m.cancelacionPct), sobre: 'sobre agendadas' },
+    { etiqueta: 'Asistencia a segunda', valor: pct(m.segundaAsistenciaPct), sobre: 'sobre segundas agendadas',
+      clave: 'segundaAsistenciaPct', corte: true },
+    { etiqueta: 'Ofertas hechas', valor: pct(m.ofertaPct), sobre: 'sobre asistencias', corte: true },
+    { etiqueta: 'Cierre / asistencia', valor: pct(m.cierrePct), sobre: 'sobre asistencias',
+      clave: 'cierrePct', fuerte: true },
+    { etiqueta: 'Cierre / asistencia válida', valor: pct(m.cierreSobreValidaPct),
+      sobre: 'sobre asistencias válidas', clave: 'cierreSobreValidaPct', fuerte: true },
+    { etiqueta: 'Cierre / oferta', valor: pct(m.cierreSobreOfertaPct), sobre: 'sobre ofertas hechas',
+      clave: 'cierreSobreOfertaPct', fuerte: true },
+  ]
 
   return (
-    <div className="tablero">
-      <div className="tablero-bloque">
-        <div className="tablero-titulo">Volumen</div>
-        <div className="minis">
-          <Mini etiqueta="Llamadas agendadas" valor={m.agendadas} clave="agendadas"
-                contra="con reunión en el período" />
-          <Mini etiqueta="Asistencias" valor={m.asistencias} clave="asistencias"
-                contra={de(m.asistencias, m.agendadas, 'agendadas')} />
-          <Mini etiqueta="Asistencias válidas" valor={m.asistenciasValidas} clave="asistenciasValidas"
-                contra={`asistió y calificaba`} />
-          <Mini etiqueta="No calificadas" valor={m.noCalificadas} clave="noCalificadas"
-                contra="asistió y no calificaba" />
-          <Mini etiqueta="No show" valor={m.noShows} clave="noShows"
-                contra={de(m.noShows, m.agendadas, 'agendadas')} />
-          <Mini etiqueta="Canceladas" valor={m.cancelados} clave="cancelados"
-                contra={de(m.cancelados, m.agendadas, 'agendadas')} />
-          <Mini etiqueta="Reagendadas" valor={m.reagendados} clave="reagendados"
-                contra={de(m.reagendados, m.agendadas, 'agendadas')} />
-          <Mini etiqueta="Segundas llamadas" valor={m.segundas} clave="segundas"
-                contra="marcadas como segunda sesión" />
-          <Mini etiqueta="Asistencia a segunda" valor={m.segundasAsistidas} clave="segundasAsistidas"
-                contra={m.segundas === 0 ? 'sin segundas agendadas' : `de ${m.segundas} segundas`} />
-          <Mini etiqueta="Ofertas hechas" valor={m.ofertas} clave="ofertas"
-                contra={de(m.ofertas, m.asistencias, 'asistencias')} />
-          <Mini etiqueta="Reservas" valor={m.senas} clave="senas"
-                contra={verPlata ? plata(m.senasImporte, m.moneda) + ' comprometidos' : 'con seña cargada'} />
-          <Mini etiqueta="Cierres" valor={m.ventas} clave="ventas"
-                contra={de(m.ventas, m.asistencias, 'asistencias')} />
-        </div>
+    <div className="dos-listas">
+      <div>
+        <div className="lista-titulo">Métricas</div>
+        <Lista lineas={cuantos} />
       </div>
-
-      <div className="tablero-bloque">
-        <div className="tablero-titulo">Conversión</div>
-        <div className="minis">
-          <Mini etiqueta="% Asistencia" valor={pct(m.asistenciaPct)} contra="sobre agendadas" />
-          <Mini etiqueta="% Asistencia válida" valor={pct(m.asistenciaValidaPct)}
-                clave="asistenciaValidaPct" contra="sobre agendadas" />
-          <Mini etiqueta="% No calificadas" valor={pct(m.noCalificadasPct)}
-                clave="noCalificadasPct" contra="sobre asistencias" />
-          <Mini etiqueta="% Canceladas" valor={pct(m.cancelacionPct)} contra="sobre agendadas" />
-          <Mini etiqueta="% Asistencia a segunda" valor={pct(m.segundaAsistenciaPct)}
-                clave="segundaAsistenciaPct" contra="sobre segundas agendadas" />
-          <Mini etiqueta="% Ofertas hechas" valor={pct(m.ofertaPct)} contra="sobre asistencias" />
-          <Mini etiqueta="% Cierre / asistencia" valor={pct(m.cierrePct)} clave="cierrePct"
-                contra="sobre asistencias" />
-          <Mini etiqueta="% Cierre / asist. válida" valor={pct(m.cierreSobreValidaPct)}
-                clave="cierreSobreValidaPct" contra="sobre asistencias válidas" />
-          <Mini etiqueta="% Cierre / oferta" valor={pct(m.cierreSobreOfertaPct)}
-                clave="cierreSobreOfertaPct" contra="sobre ofertas hechas" />
-        </div>
+      <div>
+        <div className="lista-titulo">Conversión</div>
+        <Lista lineas={conversiones} />
+        {m.pendientesDeCargar > 0 ? (
+          <p className="ayuda" style={{ marginTop: 10 }}>
+            Hay <strong>{m.pendientesDeCargar}</strong>{' '}
+            {m.pendientesDeCargar === 1 ? 'reunión sin resultado cargado' : 'reuniones sin resultado cargado'}:
+            hasta que se carguen, estos porcentajes están incompletos.
+          </p>
+        ) : null}
       </div>
-
-      {verPlata ? (
-        <div className="tablero-bloque">
-          <div className="tablero-titulo">Plata</div>
-          <div className="minis">
-            <Mini etiqueta="Cash collected" valor={plata(m.cashCollected, m.moneda)}
-                  clave="cashCollected" contra="cobrado de verdad en el período" />
-            <Mini etiqueta="Cash por agenda"
-                  valor={m.cashPorAgenda === null ? null : plata(m.cashPorAgenda, m.moneda)}
-                  clave="cashPorAgenda" contra="cash ÷ agendadas · no es un %" />
-            <Mini etiqueta="Cash por asistencia"
-                  valor={m.cashPorAsistencia === null ? null : plata(m.cashPorAsistencia, m.moneda)}
-                  clave="cashPorAsistencia" contra="cash ÷ asistencias · no es un %" />
-            <Mini etiqueta="Facturación" valor={plata(m.facturacion, m.moneda)}
-                  clave="facturacion" contra="vendido en el período" />
-          </div>
-        </div>
-      ) : null}
-
-      {m.pendientesDeCargar > 0 ? (
-        <p className="ayuda" style={{ marginTop: 10 }}>
-          Ojo: hay <strong>{m.pendientesDeCargar}</strong>{' '}
-          {m.pendientesDeCargar === 1 ? 'reunión sin resultado cargado' : 'reuniones sin resultado cargado'}
-          {' '}en este período. Hasta que se carguen, todo lo de arriba está incompleto.
-        </p>
-      ) : null}
     </div>
   )
 }

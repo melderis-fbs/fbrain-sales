@@ -35,6 +35,16 @@ p.on('response', (r) => { if (r.status() >= 500) fallos.push(`${r.status()} ${r.
 const paso = async (n, f) => { console.log(`\n▶ ${n}`); await f() }
 
 /**
+ * Hoy, como lo cuenta la aplicación.
+ *
+ * `toISOString()` da la fecha UTC, y a partir de las 21 de Argentina eso ya es
+ * mañana. El recorrido agendaba reuniones «de hoy» para el día siguiente y
+ * fallaba pasos que no tenían nada roto. La aplicación cuenta el día en
+ * Argentina, así que el recorrido también.
+ */
+const HOY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+
+/**
  * Los selectores van SIEMPRE dentro de `.contenido`.
  *
  * La barra lateral tiene el botón de Salir y es lo primero del DOM, así que un
@@ -116,7 +126,7 @@ await paso('registrar un lead con lo mínimo', async () => {
   await p.selectOption('#closerId', { label: 'Kevin' })
   await p.selectOption('#setterId', { label: 'Fabricio' })
   await p.selectOption('#fuenteId', { label: 'Meta Ads' })
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = HOY
   await p.fill('#fechaSesion', hoy)
   await p.fill('#valorPotencial', '4000')
   await p.click(enLaPantalla('form button[type=submit]'))
@@ -178,7 +188,7 @@ const antesDeLaSena = await (async () => {
 })()
 
 await paso('el closer carga el resultado: seña', async () => {
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = HOY
   await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
   await p.selectOption('#estado', 'asistio')
   await p.selectOption('#resultado', 'sena')
@@ -197,7 +207,7 @@ await paso('el closer carga el resultado: seña', async () => {
 })
 
 await paso('convertir la seña: el dinero se cuenta una vez', async () => {
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = HOY
   await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
   await p.selectOption('#resultado', 'venta')
   await p.fill('#importe', '4000')
@@ -226,7 +236,7 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   await p.goto(`${RAIZ}/leads/nuevo`)
   await p.fill('#nombre', OTRO)
   await p.selectOption('#closerId', { label: 'Braian' })
-  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.fill('#fechaSesion', HOY)
   await p.click(enLaPantalla('form button[type=submit]'))
   await p.waitForURL(/leads\/\d+/)
   const otro = p.url().match(/leads\/(\d+)/)?.[1]
@@ -306,7 +316,7 @@ await paso('un lead sin fecha no desaparece: el Tracker lo reclama', async () =>
             'aparece en «Sin fecha de reunión», en vez de no estar en ningún lado')
 
   const fila = p.locator(`.contenido tr:has-text("Sin Fecha ${marca}")`)
-  await fila.locator('input[type=date]').fill(new Date().toISOString().slice(0, 10))
+  await fila.locator('input[type=date]').fill(HOY)
   await fila.locator('button[type=submit]').click()
   await esperar()
   await esperarCuantos('.tarjeta .tabla-carga tr', 0, 3000)
@@ -337,11 +347,14 @@ await paso('el closer carga el resultado sin salir del Tracker', async () => {
   await foto('tracker-carga')
 })
 
-/** El valor de una celda del mini tablero, por su etiqueta EXACTA. */
+/** El valor de una fila de las listas de métricas, por su etiqueta EXACTA. */
 const miniValor = (etiqueta) => p.evaluate((e) => {
-  const celda = [...document.querySelectorAll('.contenido .mini')]
-    .find((x) => x.querySelector('.mini-etiqueta')?.textContent?.trim() === e)
-  return celda?.querySelector('.mini-numero')?.textContent?.trim() ?? null
+  const fila = [...document.querySelectorAll('.contenido .lista-metrica tr')].find((tr) => {
+    const th = tr.querySelector('th')?.cloneNode(true)
+    th?.querySelector('.sobre')?.remove()
+    return th?.textContent?.trim() === e
+  })
+  return fila?.querySelector('td')?.textContent?.trim() ?? null
 }, etiqueta)
 
 await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () => {
@@ -357,22 +370,28 @@ await paso('el Tracker y el Dashboard dicen lo mismo del mismo mes', async () =>
 await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', async () => {
   await p.goto(`${RAIZ}/tracker?periodo=mes`)
   const pedidas = [
+    // Métricas
     'Llamadas agendadas', 'Asistencias', 'Asistencias válidas', 'No calificadas', 'No show',
     'Canceladas', 'Reagendadas', 'Segundas llamadas', 'Asistencia a segunda', 'Ofertas hechas',
-    'Reservas', 'Cierres',
-    '% Asistencia', '% Asistencia válida', '% No calificadas', '% Canceladas',
-    '% Asistencia a segunda', '% Ofertas hechas', '% Cierre / asistencia',
-    '% Cierre / asist. válida', '% Cierre / oferta',
+    'Reservas', 'Cierres', 'Ventas cerradas', 'Facturación',
     'Cash collected', 'Cash por agenda', 'Cash por asistencia',
+    // Conversión
+    'Asistencia', 'Asistencia válida', 'Canceladas', 'Asistencia a segunda', 'Ofertas hechas',
+    'Cierre / asistencia', 'Cierre / asistencia válida', 'Cierre / oferta',
   ]
   const faltan = []
   for (const etiqueta of pedidas) if ((await miniValor(etiqueta)) === null) faltan.push(etiqueta)
-  comprobar(faltan.length === 0, `están las ${pedidas.length} medidas${faltan.length ? `; faltan: ${faltan.join(', ')}` : ''}`)
+  comprobar(faltan.length === 0, `están las ${pedidas.length} medidas en las dos listas${faltan.length ? `; faltan: ${faltan.join(', ')}` : ''}`)
 
-  // Ninguna celda con un número solo: abajo de cada uno dice sobre qué se
-  // calcula, que es lo que separa «28%» de «28% de las asistencias».
-  const sinContra = await p.locator('.contenido .mini:not(:has(.mini-contra))').count()
-  comprobar(sinContra === 0, 'ningún número va solo: todos dicen sobre qué se calculan')
+  // Ningún porcentaje va solo: al lado dice sobre qué se calcula, que es lo
+  // que separa «28%» de «28% sobre asistencias».
+  const sinContra = await p.evaluate(() => {
+    const listas = document.querySelectorAll('.contenido .dos-listas > div')
+    const conversiones = listas[listas.length - 1]
+    return [...(conversiones?.querySelectorAll('.lista-metrica tr') ?? [])]
+      .filter((tr) => !tr.querySelector('.sobre')).length
+  })
+  comprobar(sinContra === 0, 'ningún porcentaje va solo: todos dicen sobre qué se calculan')
 
   // Y el cierre sobre asistencia válida no puede ser menor que el cierre sobre
   // asistencia: las válidas son un subconjunto.
@@ -380,8 +399,8 @@ await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', 
   // secas da NaN, y una comprobación que falla por eso no comprueba nada.
   const aPct = (t) => (t === null || t === 'sin datos' ? null
     : Number(t.replace('%', '').replace(/\./g, '').replace(',', '.')))
-  const sobreAsistencia = aPct(await miniValor('% Cierre / asistencia'))
-  const sobreValida = aPct(await miniValor('% Cierre / asist. válida'))
+  const sobreAsistencia = aPct(await miniValor('Cierre / asistencia'))
+  const sobreValida = aPct(await miniValor('Cierre / asistencia válida'))
   comprobar(sobreAsistencia === null || sobreValida === null || sobreValida >= sobreAsistencia,
             `el cierre sobre asistencia válida (${sobreValida}%) no puede ser menor que sobre asistencia (${sobreAsistencia}%)`)
   await foto('tablero')
@@ -414,7 +433,7 @@ await paso('el closer carga con un toque desde la ficha', async () => {
   await p.goto(`${RAIZ}/leads/nuevo`)
   await p.fill('#nombre', `Un Toque ${marca}`)
   await p.selectOption('#closerId', { label: 'Kevin' })
-  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.fill('#fechaSesion', HOY)
   await p.click(enLaPantalla('form button[type=submit]'))
   await p.waitForURL(/leads\/\d+/)
   const unToque = p.url().match(/leads\/(\d+)/)?.[1]
@@ -528,7 +547,7 @@ await paso('una venta cargada por error se puede sacar de la facturación', asyn
   await p.goto(`${RAIZ}/leads/nuevo`)
   await p.fill('#nombre', `Venta Mal Cargada ${marca}`)
   await p.selectOption('#closerId', { label: 'Kevin' })
-  await p.fill('#fechaSesion', new Date().toISOString().slice(0, 10))
+  await p.fill('#fechaSesion', HOY)
   await p.click(enLaPantalla('form button[type=submit]'))
   await p.waitForURL(/leads\/\d+/)
   const errada = p.url().match(/leads\/(\d+)/)?.[1]
@@ -719,11 +738,7 @@ await paso('el histórico de un mes entra pegando la planilla', async () => {
   // Y quedan contadas como si las hubiera cargado el closer a mano.
   await p.goto(`${RAIZ}/tracker?desde=2026-07-01&hasta=2026-07-31`)
   await esperar()
-  const leer = async (e) => p.evaluate((x) => {
-    const c = [...document.querySelectorAll('.contenido .mini')]
-      .find((m) => m.querySelector('.mini-etiqueta')?.textContent?.trim() === x)
-    return c?.querySelector('.mini-numero')?.textContent?.trim() ?? null
-  }, e)
+  const leer = (e) => miniValor(e)
   comprobar(await leer('Llamadas agendadas') === '3' && await leer('Asistencias') === '2'
             && await leer('No show') === '1' && await leer('Cierres') === '1',
             'el tablero de julio las cuenta: 3 agendadas, 2 asistencias, 1 no show, 1 cierre')

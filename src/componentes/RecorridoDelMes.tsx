@@ -19,7 +19,10 @@ import { plata } from './Piezas'
  *            venga. Una reunión de agosto cerrada en septiembre entra acá.
  */
 function Barra({ recorrido }: { recorrido: RecorridoDeCloser }) {
-  const total = Math.max(recorrido.agendadas, 1)
+  const base = Math.max(recorrido.agendadas, 1)
+  // Un embudo se dibuja una barra ENCIMA de otra, no una al lado de la otra:
+  // cada etapa arranca en cero y llega hasta donde llegó. Puestas en fila, las
+  // cuatro sumaban más que el ancho y la barra no significaba nada.
   const tramos = [
     { n: recorrido.agendadas, clase: 'agendadas' },
     { n: recorrido.asistencias, clase: 'asistencias' },
@@ -28,8 +31,9 @@ function Barra({ recorrido }: { recorrido: RecorridoDeCloser }) {
   ]
   return (
     <div className="recorrido" aria-hidden>
-      {tramos.map((t, i) => (
-        <div key={i} className={`tramo ${t.clase}`} style={{ width: `${(t.n / total) * 100}%` }} />
+      {tramos.map((t) => (
+        <div key={t.clase} className={`tramo ${t.clase}`}
+             style={{ width: `${Math.min(100, (t.n / base) * 100)}%` }} />
       ))}
     </div>
   )
