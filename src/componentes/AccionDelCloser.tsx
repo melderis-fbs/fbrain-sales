@@ -21,14 +21,14 @@ import { Iconos } from './Iconos'
  */
 
 type Accion = {
-  clave: Resultado | 'no_show'
+  clave: Resultado | 'no_show' | 'segunda'
   texto: string
   color: 'verde' | 'acento' | 'ambar' | 'rojo' | 'gris'
   icono: keyof typeof Iconos
   estado: Estado
   resultado: Resultado
   /** Qué hace falta además del botón. */
-  pide: 'plata' | 'motivo' | 'comoSigue' | null
+  pide: 'plata' | 'motivo' | 'comoSigue' | 'segunda' | null
   ayuda: string
 }
 
@@ -42,6 +42,9 @@ const ACCIONES: Accion[] = [
   { clave: 'seguimiento', texto: 'Seguimiento', color: 'ambar', icono: 'seguimientos',
     estado: 'asistio', resultado: 'seguimiento', pide: 'comoSigue',
     ayuda: 'Queda abierto. Elegí cómo se lo persigue: no todos necesitan los doce toques.' },
+  { clave: 'segunda', texto: 'Segunda llamada', color: 'acento', icono: 'agenda',
+    estado: 'asistio', resultado: 'seguimiento', pide: 'segunda',
+    ayuda: 'Quedaron en volver a hablar. Se agenda la segunda y el lead aparece ese día, sin entrar a los toques.' },
   { clave: 'no_show', texto: 'No Show', color: 'rojo', icono: 'tracker',
     estado: 'no_show', resultado: 'pendiente', pide: null,
     ayuda: 'No vino. La reunión queda cargada y no aparece más como pendiente.' },
@@ -109,6 +112,20 @@ export function AccionDelCloser({
                 </div>
               </>
             ) : <input type="hidden" name="fecha" value={hoy} />}
+
+            {elegida.pide === 'segunda' ? (
+              <>
+                <div className="campo" style={{ marginBottom: 0 }}>
+                  <label htmlFor="segundaFecha">¿Cuándo es la segunda?</label>
+                  <input id="segundaFecha" name="segundaFecha" type="date" required autoFocus
+                         style={{ width: 170 }} />
+                </div>
+                <div className="campo" style={{ marginBottom: 0 }}>
+                  <label htmlFor="segundaHora">Hora</label>
+                  <input id="segundaHora" name="segundaHora" type="time" style={{ width: 130 }} />
+                </div>
+              </>
+            ) : null}
 
             {elegida.pide === 'comoSigue' ? (
               <>

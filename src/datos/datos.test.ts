@@ -597,9 +597,9 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
   it('dar de baja un lead lo saca de todo, pero no borra nada', async () => {
     const id = await alta('María')
+    // Cargar el resultado ya registra la reunión como llamada: no hace falta
+    // crearla a mano, y crearla igual la duplicaría.
     await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
-    const llamadas = await import('./llamadas')
-    await llamadas.crearLlamada(id, { fecha: '2026-09-10' })
 
     await leads.borrarLead(id, usuarioId, 'Duplicado')
 
@@ -1127,6 +1127,60 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     const porDefecto = await alta('Sin elegir')
     await resultado.cargarResultado(porDefecto, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
     expect((await seguimientos.seguimientoDelLead(porDefecto, '2026-09-15'))?.situacion).toBe('activo')
+  })
+
+  it('la venta se cuenta el mes que se firma, no el mes de la llamada', async () => {
+    // Es la regla que pidió dirección: la llamada puede ser de septiembre y la
+    // venta cerrarse en octubre, y recién ahí cuenta.
+    const id = await alta('María')                       // reunión el 2026-09-10
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-10-03' },
+    }, usuarioId)
+
+    const octubre = { desde: '2026-10-01', hasta: '2026-10-31', etiqueta: 'octubre' }
+
+    const sep = (await metricas.metricas(rango, TODO)).medidas
+    const oct = (await metricas.metricas(octubre, TODO)).medidas
+
+    // Septiembre tuvo la reunión y la asistencia; la venta es de octubre.
+    expect(sep.agendadas).toBe(1)
+    expect(sep.asistencias).toBe(1)
+    expect(sep.ventasCerradas).toBe(0)
+    expect(sep.facturacion).toBe(0)
+    expect(oct.ventasCerradas).toBe(1)
+    expect(oct.facturacion).toBe(5000)
+
+    // Y la lista de ventas dice lo mismo que el total, con nombre y todo.
+    expect(await metricas.ventasDelPeriodo(rango, TODO)).toEqual([])
+    const [venta] = await metricas.ventasDelPeriodo(octubre, TODO)
+    expect(venta).toMatchObject({ lead: 'María', importe: 5000, fecha: '2026-10-03', enSegunda: false })
+  })
+
+  it('una segunda llamada no es una agenda nueva, y deja escrita la primera', async () => {
+    const id = await leads.crearLead(
+      { nombre: 'Dos vueltas', closerId: closerKevin, fechaSesion: '2026-09-05' }, usuarioId)
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+
+    await resultado.agendarSegundaLlamada(id, { fecha: '2026-09-20', hora: '15:00' }, usuarioId)
+
+    // La primera reunión quedó escrita con SU fecha: el mes no pierde su agenda.
+    const suyas = await (await import('./llamadas')).llamadasDelLead(id)
+    expect(suyas.map((c) => c.fecha)).toContain('2026-09-05')
+
+    // Y el lead quedó agendado para la segunda, sin entrar a los toques.
+    const lead = await leads.verLead(id)
+    expect(lead?.fechaSesion).toBe('2026-09-20')
+    expect(lead?.tipoSesion).toBe('segunda')
+    expect(lead?.estado).toBe('agendado')
+    const enPipeline = await seguimientos.seguimientoDelLead(id, '2026-09-21')
+    expect(enPipeline === null || enPipeline.situacion === 'fuera').toBe(true)
+
+    // En los números: una agenda (la primera) y una segunda llamada, aparte.
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.agendadas).toBe(0)      // el lead hoy es una segunda
+    expect(m.segundas).toBe(1)
+    expect(m.reuniones).toBe(1)
   })
 
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {

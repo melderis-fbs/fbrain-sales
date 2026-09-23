@@ -2,19 +2,20 @@ import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import {
-  metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser, DEFINICIONES,
+  metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser, ventasDelPeriodo,
+  DEFINICIONES,
 } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
 import { toquesDeHoy } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
-import { Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
+import { Numero, Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
 import { Iconos } from '@/componentes/Iconos'
 import { CargaRapida } from '@/componentes/CargaRapida'
 import { Tablero } from '@/componentes/Tablero'
 import { LoDeHoy } from '@/componentes/LoDeHoy'
 import { DesgloseDeClosers } from '@/componentes/DesgloseDeClosers'
-import { Kpi, conPct } from '@/componentes/Kpi'
+import { VentasDelPeriodo } from '@/componentes/VentasDelPeriodo'
 import { agendarRapidoAccion } from '../leads/acciones'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
@@ -60,7 +61,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
   const deHoy = { desde: hoy, hasta: hoy, etiqueta: 'hoy' }
 
   const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats,
-         agendaDeHoy, hoyMetricas, recorrido] = await Promise.all([
+         agendaDeHoy, hoyMetricas, recorrido, ventas] = await Promise.all([
     metricas(r, alcance, filtros, monedaBase),
     listarLeads(alcance, {
       desde: r.desde, hasta: r.hasta,
@@ -77,6 +78,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     listarLeads(alcance, { desde: hoy, hasta: hoy, closerId: filtros.closerId }, 60),
     metricas(deHoy, alcance, filtros, monedaBase),
     recorridoPorCloser(r, alcance, hoy, monedaBase),
+    ventasDelPeriodo(r, alcance, filtros),
   ])
 
   const m = datos.medidas
@@ -182,35 +184,43 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
         </div>
       ) : null}
 
-      <div className="kpis">
-        <Kpi etiqueta="Llamadas" valor={m.agendadas} tono="azul" icono="llamadas"
-             contra="agendadas en el período" comoSeCalcula={DEFINICIONES.agendadas!.formula} />
-        <Kpi etiqueta="Asistencias" valor={m.asistencias} tono="verde" icono="tilde"
-             contra={conPct(m.asistenciaPct, 'de las agendadas')}
-             comoSeCalcula={DEFINICIONES.asistencias!.formula} />
-        <Kpi etiqueta="No shows" valor={m.noShows} tono={m.noShows > 0 ? 'rojo' : 'neutro'} icono="cruz"
-             contra={conPct(m.noShowPct, 'de las agendadas')} />
-        <Kpi etiqueta="Canceladas" valor={m.cancelados} tono={m.cancelados > 0 ? 'ambar' : 'neutro'}
-             icono="calendario" contra={conPct(m.cancelacionPct, 'de las agendadas')} />
-        <Kpi etiqueta="Ofertas" valor={m.ofertas} tono="azul" icono="analizador"
-             contra={conPct(m.ofertaPct, 'de las asistencias')} />
-        <Kpi etiqueta="Señas" valor={m.senas} tono={m.senas > 0 ? 'azul' : 'neutro'} icono="dinero"
-             contra={verPlata ? `${plata(m.senasImporte, monedaBase)} comprometidos` : 'con seña cargada'} />
-        <Kpi etiqueta="Ventas" valor={m.ventas} tono={m.ventas > 0 ? 'verde' : 'neutro'} icono="casos"
-             contra={conPct(m.cierrePct, 'de cierre sobre asistencias')}
-             comoSeCalcula={DEFINICIONES.ventas!.formula} />
+      <div className="rejilla g4">
+        <Numero etiqueta="Agendas" valor={m.agendadas}
+                contra="primeras llamadas del período"
+                comoSeCalcula={DEFINICIONES.agendadas!.formula} />
+        <Numero etiqueta="Segundas llamadas" valor={m.segundas}
+                contra={m.segundas === 0 ? 'ninguna en el período'
+                  : `${m.segundasAsistidas} asistidas · no cuentan como agenda`}
+                comoSeCalcula={DEFINICIONES.segundas!.formula} />
+        <Numero etiqueta="Asistencias" valor={m.asistencias}
+                contra={`${porcentaje(m.asistenciaPct)} de las agendas`}
+                comoSeCalcula={DEFINICIONES.asistencias!.formula} />
+        <Numero etiqueta="No shows" valor={m.noShows} contra={porcentaje(m.noShowPct)} />
+        <Numero etiqueta="Ofertas" valor={m.ofertas}
+                contra={`${porcentaje(m.ofertaPct)} de las asistencias`} />
+        <Numero etiqueta="Cierres" valor={m.ventasCerradas}
+                contra={<a href="#ventas">ver cuáles →</a>}
+                comoSeCalcula={DEFINICIONES.ventasCerradas!.formula} />
+        <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
+                contra="sobre las asistencias del período"
+                comoSeCalcula={DEFINICIONES.cierrePct!.formula} />
+        <Numero etiqueta="Cierre en segunda" valor={m.cierresEnSegunda}
+                contra="de los cierres, en segunda llamada"
+                comoSeCalcula={DEFINICIONES.cierresEnSegunda!.formula} />
+        <Numero etiqueta="Señas" valor={m.senas}
+                contra={verPlata ? `${plata(m.senasImporte, monedaBase)} comprometidos` : undefined} />
+        <Numero etiqueta="Sin cargar" valor={m.pendientesDeCargar}
+                contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
         {verPlata ? (
-          <Kpi etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} tono="azul" icono="metricas"
-               contra={`${m.ventasCerradas} ${m.ventasCerradas === 1 ? 'venta firmada' : 'ventas firmadas'} en el período`}
-               comoSeCalcula={DEFINICIONES.facturacion!.formula} destacada />
+          <Numero etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} chico
+                  contra="vendido en el período"
+                  comoSeCalcula={DEFINICIONES.facturacion!.formula} />
         ) : null}
         {verPlata ? (
-          <Kpi etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} tono="verde" icono="comisiones"
-               contra="cobrado de verdad" comoSeCalcula={DEFINICIONES.cashCollected!.formula} destacada />
+          <Numero etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} chico
+                  contra="cobrado de verdad"
+                  comoSeCalcula={DEFINICIONES.cashCollected!.formula} />
         ) : null}
-        <Kpi etiqueta="Sin cargar" valor={m.pendientesDeCargar}
-             tono={m.pendientesDeCargar > 0 ? 'ambar' : 'neutro'} icono="reloj"
-             contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
       </div>
 
       <Tarjeta titulo={alcance.todo ? 'Cómo viene cada closer' : 'Cómo venís'}
@@ -219,6 +229,15 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                  : 'De izquierda a derecha, en el orden en que se trabaja.'}>
         <DesgloseDeClosers filas={recorrido} verPlata={verPlata} soloUno={!alcance.todo} />
       </Tarjeta>
+
+      {verPlata ? (
+        <div id="ventas">
+          <Tarjeta titulo={`Ventas de ${r.etiqueta} (${ventas.length})`}
+                   ayuda="Por fecha de venta, no por la fecha de la reunión: una llamada de septiembre firmada en octubre es una venta de octubre. Tocá el nombre para abrir la ficha.">
+            <VentasDelPeriodo ventas={ventas} etiqueta={r.etiqueta} />
+          </Tarjeta>
+        </div>
+      ) : null}
 
       <Tarjeta titulo="Hoy"
                ayuda="La agenda del día, en orden. Lo que ya pasó y nadie cargó está primero, y se carga desde acá sin abrir la ficha.">

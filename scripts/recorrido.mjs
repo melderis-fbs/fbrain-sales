@@ -441,8 +441,10 @@ await paso('el closer carga con un toque desde la ficha', async () => {
 
   comprobar(await p.locator('.contenido .acciones-closer').count() === 1,
             'la ficha abre con la acción del closer a la vista')
-  comprobar(await p.locator('.contenido .botonera .accion').count() === 5,
-            'con los cinco resultados posibles')
+  comprobar(await p.locator('.contenido .botonera .accion').count() === 6,
+            'con los seis resultados posibles, incluida la segunda llamada')
+  comprobar(await p.locator('.contenido .botonera .accion:has-text("Segunda llamada")').count() === 1,
+            'y «Segunda llamada» es uno de ellos')
 
   // «No Show» no necesita nada más: un toque y queda cargado.
   await p.locator('.contenido .botonera .accion:has-text("No Show")').click()

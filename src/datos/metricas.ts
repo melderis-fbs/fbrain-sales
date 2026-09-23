@@ -62,9 +62,16 @@ export type Medidas = {
    */
   asistenciasValidas: number
   noCalificadas: number
+  /**
+   * Reuniones del período, primeras y segundas juntas. `agendadas` cuenta sólo
+   * las primeras: una segunda llamada con el mismo lead no es una agenda nueva.
+   */
+  reuniones: number
   /** Segundas sesiones: se agendan y se asiste distinto que a una primera. */
   segundas: number
   segundasAsistidas: number
+  /** De los cierres, los que cerraron en una segunda llamada. */
+  cierresEnSegunda: number
 
   asistenciaPct: number | null
   noShowPct: number | null
@@ -128,7 +135,6 @@ export type Metricas = { medidas: Medidas; etapas: Etapa[]; rango: Rango }
  * la misma que usa la consulta de abajo.
  */
 export const DEFINICIONES: Record<string, { nombre: string; formula: string; universo: string }> = {
-  agendadas:    { nombre: 'Agendadas', formula: 'Leads con fecha de reunión en el período.', universo: 'reunión' },
   asistencias:  { nombre: 'Asistencias', formula: 'De esos, los que quedaron en «asistió».', universo: 'reunión' },
   noShows:      { nombre: 'No shows', formula: 'De esos, los que quedaron en «no show».', universo: 'reunión' },
   ofertas:      { nombre: 'Ofertas', formula: 'De esos, los que tienen marcado que hubo oferta.', universo: 'reunión' },
@@ -139,6 +145,9 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   noCalificadas:{ nombre: 'No calificadas', formula: 'De los que asistieron, los que quedaron en «no calificado».', universo: 'reunión' },
   cancelados:   { nombre: 'Canceladas', formula: 'De los agendados, los que quedaron en «cancelado».', universo: 'reunión' },
   reagendados:  { nombre: 'Reagendadas', formula: 'De los agendados, los que quedaron en «reagendado».', universo: 'reunión' },
+  reuniones:    { nombre: 'Reuniones', formula: 'Todas las reuniones del período: primeras y segundas.', universo: 'reunión' },
+  cierresEnSegunda: { nombre: 'Cierre en segunda llamada', formula: 'De los cierres del período, los que cerraron en una segunda llamada.', universo: 'reunión' },
+  agendadas:    { nombre: 'Agendas', formula: 'Primeras llamadas con reunión en el período. Una segunda llamada con el mismo lead no es una agenda nueva.', universo: 'reunión' },
   segundas:     { nombre: 'Segundas llamadas', formula: 'Reuniones del período marcadas como segunda sesión.', universo: 'reunión' },
   segundasAsistidas: { nombre: 'Asistencia a segunda', formula: 'De las segundas sesiones, las que quedaron en «asistió».', universo: 'reunión' },
   asistenciaValidaPct: { nombre: '% Asistencia válida', formula: 'Asistencias válidas ÷ agendadas.', universo: 'reunión' },
@@ -188,7 +197,10 @@ function donde(
  * que es lo único que cambia entre llamadas.
  */
 const CONTEOS = `
-  count(*)                                                     as agendadas,
+  -- AGENDAS son primeras llamadas. Una segunda con el mismo lead no es una
+  -- agenda nueva: contarla infla lo que produjo el setter y ensucia el cierre.
+  count(*) filter (where l.tipo_sesion <> 'segunda')           as agendadas,
+  count(*)                                                     as reuniones,
   count(*) filter (where l.estado = 'asistio')                 as asistencias,
   count(*) filter (where l.estado = 'no_show')                 as no_shows,
   count(*) filter (where l.estado = 'cancelado')               as cancelados,
@@ -199,6 +211,9 @@ const CONTEOS = `
   count(*) filter (where l.tipo_sesion = 'segunda')            as segundas,
   count(*) filter (where l.tipo_sesion = 'segunda'
                      and l.estado = 'asistio')                 as segundas_asistidas,
+  -- De los cierres del período, cuáles cerraron en una segunda llamada.
+  count(*) filter (where l.resultado = 'venta'
+                     and l.tipo_sesion = 'segunda')            as cierres_en_segunda,
   count(*) filter (where l.hubo_oferta)                        as ofertas,
   count(*) filter (where exists (select 1 from senias s
                      where s.lead_id = l.id and s.borrado_en is null)) as senas,
@@ -262,6 +277,8 @@ export async function metricas(
       perdidos: n('perdidos'),
       enSeguimiento: n('en_seguimiento'),
       pendientesDeCargar: n('pendientes'),
+      reuniones: n('reuniones'),
+      cierresEnSegunda: n('cierres_en_segunda'),
       asistenciasValidas: n('asistencias_validas'),
       noCalificadas: n('no_calificadas'),
       segundas: n('segundas'),
@@ -341,7 +358,10 @@ async function dinero(
   const base = f.find((x) => x.moneda === monedaBase)
   return {
     total: Number(base?.importe ?? 0),
-    cantidad: Number(base?.cantidad ?? 0),
+    // El CONTEO no depende de la moneda: una venta en pesos es una venta. El
+    // importe sí, y por eso lo de otra moneda se informa aparte en vez de
+    // sumarse con una cotización inventada.
+    cantidad: f.reduce((a, x) => a + Number(x.cantidad), 0),
     otras: f.filter((x) => x.moneda !== monedaBase).map((x) => ({ moneda: x.moneda, importe: Number(x.importe) })),
   }
 }
@@ -358,7 +378,8 @@ function vacio(moneda: string): Medidas {
   return {
     agendadas: 0, asistencias: 0, noShows: 0, cancelados: 0, reagendados: 0,
     ofertas: 0, senas: 0, ventas: 0, perdidos: 0, enSeguimiento: 0, pendientesDeCargar: 0,
-    asistenciasValidas: 0, noCalificadas: 0, segundas: 0, segundasAsistidas: 0,
+    asistenciasValidas: 0, noCalificadas: 0, reuniones: 0, segundas: 0, segundasAsistidas: 0,
+    cierresEnSegunda: 0,
     asistenciaPct: null, noShowPct: null, cancelacionPct: null, ofertaPct: null,
     senaPct: null, cierrePct: null, cierreSobreOfertaPct: null,
     asistenciaValidaPct: null, noCalificadasPct: null, segundaAsistenciaPct: null,
@@ -757,6 +778,79 @@ export async function recorridoPorCloser(
       sinCargar: Number(r?.sin_cargar ?? 0),
     }
   }).sort((a, b) => b.facturacion - a.facturacion || b.agendadas - a.agendadas)
+}
+
+/**
+ * Las ventas del período, una por una.
+ *
+ * Por FECHA DE VENTA, no por la fecha de la reunión: una llamada de septiembre
+ * que se firma en octubre es una venta de octubre, y recién ahí se cuenta. Es
+ * la misma fecha con la que se suma la facturación, así que la lista y el total
+ * no pueden discrepar.
+ *
+ * Existe porque un número que no se puede abrir no se puede verificar: «8
+ * ventas» sin poder ver cuáles son se discute en una reunión en vez de
+ * mirarse.
+ */
+export type VentaDelPeriodo = {
+  leadId: number
+  lead: string
+  empresa: string | null
+  closer: string | null
+  setter: string | null
+  fecha: string
+  importe: number
+  moneda: string
+  cobrado: number
+  programa: string | null
+  /** Si cerró en una segunda llamada. */
+  enSegunda: boolean
+}
+
+export async function ventasDelPeriodo(
+  rango: Rango,
+  alcance: Alcance,
+  filtros: FiltrosDeMetricas = {},
+): Promise<VentaDelPeriodo[]> {
+  const valores: unknown[] = [rango.desde, rango.hasta]
+  const condiciones = ['v.borrado_en is null', 'l.borrado_en is null', 'v.fecha between $1 and $2']
+
+  const alc = condicionDeAlcance(
+    alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' },
+    valores.length + 1)
+  valores.push(...alc.parametros)
+  condiciones.push(alc.condicion)
+
+  for (const [campo, columna] of [
+    ['closerId', 'l.closer_id'], ['setterId', 'l.setter_id'],
+    ['fuenteId', 'l.fuente_id'], ['funnelId', 'l.funnel_id'],
+  ] as const) {
+    const v = filtros[campo]
+    if (v !== undefined) { valores.push(v); condiciones.push(`${columna} = $${valores.length}`) }
+  }
+
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, l.empresa, l.tipo_sesion, c.nombre as closer, s.nombre as setter,
+            v.fecha, v.importe, v.moneda, v.programa,
+            coalesce((select sum(p.importe) from pagos p
+                       where p.venta_id = v.id and p.borrado_en is null
+                         and p.estado = 'cobrado'), 0) as cobrado
+       from ventas v
+       join leads l on l.id = v.lead_id
+       left join closers c on c.id = l.closer_id
+       left join setters s on s.id = l.setter_id
+      where ${condiciones.join(' and ')}
+      order by v.fecha desc, v.id desc`,
+    valores,
+  )
+
+  return f.map((x) => ({
+    leadId: x.id, lead: x.nombre, empresa: x.empresa,
+    closer: x.closer, setter: x.setter,
+    fecha: x.fecha, importe: Number(x.importe), moneda: x.moneda,
+    cobrado: Number(x.cobrado), programa: x.programa,
+    enSegunda: x.tipo_sesion === 'segunda',
+  }))
 }
 
 export { redondear }

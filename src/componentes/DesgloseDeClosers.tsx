@@ -50,8 +50,8 @@ export function DesgloseDeClosers({
     : filas.reduce<RecorridoDeCloser | null>((m, f) => (f.facturacion > (m?.facturacion ?? 0) ? f : m), null)
 
   const Numero = ({ n }: { n: number }) => n === 0 ? <span className="apagado">0</span> : <>{n}</>
-  const Plata = ({ n, verde }: { n: number; verde?: boolean }) =>
-    n === 0 ? <span className="apagado">—</span> : <span className={verde ? 'verde' : undefined}>{plata(n)}</span>
+  const Plata = ({ n }: { n: number }) =>
+    n === 0 ? <span className="apagado">—</span> : <>{plata(n)}</>
 
   return (
     <div className="tabla-scroll">
@@ -80,7 +80,7 @@ export function DesgloseDeClosers({
                           : <Link href={`/tracker?closer=${f.id}`}>{f.nombre}</Link>}
                       </div>
                       {mejor && f.id === mejor.id && mejor.facturacion > 0
-                        ? <div className="marca">Top del período</div>
+                        ? <div className="falta">Top del período</div>
                         : f.sinCargar > 0
                           ? <div className="falta">{f.sinCargar} sin cargar</div>
                           : null}
@@ -90,15 +90,14 @@ export function DesgloseDeClosers({
                 <td><Numero n={f.agendadas} /></td>
                 <td><Numero n={f.asistencias} /></td>
                 <td><Numero n={f.ofertas} /></td>
-                <td className={f.cerradas > 0 ? 'verde' : undefined}><Numero n={f.cerradas} /></td>
+                <td><Numero n={f.cerradas} /></td>
                 <td className="cierre">
-                  {pct === null ? <span className="apagado">—</span>
-                    : <span className={pct > 0 ? 'verde' : 'apagado'}>{pct}%</span>}
+                  {pct === null ? <span className="apagado">—</span> : <>{pct}%</>}
                 </td>
                 {verPlata ? (
                   <>
                     <td><Plata n={f.facturacion} /></td>
-                    <td><Plata n={f.cash} verde /></td>
+                    <td><Plata n={f.cash} /></td>
                     <td>{t === null ? <span className="apagado">—</span> : plata(t)}</td>
                   </>
                 ) : null}
@@ -109,16 +108,16 @@ export function DesgloseDeClosers({
             <tr className="total">
               <td><div className="quien"><div style={{ width: 34 }} /><div className="nombre">Total</div></div></td>
               <td>{total.agendadas}</td><td>{total.asistencias}</td><td>{total.ofertas}</td>
-              <td className={total.cerradas > 0 ? 'verde' : undefined}>{total.cerradas}</td>
+              <td>{total.cerradas}</td>
               <td className="cierre">
                 {tasa(total.cerradas, total.asistencias) === null
                   ? <span className="apagado">—</span>
-                  : <span className="verde">{tasa(total.cerradas, total.asistencias)}%</span>}
+                  : <>{tasa(total.cerradas, total.asistencias)}%</>}
               </td>
               {verPlata ? (
                 <>
                   <td>{plata(total.facturacion)}</td>
-                  <td className="verde">{plata(total.cash)}</td>
+                  <td>{plata(total.cash)}</td>
                   <td>{ticket(total.facturacion, total.ventasDelMes) === null
                     ? <span className="apagado">—</span> : plata(ticket(total.facturacion, total.ventasDelMes)!)}</td>
                 </>

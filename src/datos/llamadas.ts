@@ -2,6 +2,7 @@ import 'server-only'
 import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
 import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
+import type { PoolClient } from 'pg'
 import type { TipoSesion, Resultado } from '@/dominio/resultados'
 
 /**
@@ -207,4 +208,56 @@ export function medirTurnos(texto: string, nombreDelCloser: string | null): {
   }
 
   return cuenta
+}
+
+/**
+ * Dejar la llamada del lead igual a lo que dice su ficha.
+ *
+ * El lead guarda la reunión que tiene ahora; `llamadas` guarda todas las que
+ * tuvo. Mientras cada lead tuviera una sola alcanzaba con el lead, pero una
+ * segunda llamada re-agenda al lead y le pisa la fecha a la primera: el mes en
+ * que ocurrió esa primera perdía su agenda. Un número que cambia hacia atrás
+ * es peor que uno que falta.
+ *
+ * Se llama en cada carga de resultado. Busca la fila de ESA reunión —la de la
+ * misma fecha— y la actualiza; si no existe, la crea con el número que sigue.
+ */
+export async function sincronizarLlamada(leadId: number, cx?: PoolClient): Promise<void> {
+  const l = await fila<{
+    fecha_sesion: string | null; tipo_sesion: string; estado: string
+    resultado: string; closer_id: number | null; ciclo: number
+  }>(
+    `select fecha_sesion, tipo_sesion, estado, resultado, closer_id, ciclo
+       from leads where id = $1 and borrado_en is null`,
+    [leadId], cx,
+  )
+  // Sin fecha no hubo reunión que registrar.
+  if (!l || l.fecha_sesion === null) return
+
+  const resultado = l.resultado === 'pendiente' ? null : l.resultado
+  const asistio = l.estado === 'asistio'
+
+  const existente = await fila<{ id: number }>(
+    'select id from llamadas where lead_id = $1 and fecha = $2 order by numero desc limit 1',
+    [leadId, l.fecha_sesion], cx,
+  )
+
+  if (existente) {
+    await escribir(
+      `update llamadas set asistio = $1, tipo_sesion = $2, resultado = $3,
+                           closer_id = $4, ciclo = $5
+        where id = $6`,
+      [asistio, l.tipo_sesion, resultado, l.closer_id, l.ciclo, existente.id],
+      { esperadas: 1, cliente: cx },
+    )
+    return
+  }
+
+  await escribir(
+    `insert into llamadas (lead_id, closer_id, numero, fecha, asistio, tipo_sesion, resultado, ciclo)
+     values ($1, $2, (select coalesce(max(x.numero), 0) + 1 from llamadas x where x.lead_id = $1),
+             $3, $4, $5, $6, $7)`,
+    [leadId, l.closer_id, l.fecha_sesion, asistio, l.tipo_sesion, resultado, l.ciclo],
+    { esperadas: 1, cliente: cx },
+  )
 }

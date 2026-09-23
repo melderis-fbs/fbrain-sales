@@ -3,6 +3,7 @@ import { escribir, escribirDevolviendo, fila, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
 import { anotar, type Cambio } from './cambios'
 import { entrarAlPipeline, salirDelPipeline, ponerSeguimientoLargo } from './seguimientos'
+import { sincronizarLlamada } from './llamadas'
 import type { Estado, Resultado, MotivoPerdida } from '@/dominio/resultados'
 
 /**
@@ -177,6 +178,10 @@ export async function cargarResultado(
       await salirDelPipeline(leadId, cx)
     }
 
+    // La reunión que se acaba de cargar queda como fila propia. Es lo que
+    // permite que una segunda llamada no le pise la fecha a la primera.
+    await sincronizarLlamada(leadId, cx)
+
     await anotar(anotaciones, usuarioId, cx)
   })
 }
@@ -202,6 +207,58 @@ export async function registrarPago(
     )
     await anotar([{ entidad: 'venta', entidadId: leadId, campo: 'cobro',
                     anterior: null, nuevo: `${datos.moneda} ${datos.importe}` }], usuarioId, cx)
+  })
+}
+
+/**
+ * Quedó en una segunda llamada.
+ *
+ * Cierra la reunión de hoy —queda su fila, con su fecha y su resultado— y
+ * re-agenda al lead para la nueva. Esto último es lo que hacía falta hacer
+ * bien: mover la fecha del lead sin dejar registrada la primera le borraba al
+ * mes anterior su agenda, y un número que cambia hacia atrás es peor que uno
+ * que falta.
+ *
+ * No entra al pipeline de toques: ya tiene fecha. Perseguir a alguien que
+ * tiene reunión agendada es ruido.
+ */
+export async function agendarSegundaLlamada(
+  leadId: number,
+  datos: { fecha: string; hora?: string | null; nota?: string | null },
+  usuarioId: number,
+): Promise<void> {
+  const antes = await fila<{ fecha_sesion: string | null; tipo_sesion: string; estado: string }>(
+    'select fecha_sesion, tipo_sesion, estado from leads where id = $1 and borrado_en is null',
+    [leadId],
+  )
+  if (!antes) throw new Error('Ese lead no existe.')
+
+  await enTransaccion(async (cx) => {
+    // 1 · La reunión que termina queda escrita, con su fecha y lo que dio.
+    await escribir(
+      `update leads set estado = 'asistio', resultado = 'seguimiento', hubo_oferta = hubo_oferta
+        where id = $1`,
+      [leadId], { esperadas: 1, cliente: cx },
+    )
+    await sincronizarLlamada(leadId, cx)
+
+    // 2 · El lead se re-agenda. Su fila de llamada de la segunda se va a crear
+    //     cuando se cargue el resultado de esa reunión.
+    await escribir(
+      `update leads set fecha_sesion = $1, hora_sesion = $2, tipo_sesion = 'segunda',
+                        estado = 'agendado', resultado = 'pendiente',
+                        proximo_contacto = $1, actualizado_en = now()
+        where id = $3`,
+      [datos.fecha, oNulo(datos.hora ?? null), leadId], { esperadas: 1, cliente: cx },
+    )
+
+    // Con reunión agendada no hace falta perseguirlo con toques.
+    await salirDelPipeline(leadId, cx)
+
+    await anotar([{
+      entidad: 'lead', entidadId: leadId, campo: 'segunda llamada',
+      anterior: antes.fecha_sesion, nuevo: datos.fecha, motivo: oNulo(datos.nota ?? null),
+    }], usuarioId, cx)
   })
 }
 
