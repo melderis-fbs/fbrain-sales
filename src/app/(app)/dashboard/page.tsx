@@ -10,6 +10,7 @@ import { pipelineDeSeguimientos } from '@/datos/seguimientos'
 import { catalogos, config } from '@/datos/catalogos'
 import { rango, rangoAnterior, hoyEn, variacion, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { ritmo, diasHabilesTranscurridos } from '@/motor/objetivo'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 import { Numero, Tarjeta, Encabezado, plata, porcentaje, fechaCorta } from '@/componentes/Piezas'
 import { NOMBRE_DE_RESULTADO } from '@/dominio/resultados'
 import { Embudo } from '@/componentes/Embudo'
@@ -91,11 +92,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
         ))}
       </div>
 
+      <FiltroDeCloser closers={cats.closers} actual={q.closer}
+                      href={(closer) => con({ closer })} />
+
       <form className="filtros" method="get">
         <input type="hidden" name="periodo" value={periodo} />
         <input type="hidden" name="objetivo" value={tipoObjetivo} />
+        {/* El closer se elige arriba, en las pastillas: es el filtro que el
+            equipo usa todo el día y no puede costar tres pasos. Viaja igual
+            acá adentro para que filtrar por fuente no lo borre. */}
+        {q.closer ? <input type="hidden" name="closer" value={q.closer} /> : null}
         {([
-          ['closer', 'Closer', cats.closers],
           ['setter', 'Setter', cats.setters],
           ['fuente', 'Fuente', cats.fuentes],
           ['funnel', 'Funnel', cats.funnels],

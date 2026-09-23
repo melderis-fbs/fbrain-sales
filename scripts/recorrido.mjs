@@ -332,7 +332,8 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     await p.goto(`${RAIZ}/seguimientos?solo=toca`)
     comprobar(await p.locator('.contenido .tablero .columna').count() >= 12,
               'sigue siendo el mismo tablero, con menos tarjetas')
-    comprobar(await p.locator('.contenido .barra-filtros .chips a.activo').count() === 1,
+    comprobar(await p.locator(
+                '.contenido .barra-filtros .chips:not([aria-label]) a.activo').count() === 1,
               'y el filtro queda marcado')
     await p.goto(`${RAIZ}/seguimientos`)
   })
@@ -348,16 +349,18 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     comprobar(todos >= 1, `sin filtrar hay ${todos} en cadencia`)
 
     // Kevin no tiene a nadie en la cadencia: el lead en seguimiento es de Braian.
-    await p.selectOption('.contenido .barra-filtros select[name=closer]', { label: 'Kevin' })
-    await p.locator('.contenido .barra-filtros button[type=submit]').click()
+    const porCloser = (quien) =>
+      p.locator(`.contenido [aria-label="Filtrar por closer"] a:has-text("${quien}")`)
+    await porCloser('Kevin').click()
     await esperar()
+    await p.waitForTimeout(400)
     comprobar(await enCadencia() === 0, 'filtrando por Kevin, el encabezado baja a 0')
     comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 0,
               'y su tarjeta desaparece del tablero')
 
-    await p.selectOption('.contenido .barra-filtros select[name=closer]', { label: 'Braian' })
-    await p.locator('.contenido .barra-filtros button[type=submit]').click()
+    await porCloser('Braian').click()
     await esperar()
+    await p.waitForTimeout(400)
     comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 1,
               'y con el closer que lo tiene, vuelve')
 
@@ -516,6 +519,39 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('matching')
   await p.goto(`${RAIZ}/comisiones`)
   await foto('comisiones')
+})
+
+await paso('filtrar por closer es un clic, y está en todas las pantallas', async () => {
+  // El pedido fue «que puedan filtrar por nombre de closer, para más
+  // facilidad»: estaba en cuatro pantallas de seis, escondido en un
+  // desplegable al fondo y con un botón para confirmar.
+  const pastillas = '.contenido [aria-label="Filtrar por closer"]'
+  for (const donde of ['/llamadas', '/leads', '/tracker', '/dashboard',
+                       '/seguimientos', '/analizador']) {
+    await p.goto(`${RAIZ}${donde}`)
+    comprobar(await p.locator(pastillas).count() === 1,
+              `${donde} filtra por closer de un clic`)
+  }
+
+  await p.goto(`${RAIZ}/leads`)
+  const nombres = (await p.locator(`${pastillas} a`).allTextContents()).map((t) => t.trim())
+  comprobar(nombres[0] === 'Todos' && nombres.includes('Kevin') && nombres.includes('Braian'),
+            `con un nombre por closer y «Todos» adelante: ${nombres.join(' · ')}`)
+
+  await p.locator(`${pastillas} a:has-text("Kevin")`).click()
+  await esperar()
+  await p.waitForTimeout(400)
+  comprobar((await p.locator(`${pastillas} a.activo`).textContent())?.trim() === 'Kevin',
+            'un clic y queda marcado')
+  const deKevin = await p.locator('.contenido table').textContent() ?? ''
+  comprobar(deKevin.includes(`María Fernández ${marca}`), 'la lista queda en la de Kevin')
+
+  // Un filtro que al aplicarse borra otro obliga a empezar de nuevo.
+  await p.fill('.contenido #q', 'ánde')
+  await p.click('.contenido .filtros button[type=submit]')
+  await esperar()
+  comprobar(p.url().includes('closer='),
+            'y filtrar por otra cosa no pierde el closer que se venía mirando')
 })
 
 await paso('el closer reporta la llamada del día sin salir de Llamadas', async () => {

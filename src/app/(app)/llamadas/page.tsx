@@ -16,6 +16,7 @@ import {
 import { COLOR_DE_CALIDAD } from '@/dominio/calidad'
 import { Reportar } from '@/componentes/Reportar'
 import { Cargado, cargoElCloser } from '@/componentes/Cargado'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 import type { LeadEnLista } from '@/datos/leads'
 
 /**
@@ -143,6 +144,9 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
         </form>
       </div>
 
+      <FiltroDeCloser closers={cats.closers} actual={q.closer}
+                      href={(closer) => con({ closer })} />
+
       <div className="rejilla g6">
         <Numero etiqueta="Total llamadas" valor={m.agendadas} />
         <Numero etiqueta="Completadas" valor={m.asistencias} />
@@ -246,6 +250,11 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
 
       <form className="filtros" method="get">
         <input type="hidden" name="periodo" value={periodo} />
+        {/* El closer se elige arriba, en las pastillas. Va igual acá adentro
+            para que buscar por nombre no borre el closer que se venía
+            mirando: un filtro que al aplicarse borra otro obliga a empezar
+            de nuevo. */}
+        {q.closer ? <input type="hidden" name="closer" value={q.closer} /> : null}
         <div className="campo" style={{ minWidth: 230 }}>
           <label htmlFor="q">Buscar</label>
           <input id="q" name="q" defaultValue={q.q ?? ''} placeholder="Nombre del lead" />
@@ -255,13 +264,6 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
           <select id="f-resultado" name="resultado" defaultValue={q.resultado ?? ''}>
             <option value="">Todos los resultados</option>
             {RESULTADOS.map((x) => <option key={x} value={x}>{NOMBRE_DE_RESULTADO[x]}</option>)}
-          </select>
-        </div>
-        <div className="campo">
-          <label htmlFor="f-closer">Closer</label>
-          <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}>
-            <option value="">Todos los closers</option>
-            {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </div>
         <button type="submit" className="secundario">Filtrar</button>

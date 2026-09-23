@@ -11,6 +11,7 @@ import { comoSeLee, DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES } from '@
 import { SinClave } from '@/componentes/SinClave'
 import { PlaybookDelCloser } from '@/componentes/PlaybookDelCloser'
 import { ProbarModelo } from '@/componentes/ProbarModelo'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 
 type Busqueda = Promise<Record<string, string | undefined>>
 
@@ -88,17 +89,10 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
             ))}
           </div>
 
-          <form className="filtros" method="get">
-            <input type="hidden" name="periodo" value={periodo} />
-            <div className="campo">
-              <label htmlFor="f-closer">Closer</label>
-              <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}>
-                <option value="">Todos</option>
-                {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-            </div>
-            <button type="submit" className="secundario">Filtrar</button>
-          </form>
+          <FiltroDeCloser
+            closers={cats.closers} actual={q.closer}
+            href={(closer) =>
+              `/analizador?periodo=${periodo}${closer ? `&closer=${closer}` : ''}`} />
 
           <div className="rejilla g4">
             <Numero etiqueta="Analizadas" valor={analisis.length} />

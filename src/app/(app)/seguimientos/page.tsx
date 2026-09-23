@@ -7,6 +7,7 @@ import { hoyEn } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
 import { ESTADOS_TOQUE, NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION } from '@/dominio/seguimientos'
 import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 import { registrarToqueAccion, volverAlPipelineAccion } from './acciones'
 
 /**
@@ -92,15 +93,8 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
               Lo que toca ({resumen.vencidos + resumen.hoy})
             </Link>
           </div>
-          <form method="get" className="selectores">
-            {soloLoQueToca ? <input type="hidden" name="solo" value="toca" /> : null}
-            <label className="oculto" htmlFor="f-closer">Closer</label>
-            <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}>
-              <option value="">Todos los closers</option>
-              {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-            <button type="submit" className="secundario chico">Filtrar</button>
-          </form>
+          <FiltroDeCloser closers={cats.closers} actual={q.closer}
+                          href={(closer) => con({ closer })} />
         </div>
       </div>
 

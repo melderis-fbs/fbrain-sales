@@ -13,6 +13,7 @@ import {
   RESULTADOS, ESTADOS, type Resultado, type Estado,
 } from '@/dominio/resultados'
 import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 import { Cargado, cargoElSetter, cargoElCloser } from '@/componentes/Cargado'
 
 type Busqueda = Promise<Record<string, string | undefined>>
@@ -55,6 +56,14 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
 
   const abiertos = leads.filter((l) => l.resultado === 'pendiente' || l.resultado === 'seguimiento' || l.resultado === 'sena').length
 
+  // Cambiar un filtro sin perder los otros.
+  const con = (cambio: Record<string, string | undefined>) => {
+    const u = new URLSearchParams()
+    for (const [k, v] of Object.entries({ ...q, ...cambio })) if (v) u.set(k, v)
+    const t = u.toString()
+    return t === '' ? '/leads' : `/leads?${t}`
+  }
+
   return (
     <div className="apilado">
       <Encabezado kicker="Leads" titulo={`${leads.length} ${leads.length === 1 ? 'lead' : 'leads'}`}
@@ -82,13 +91,19 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
         </div>
       ) : null}
 
+      <FiltroDeCloser closers={cats.closers} actual={q.closer}
+                      href={(closer) => con({ closer })} />
+
       <form className="filtros" method="get">
         <div className="campo" style={{ minWidth: 210 }}>
           <label htmlFor="q">Buscar</label>
           <input id="q" name="q" defaultValue={q.q ?? ''} placeholder="Nombre, email o teléfono" />
         </div>
+        {/* El closer se elige arriba, en las pastillas: es el filtro que el
+            equipo usa todo el día y no puede costar tres pasos. Viaja igual
+            acá adentro para que filtrar por fuente no lo borre. */}
+        {q.closer ? <input type="hidden" name="closer" value={q.closer} /> : null}
         {([
-          ['closer', 'Closer', cats.closers],
           ['setter', 'Setter', cats.setters],
           ['fuente', 'Fuente', cats.fuentes],
           ['funnel', 'Funnel', cats.funnels],

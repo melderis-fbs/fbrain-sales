@@ -21,6 +21,7 @@ import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO, NOMBRE_DE_TIPO,
 } from '@/dominio/resultados'
 import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
+import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
 
 type Busqueda = Promise<Record<string, string | undefined>>
 
@@ -137,12 +138,9 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           </div>
           <form method="get" className="selectores">
             <input type="hidden" name="periodo" value={periodo} />
-            <label className="oculto" htmlFor="f-closer">Closer</label>
-            <select id="f-closer" name="closer" defaultValue={q.closer ?? ''}
-                    >
-              <option value="">Todos los closers</option>
-              {cats.closers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
+            {/* El closer se elige abajo, en las pastillas. Viaja igual acá
+                para que filtrar por setter no lo borre. */}
+            {q.closer ? <input type="hidden" name="closer" value={q.closer} /> : null}
             <label className="oculto" htmlFor="f-setter">Setter</label>
             <select id="f-setter" name="setter" defaultValue={q.setter ?? ''}>
               <option value="">Todos los setters</option>
@@ -151,6 +149,9 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
             <button type="submit" className="secundario chico">Filtrar</button>
           </form>
         </div>
+
+        <FiltroDeCloser closers={cats.closers} actual={q.closer}
+                        href={(closer) => con({ closer })} />
         <div className="rango">
           <Iconos.calendario />
           {fechaCorta(r.desde)} — {fechaCorta(r.hasta)}
