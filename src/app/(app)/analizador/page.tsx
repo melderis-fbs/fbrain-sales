@@ -9,9 +9,8 @@ import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, Barra, Vacio, fechaCorta } from '@/componentes/Piezas'
 import { comoSeLee, DIMENSIONES, PENALIZACIONES, BONIFICACIONES, TOPES } from '@/dominio/rubrica'
 import { SinClave } from '@/componentes/SinClave'
-import { FasesDelPlaybook } from '@/componentes/FasesDelPlaybook'
+import { PlaybookDelCloser } from '@/componentes/PlaybookDelCloser'
 import { ProbarModelo } from '@/componentes/ProbarModelo'
-import { guardarPlaybookAccion } from '../llamadas/acciones'
 
 type Busqueda = Promise<Record<string, string | undefined>>
 
@@ -50,6 +49,9 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
     modeloVigente(),
     todosLosPlaybooks(),
   ])
+
+  const conPlaybook = new Set(playbooks.filter((p) => p.vigente).map((p) => p.closerId))
+  const sinPlaybook = cats.closers.filter((c) => !conPlaybook.has(c.id))
 
   const total = tramos.reduce((s, t) => s + t.cantidad, 0)
   const conNota = analisis.filter((a) => a.score !== null)
@@ -297,42 +299,34 @@ export default async function Analizador({ searchParams }: { searchParams: Busqu
                 </tbody>
               </table>
             )}
+
+            {/* Quién NO tiene. Es la mitad que importa: un closer sin playbook
+                se analiza contra las fases de la casa, y eso no se ve en la
+                lista de los que sí cargaron. */}
+            {sinPlaybook.length > 0 ? (
+              <>
+                <div className="separador" />
+                <p className="ayuda" style={{ margin: 0 }}>
+                  Sin playbook cargado: <strong>{sinPlaybook.map((c) => c.nombre).join(', ')}</strong>.
+                  Sus llamadas se analizan contra las fases de la casa, que es peor que contra su
+                  guion y mucho mejor que no medir el guion.
+                </p>
+              </>
+            ) : null}
           </Tarjeta>
 
           <Tarjeta titulo="Cargar o actualizar un playbook"
                    ayuda="Nunca se edita una versión: se crea la siguiente y la anterior queda.">
-            <form action={guardarPlaybookAccion}>
-              <div className="campo">
-                <label htmlFor="pb-closer">Closer</label>
-                <select id="pb-closer" name="closerId" defaultValue={usuario.closerId ?? ''} required>
-                  {(puede(usuario, 'configurar')
-                    ? cats.closers
-                    : cats.closers.filter((c) => c.id === usuario.closerId)
-                  ).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-              </div>
-              <div className="campo">
-                <label htmlFor="pb-nombre">Nombre</label>
-                <input id="pb-nombre" name="nombre" defaultValue="Playbook" required />
-              </div>
-              <div className="campo">
-                <label htmlFor="pb-oferta">Qué se ofrece</label>
-                <input id="pb-oferta" name="oferta" placeholder="Programa, precio, promesa" />
-              </div>
-              <div className="campo">
-                <label htmlFor="pb-script">El guion</label>
-                <textarea id="pb-script" name="script" required style={{ minHeight: 200 }} />
-                <div className="nota">
-                  El guion completo, para que el analizador sepa qué se vende y cómo. Las fases
-                  de abajo son las que se miden una por una.
-                </div>
-              </div>
-
-              <div className="separador" />
-              <FasesDelPlaybook iniciales={playbooks.find((p) => p.vigente)?.fases} />
-
-              <button type="submit" style={{ marginTop: 12 }}>Guardar como versión nueva</button>
-            </form>
+            <PlaybookDelCloser
+              closers={puede(usuario, 'configurar')
+                ? cats.closers
+                : cats.closers.filter((c) => c.id === usuario.closerId)}
+              vigentes={playbooks.filter((p) => p.vigente).map((p) => ({
+                closerId: p.closerId, nombre: p.nombre, oferta: p.oferta,
+                script: p.script, fases: p.fases,
+              }))}
+              closerPorDefecto={usuario.closerId}
+            />
           </Tarjeta>
         </div>
       ) : null}

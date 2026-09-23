@@ -3,13 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
-import { alcanceDe, exigir } from '@/lib/permisos'
+import { alcanceDe, exigir, puede } from '@/lib/permisos'
 import { exigirAccesoAlLead } from '@/datos/leads'
 import { crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead } from '@/datos/llamadas'
 import { guardarPlaybook } from '@/datos/playbooks'
 import { analizarLlamada } from '@/ia/correr'
 import { recalcular } from '@/datos/analisis'
 import type { TipoSesion } from '@/dominio/resultados'
+import type { Guardado } from '../leads/acciones'
 
 function texto(datos: FormData, campo: string): string | null {
   const v = datos.get(campo)
@@ -86,7 +87,7 @@ export async function subirTranscripcionAccion(
   }
 
   revalidatePath(`/leads/${llamada.leadId}`)
-  revalidatePath(`/llamadas/${llamadaId}`)
+  revalidatePath(`/analizador/${llamadaId}`)
   revalidatePath('/llamadas')
   return null
 }
@@ -112,18 +113,42 @@ export async function analizarAccion(_previo: string | null, datos: FormData): P
     return error instanceof Error ? error.message : 'El análisis falló.'
   }
 
-  revalidatePath(`/llamadas/${llamadaId}`)
+  revalidatePath(`/analizador/${llamadaId}`)
   revalidatePath(`/leads/${llamada.leadId}`)
   revalidatePath('/llamadas')
-  redirect(`/llamadas/${llamadaId}`)
+  // A la pantalla del informe, que es la que existe. Iba a `/llamadas/{id}`,
+  // que no es una ruta de esta aplicación: el análisis se guardaba bien y el
+  // que lo había lanzado terminaba en un 404 después de esperar dos minutos.
+  // Del otro lado eso se lee como que el analizador no anda —aunque el
+  // informe estuviera hecho y cualquier otro pudiera verlo.
+  redirect(`/analizador/${llamadaId}`)
 }
 
-export async function guardarPlaybookAccion(datos: FormData): Promise<void> {
+/**
+ * Guardar el playbook, y DECIR si se guardó.
+ *
+ * Antes tiraba la excepción y devolvía `void`: el guion corto, el peso mal
+ * sumado o la cuenta sin closer vinculado terminaban en un error que sólo
+ * existía en el log del servidor. Del lado del que carga, el botón no hacía
+ * nada. Un botón que a veces guarda y a veces no hace nada, sin diferencia
+ * visible entre las dos cosas, es peor que uno que no existe: el closer
+ * termina creyendo que el analizador no le anda a él.
+ */
+export async function guardarPlaybookAccion(
+  _previo: Guardado, datos: FormData,
+): Promise<Guardado> {
   const usuario = await exigirUsuario()
 
   const closerId = Number(datos.get('closerId'))
+  if (!Number.isInteger(closerId)) {
+    return { ok: false, mensaje: 'Elegí a qué closer es este playbook. Si el desplegable está ' +
+                                 'vacío, tu cuenta todavía no está vinculada a un closer: se ' +
+                                 'vincula en Configuración, en «El equipo».' }
+  }
   // Un closer carga el suyo; quien configura, el de cualquiera.
-  if (usuario.closerId !== closerId) exigir(usuario, 'configurar')
+  if (usuario.closerId !== closerId && !puede(usuario, 'configurar')) {
+    return { ok: false, mensaje: 'Sólo podés cargar tu propio playbook.' }
+  }
 
   // Las fases vienen numeradas desde la pantalla. Se leen mientras haya
   // alguna: la cantidad la decide quien carga, no una constante de acá.
@@ -137,15 +162,22 @@ export async function guardarPlaybookAccion(datos: FormData): Promise<void> {
     })
   }
 
-  await guardarPlaybook(closerId, {
-    nombre: String(datos.get('nombre') ?? 'Playbook').trim(),
-    oferta: texto(datos, 'oferta'),
-    script: String(datos.get('script') ?? ''),
-    fases,
-  })
+  try {
+    await guardarPlaybook(closerId, {
+      nombre: String(datos.get('nombre') ?? 'Playbook').trim(),
+      oferta: texto(datos, 'oferta'),
+      script: String(datos.get('script') ?? ''),
+      fases,
+    })
+  } catch (error) {
+    return { ok: false, mensaje: error instanceof Error ? error.message : 'No se pudo guardar.' }
+  }
+
   revalidatePath('/llamadas')
   revalidatePath('/analizador')
   revalidatePath('/configuracion')
+  return { ok: true, mensaje: `Guardado. Es la versión nueva del playbook, y desde ahora las ` +
+                              `llamadas de ese closer se miden contra estas ${fases.length} fases.` }
 }
 
 /**

@@ -384,6 +384,13 @@ export type AnalisisCompleto = {
   error: string | null
   modelo: string | null
   version: string | null
+  /**
+   * Si se midió contra el playbook del closer o contra las fases de la casa.
+   *
+   * No es un detalle técnico: cambia cómo se lee la adherencia. Medido contra
+   * un guion que el closer no escribió, un 60% dice menos de lo que parece.
+   */
+  conPlaybook: boolean
   creadoEn: string
   turnosCloser: number | null
   turnosProspecto: number | null
@@ -467,7 +474,7 @@ export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> 
     conclusion: a.conclusion ?? null,
 
     id: a.id, llamadaId: a.llamada_id, leadId: a.lead_id, lead: a.lead, closer: a.closer,
-    fecha: a.fecha, estado: a.estado, error: a.error, modelo: a.modelo, version: a.version ?? null,
+    fecha: a.fecha, estado: a.estado, error: a.error, modelo: a.modelo, version: a.version ?? null, conPlaybook: a.playbook_id !== null,
     creadoEn: a.creado_en.toISOString(),
     turnosCloser: a.turnos_closer, turnosProspecto: a.turnos_prospecto,
     palabrasCloser: a.palabras_closer, palabrasProspecto: a.palabras_prospecto,

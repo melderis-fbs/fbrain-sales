@@ -856,6 +856,52 @@ await paso('el Analizador se puede probar sin adivinar', async () => {
             'mostrando lo que este deploy está usando, que es la mitad de la respuesta')
 })
 
+await paso('cada closer carga SU playbook, y la pantalla dice si guardó', async () => {
+  // El reporte fue «a Braian le funciona mal el analizador y a mí bien», y
+  // acá adentro había tres cosas distintas: el formulario no decía nada
+  // cuando fallaba, el desplegable de closer volvía al primero de la lista
+  // después de un error —así que el segundo intento guardaba a nombre de
+  // otro— y las fases que mostraba eran siempre las del primer playbook
+  // cargado, no las del closer elegido.
+  const guion = 'Guion de Kevin. Apertura: encuadrar y pedir permiso para preguntar. ' +
+    'Diagnóstico: facturación, equipo, qué probó antes. Oferta recién después, ' +
+    'atada a lo que dijo. Cierre: pedir la decisión hoy.'
+  const cartel = () => p.locator('.contenido form .aviso').first().textContent().catch(() => '')
+
+  await p.goto(`${RAIZ}/analizador?pestana=playbooks`)
+  const kevin = await p.locator('#pb-closerId option', { hasText: 'Kevin' }).getAttribute('value')
+
+  await p.selectOption('#pb-closerId', { label: 'Kevin' })
+  await p.fill('#pb-script', 'corto')
+  await p.click('.contenido form:has(#pb-closerId) button[type=submit]')
+  await esperarCuantos('.contenido form .aviso', 1, 8000)
+  comprobar((await cartel())?.includes('muy corto'),
+            'un guardado que falla lo dice, en vez de no hacer nada')
+  comprobar(await p.inputValue('#pb-closerId') === kevin,
+            'y no cambia de closer a escondidas')
+  comprobar(await p.inputValue('#pb-script') === 'corto',
+            'y no borra lo que se escribió')
+
+  await p.fill('#pb-script', guion)
+  await p.fill('#f0n', 'FASE PROPIA DE KEVIN')
+  await p.click('.contenido form:has(#pb-closerId) button[type=submit]')
+  await p.waitForSelector('.contenido form .aviso.dato', { timeout: 8000 }).catch(() => {})
+  comprobar((await cartel())?.includes('Guardado'), 'y el que sale bien también lo dice')
+
+  await p.goto(`${RAIZ}/analizador?pestana=playbooks`)
+  await p.selectOption('#pb-closerId', { label: 'Kevin' })
+  await p.waitForTimeout(300)
+  comprobar(await p.inputValue('#f0n') === 'FASE PROPIA DE KEVIN', 'Kevin ve sus fases')
+
+  await p.selectOption('#pb-closerId', { label: 'Braian' })
+  await p.waitForTimeout(300)
+  comprobar(await p.inputValue('#f0n') !== 'FASE PROPIA DE KEVIN',
+            'y Braian no ve las de Kevin')
+  comprobar((await p.locator('.contenido .ayuda:has-text("Sin playbook cargado")').textContent())
+              ?.includes('Braian'),
+            'y la pantalla nombra a quién le falta cargarlo')
+})
+
 await paso('el closer se cambia desde la misma pantalla que el resto', async () => {
   // El reporte: «no deja cambiar el nombre del closer una vez creado el lead».
   // Estaba, pero en otra pestaña, y un campo que está en otro lado es un campo

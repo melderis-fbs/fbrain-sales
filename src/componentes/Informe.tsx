@@ -96,7 +96,10 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
       {a.fases.length > 0 ? (
         <>
           <Tarjeta titulo="Puntuación por fase"
-                   ayuda="«Adherencia» es si el paso se hizo; la nota, qué tan bien.">
+                   ayuda={a.conPlaybook
+                     ? '«Adherencia» es si el paso se hizo; la nota, qué tan bien.'
+                     : 'Medido contra las fases de la casa: este closer todavía no tiene su ' +
+                       'playbook cargado. Cargándolo, se mide contra su guion.'}>
             <div className="tabla-scroll">
               <table>
                 <thead>

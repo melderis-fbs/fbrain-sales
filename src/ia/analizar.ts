@@ -296,10 +296,16 @@ const ESQUEMA_EVALUACION = {
 export async function evaluar(
   transcripcion: string,
   lectura: Lectura,
-  playbook: { nombre: string; oferta: string | null; script: string; fases: Fase[] } | null,
+  /** El guion escrito del closer, si lo tiene cargado. Puede no tenerlo. */
+  guion: { nombre: string; oferta: string | null; script: string } | null,
+  /**
+   * Las fases contra las que se mide. Van aparte del guion a propósito: un
+   * closer sin playbook cargado igual tiene fases —las de la casa— y sin esto
+   * su informe salía sin la mitad que más se mira.
+   */
+  fases: Fase[],
   contexto: { leadId?: number | null; usuarioId?: number | null },
 ): Promise<Evaluacion> {
-  const fases = playbook?.fases ?? []
   const { datos } = await pedirJson<{
     niveles: { dimension: string; nivel?: number; cita?: string; justificacion?: string; sin_evidencia: boolean }[]
     objeciones?: { textual: string; mejor_respuesta: string }[]
@@ -344,11 +350,11 @@ export async function evaluar(
         `RÚBRICA\n\n${rubricaEnTexto()}` },
     ],
     mensaje: [
-      ...(playbook ? [{
+      ...(guion ? [{
         type: 'text' as const,
         text: `<playbook>\nEl guion con el que trabaja este closer. Las FASES se evalúan contra ` +
               `esto —es el guion de este equipo, no un ideal—; la RÚBRICA se evalúa contra la ` +
-              `venta consultiva, que es otra pregunta.\n\nOferta: ${playbook.oferta ?? 'sin especificar'}\n\n${playbook.script}\n</playbook>`,
+              `venta consultiva, que es otra pregunta.\n\nOferta: ${guion.oferta ?? 'sin especificar'}\n\n${guion.script}\n</playbook>`,
       }] : []),
       { type: 'text', text:
         `<lectura>\n${JSON.stringify({

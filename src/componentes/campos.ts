@@ -68,5 +68,5 @@ export function useCampos<T extends Record<string, string>>(
   // qué dispara la reposición, pero ya no gobierna cuándo se repone.
   void reintento
 
-  return { campo, valores, form }
+  return { campo, valores, setValores, form }
 }

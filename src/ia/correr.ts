@@ -6,6 +6,7 @@ import {
 } from '@/datos/analisis'
 import { medirTurnos, transcripcionDe, verLlamada } from '@/datos/llamadas'
 import { playbookVigente } from '@/datos/playbooks'
+import { FASES_POR_DEFECTO } from '@/dominio/fases'
 
 /**
  * Analizar una llamada, de punta a punta.
@@ -32,6 +33,20 @@ export async function analizarLlamada(
   }
 
   const playbook = llamada.closerId === null ? null : await playbookVigente(llamada.closerId)
+
+  /**
+   * Las fases contra las que se mide esta llamada.
+   *
+   * Si el closer tiene playbook, las suyas. Si no, las de la casa.
+   *
+   * Antes, sin playbook no había fases, y sin fases el informe salía sin la
+   * sección del guion, sin adherencia y sin nota de ejecución: media pantalla
+   * vacía. Del lado del closer eso no se lee como «te falta cargar el
+   * playbook», se lee como que el analizador anda mal para él y bien para el
+   * resto. Medir contra las fases de la casa es peor que medir contra las
+   * suyas y muchísimo mejor que no medir nada.
+   */
+  const fases = playbook?.fases ?? FASES_POR_DEFECTO
   const analisisId = await crearAnalisis(llamadaId, transcripcion.id, playbook?.id ?? null, usuarioId)
   const contexto = { leadId: llamada.leadId, usuarioId }
 
@@ -48,9 +63,9 @@ export async function analizarLlamada(
       transcripcion.texto,
       lectura,
       playbook
-        ? { nombre: playbook.nombre, oferta: playbook.oferta, script: playbook.script,
-            fases: playbook.fases }
+        ? { nombre: playbook.nombre, oferta: playbook.oferta, script: playbook.script }
         : null,
+      fases,
       contexto,
     )
 
@@ -61,7 +76,7 @@ export async function analizarLlamada(
       feedback: evaluacion.feedback,
       modelo: MODELO_POR_DEFECTO,
       fases: evaluacion.fases,
-      fasesDelPlaybook: playbook?.fases ?? [],
+      fasesDelPlaybook: fases,
       lecturaJusta: evaluacion.lecturaJusta,
       erroresCriticos: evaluacion.erroresCriticos,
       recomendaciones: evaluacion.recomendaciones,
