@@ -224,8 +224,10 @@ export default async function Metricas({ searchParams }: { searchParams: Busqued
                 </div>
                 <span style={{ fontSize: 12, width: 130, textAlign: 'right', flex: '0 0 130px',
                                fontVariantNumeric: 'tabular-nums' }}>
+                  {/* Las agendas y las asistencias son las reuniones de ese
+                      día; los cierres, los que se firmaron ese día. */}
                   {d.agendadas} ag · {d.asistencias} as
-                  {d.ventas > 0 ? <Pildora color="verde"> {d.ventas} v</Pildora> : null}
+                  {d.cerradas > 0 ? <Pildora color="verde"> {d.cerradas} c</Pildora> : null}
                 </span>
               </div>
             ))}

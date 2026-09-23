@@ -843,13 +843,22 @@ export type RecorridoDeCloser = {
   agendadas: number
   asistencias: number
   ofertas: number
-  /** De esas reuniones, cuántas terminaron en venta. Numerador del cierre. */
-  cerradas: number
+  /**
+   * De esas reuniones, cuántas terminaron en venta. Numerador del cierre, y
+   * NADA MÁS que eso.
+   *
+   * Se llamaba `cerradas`, y por ese nombre terminó dibujada en la columna
+   * «Ventas» del desglose del Tracker: un closer con tres llamadas del mes
+   * pasado firmadas este mes aparecía con cinco cierres teniendo ocho, al
+   * lado de una facturación que sí contaba las ocho. El nombre ahora es el
+   * mismo que en el resto del archivo, donde `ventas` siempre es esto.
+   */
+  ventas: number
   asistenciaPct: number | null
   cierrePct: number | null
   // La plata, por su propia fecha.
-  /** Ventas firmadas en el período, venga la reunión de donde venga. */
-  ventasDelMes: number
+  /** Cierres firmados en el período, venga la reunión del mes que venga. */
+  cerradas: number
   facturacion: number
   cash: number
   /** Reuniones que ya pasaron y no tienen resultado: su número está incompleto. */
@@ -923,15 +932,15 @@ export async function recorridoPorCloser(
     const r = porReunion.get(k)
     const agendadas = Number(r?.agendadas ?? 0)
     const asistencias = Number(r?.asistencias ?? 0)
-    const cerradas = Number(r?.cerradas ?? 0)
+    const ventas = Number(r?.cerradas ?? 0)
     return {
       id: quien.id,
       nombre: r?.nombre ?? quien.nombre,
-      agendadas, asistencias, cerradas,
+      agendadas, asistencias, ventas,
       ofertas: Number(r?.ofertas ?? 0),
       asistenciaPct: tasa(asistencias, agendadas),
-      cierrePct: tasa(cerradas, asistencias),
-      ventasDelMes: Number(porVenta.get(k)?.cantidad ?? 0),
+      cierrePct: tasa(ventas, asistencias),
+      cerradas: Number(porVenta.get(k)?.cantidad ?? 0),
       facturacion: Number(porVenta.get(k)?.importe ?? 0),
       cash: Number(porCobro.get(k)?.importe ?? 0),
       sinCargar: Number(r?.sin_cargar ?? 0),

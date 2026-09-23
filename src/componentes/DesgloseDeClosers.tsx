@@ -15,10 +15,16 @@ import { plata } from './Piezas'
  *
  * Las dos columnas de plata dicen cosas distintas a propósito:
  *
- *   FACTURADO  lo firmado en el período, venga la reunión del mes que venga.
- *   CIERRE     de las reuniones DE ESTE período, cuántas terminaron en venta.
+ *   CIERRES    las ventas FIRMADAS en el período, por fecha de venta.
+ *   FACTURADO  la plata de esas mismas ventas. Son las dos la misma columna
+ *              de la base, así que no pueden discrepar.
+ *   CIERRE %   de las reuniones DE ESTE período, cuántas terminaron en venta.
+ *              Es otra pregunta y por eso está aparte: sale de las
+ *              asistencias de este mes, y así no puede pasar de 100%.
  *
- * Mezclarlas es lo que hacía que la pantalla dijera «0 cierres · USD 4.000».
+ * Mezclarlas es lo que hacía que la pantalla dijera «0 cierres · USD 4.000»
+ * —y, después, que un closer con tres llamadas del mes pasado firmadas este
+ * mes apareciera con cinco cierres teniendo ocho—.
  */
 function Inicial({ nombre }: { nombre: string }) {
   const letras = nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0] ?? '').join('').toUpperCase()
@@ -39,10 +45,10 @@ export function DesgloseDeClosers({
 
   const total = filas.reduce((a, f) => ({
     agendadas: a.agendadas + f.agendadas, asistencias: a.asistencias + f.asistencias,
-    ofertas: a.ofertas + f.ofertas, cerradas: a.cerradas + f.cerradas,
-    ventasDelMes: a.ventasDelMes + f.ventasDelMes,
+    ofertas: a.ofertas + f.ofertas, ventas: a.ventas + f.ventas,
+    cerradas: a.cerradas + f.cerradas,
     facturacion: a.facturacion + f.facturacion, cash: a.cash + f.cash,
-  }), { agendadas: 0, asistencias: 0, ofertas: 0, cerradas: 0, ventasDelMes: 0, facturacion: 0, cash: 0 })
+  }), { agendadas: 0, asistencias: 0, ofertas: 0, ventas: 0, cerradas: 0, facturacion: 0, cash: 0 })
 
   const tasa = (parte: number, sobre: number) => (sobre === 0 ? null : Math.round((parte / sobre) * 1000) / 10)
   const ticket = (facturado: number, ventas: number) => (ventas === 0 ? null : Math.round(facturado / ventas))
@@ -59,15 +65,16 @@ export function DesgloseDeClosers({
         <thead>
           <tr>
             <th>{soloUno ? 'Vos' : 'Closer'}</th>
-            <th>Llamadas</th><th>Asistió</th><th>Ofertas</th><th>Ventas</th>
-            <th>Cierre</th>
+            <th>Llamadas</th><th>Asistió</th><th>Ofertas</th>
+            <th title="Ventas firmadas en el período, por fecha de venta.">Cierres</th>
+            <th title="De las reuniones de este período, cuántas terminaron en venta, sobre sus asistencias.">Cierre / asist.</th>
             {verPlata ? <><th>Facturado</th><th>Cash</th><th>Ticket</th></> : null}
           </tr>
         </thead>
         <tbody>
           {filas.map((f) => {
-            const pct = tasa(f.cerradas, f.asistencias)
-            const t = ticket(f.facturacion, f.ventasDelMes)
+            const pct = tasa(f.ventas, f.asistencias)
+            const t = ticket(f.facturacion, f.cerradas)
             return (
               <tr key={f.id ?? 'sin'}>
                 <td>
@@ -110,16 +117,16 @@ export function DesgloseDeClosers({
               <td>{total.agendadas}</td><td>{total.asistencias}</td><td>{total.ofertas}</td>
               <td>{total.cerradas}</td>
               <td className="cierre">
-                {tasa(total.cerradas, total.asistencias) === null
+                {tasa(total.ventas, total.asistencias) === null
                   ? <span className="apagado">—</span>
-                  : <>{tasa(total.cerradas, total.asistencias)}%</>}
+                  : <>{tasa(total.ventas, total.asistencias)}%</>}
               </td>
               {verPlata ? (
                 <>
                   <td>{plata(total.facturacion)}</td>
                   <td>{plata(total.cash)}</td>
-                  <td>{ticket(total.facturacion, total.ventasDelMes) === null
-                    ? <span className="apagado">—</span> : plata(ticket(total.facturacion, total.ventasDelMes)!)}</td>
+                  <td>{ticket(total.facturacion, total.cerradas) === null
+                    ? <span className="apagado">—</span> : plata(ticket(total.facturacion, total.cerradas)!)}</td>
                 </>
               ) : null}
             </tr>
@@ -128,9 +135,10 @@ export function DesgloseDeClosers({
       </table>
       {verPlata ? (
         <p className="ayuda" style={{ marginTop: 12 }}>
-          <strong>Cierre</strong> es sobre las reuniones de este período: de los que asistieron,
-          cuántos compraron — por eso nunca pasa de 100%. <strong>Facturado</strong> es la plata
-          firmada en el período, venga la reunión del mes que venga.
+          <strong>Cierres</strong> y <strong>Facturado</strong> son lo firmado en el período,
+          por fecha de venta: una llamada del mes pasado que se cierra este mes cuenta acá.{' '}
+          <strong>Cierre / asist.</strong> es otra pregunta —de las reuniones de ESTE período, de
+          los que asistieron, cuántos compraron— y por eso nunca pasa de 100%.
         </p>
       ) : null}
     </div>

@@ -298,6 +298,47 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(dias.find((d) => d.dia === '2026-09-05')?.cerradas).toBe(1)
   })
 
+  it('el desglose por closer cuenta los cierres por fecha de venta, como la facturación', async () => {
+    // El caso exacto del reporte: «Kevin figura con 5 cierres pero tiene 8, ya
+    // que 3 fueron llamadas del mes anterior que se cerraron este mes». La
+    // columna de ventas salía del embudo —reuniones del período— mientras que
+    // la facturación de al lado salía de la fecha de venta, así que las dos
+    // columnas de la misma fila contaban universos distintos.
+    const enAgosto = async (nombre: string) => {
+      const id = await alta(nombre, { fechaSesion: '2026-08-20' })
+      await resultado.cargarResultado(id, {
+        estado: 'asistio', resultado: 'venta', huboOferta: true,
+        venta: { importe: 1000, moneda: 'USD', fecha: '2026-09-05' },
+      }, usuarioId)
+    }
+    const enSeptiembre = async (nombre: string) => {
+      const id = await alta(nombre, { fechaSesion: '2026-09-10' })
+      await resultado.cargarResultado(id, {
+        estado: 'asistio', resultado: 'venta', huboOferta: true,
+        venta: { importe: 1000, moneda: 'USD', fecha: '2026-09-12' },
+      }, usuarioId)
+    }
+    for (const n of ['Vieja 1', 'Vieja 2', 'Vieja 3']) await enAgosto(n)
+    for (const n of ['Nueva 1', 'Nueva 2', 'Nueva 3', 'Nueva 4', 'Nueva 5']) await enSeptiembre(n)
+
+    const porCloser = await metricas.recorridoPorCloser(rango, TODO, '2026-09-30')
+    const kevin = porCloser.find((c) => c.id === closerKevin)
+
+    // Ocho cierres, no cinco: los tres de agosto se firmaron en septiembre.
+    expect(kevin?.cerradas).toBe(8)
+    expect(kevin?.facturacion).toBe(8000)
+    // Y las cinco reuniones de septiembre siguen siendo el numerador del
+    // cierre: es otra pregunta, y por eso vive en otro campo.
+    expect(kevin?.ventas).toBe(5)
+    expect(kevin?.asistencias).toBe(5)
+    expect(kevin?.cierrePct).toBe(100)
+
+    // El total de arriba dice lo mismo que la fila de abajo.
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.ventasCerradas).toBe(8)
+    expect(porCloser.reduce((a, c) => a + c.cerradas, 0)).toBe(medidas.ventasCerradas)
+  })
+
   it('corregir una venta la corrige: no carga una segunda', async () => {
     // El error caro: el closer se equivocaba en un dígito, volvía a guardar la
     // ficha y quedaban DOS ventas. La facturación del mes contaba la plata dos

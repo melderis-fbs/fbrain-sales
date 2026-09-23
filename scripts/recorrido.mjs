@@ -630,6 +630,21 @@ await paso('un cierre se cuenta en el mes en que se firmó, no en el de la llama
   comprobar(await numero('Total llamadas') >= 1,
             'pero la reunión sí sigue siendo de ese mes: son dos cosas distintas')
 
+  // El desglose del Tracker es donde se vio el problema: la columna de
+  // ventas contaba por fecha de llamada al lado de una facturación que
+  // contaba por fecha de venta, así que un closer aparecía con menos cierres
+  // de los que tenía facturados.
+  await p.goto(`${RAIZ}/tracker?periodo=mes`)
+  const enElDesglose = await p.evaluate(() => {
+    const tr = [...document.querySelectorAll('.contenido table.desglose tbody tr')]
+      .find((f) => f.textContent?.includes('Kevin'))
+    const c = [...(tr?.querySelectorAll('td') ?? [])].map((x) => x.textContent?.trim() ?? '')
+    return { cierres: c[4] ?? '', facturado: c[6] ?? '' }
+  })
+  comprobar(Number(enElDesglose.cierres) >= 1 && enElDesglose.facturado !== '—',
+            `en el desglose del Tracker, Kevin tiene ${enElDesglose.cierres} cierres y ` +
+            `${enElDesglose.facturado} facturados: las dos columnas por fecha de venta`)
+
   // Y la facturación acompaña. Es lo que hacía que los dos números no se
   // pudieran mirar juntos: los cierres contados por fecha de llamada y la
   // plata por fecha de venta dan un ticket promedio que no es el ticket de
