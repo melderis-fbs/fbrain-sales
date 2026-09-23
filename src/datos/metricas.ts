@@ -119,6 +119,8 @@ export type Medidas = {
    */
   cashPorAgenda: number | null
   cashPorAsistencia: number | null
+  /** De lo vendido en el período, cuánto entró: cash ÷ facturación. */
+  cobranzaPct: number | null
 
   moneda: string
   /** Lo que está en otra moneda y NO se sumó. */
@@ -158,6 +160,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   cashPorAgenda:{ nombre: 'Cash por agenda', formula: 'Cash collected del período ÷ agendadas del período. No es un porcentaje: es plata por reunión, y los dos números salen de universos distintos.', universo: 'mezcla' },
   cashPorAsistencia: { nombre: 'Cash por asistencia', formula: 'Cash collected del período ÷ asistencias del período. Tampoco es un porcentaje.', universo: 'mezcla' },
   ventasCerradas: { nombre: 'Ventas cerradas', formula: 'Ventas con fecha de venta en el período, venga la reunión del mes que venga. No es el numerador del cierre.', universo: 'venta' },
+  cobranzaPct:  { nombre: '% Cobrado de lo vendido', formula: 'Cash collected del período ÷ facturación del período. Los dos por fecha propia, así que puede pasar de 100% si entraron cuotas de ventas de meses anteriores.', universo: 'venta' },
   facturacion:  { nombre: 'Facturación', formula: 'Suma de las ventas con fecha de venta en el período.', universo: 'venta' },
   cashCollected:{ nombre: 'Cash collected', formula: 'Suma de los pagos cobrados con fecha en el período. La seña convertida entra acá, una sola vez.', universo: 'cobro' },
   senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas del período. No es facturación ni cash.', universo: 'reunión' },
@@ -306,6 +309,7 @@ export async function metricas(
       // cuando no hubo agendas es un número inventado.
       cashPorAgenda: conteo.agendadas === 0 ? null : Math.round(cash.total / conteo.agendadas),
       cashPorAsistencia: conteo.asistidas === 0 ? null : Math.round(cash.total / conteo.asistidas),
+      cobranzaPct: tasa(cash.total, factura.total),
 
       moneda: monedaBase,
       otrasMonedas: juntarMonedas([...factura.otras, ...cash.otras]),
@@ -383,7 +387,7 @@ function vacio(moneda: string): Medidas {
     asistenciaPct: null, noShowPct: null, cancelacionPct: null, ofertaPct: null,
     senaPct: null, cierrePct: null, cierreSobreOfertaPct: null,
     asistenciaValidaPct: null, noCalificadasPct: null, segundaAsistenciaPct: null,
-    cierreSobreValidaPct: null,
+    cierreSobreValidaPct: null, cobranzaPct: null,
     ventasCerradas: 0,
     facturacion: 0, cashCollected: 0, senasImporte: 0, ticketPromedio: null, valorEnJuego: 0,
     cashPorAgenda: null, cashPorAsistencia: null,

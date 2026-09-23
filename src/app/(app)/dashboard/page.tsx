@@ -180,17 +180,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
         <Numero etiqueta="Ofertas" valor={m.ofertas}
                 contra={`${porcentaje(m.ofertaPct)} de las asistencias`}
                 comoSeCalcula={DEFINICIONES.ofertas!.formula} />
-        <Numero etiqueta="Ventas" valor={m.ventas}
-                contra={`${porcentaje(m.cierrePct)} de cierre sobre asistencias`}
+        <Numero etiqueta="Ventas" valor={m.ventasCerradas}
+                contra={verPlata ? `${porcentaje(m.cobranzaPct)} cobrado de lo vendido` : undefined}
+                comoSeCalcula={DEFINICIONES.ventasCerradas!.formula}
+                tendencia={{ valor: variacion(m.ventasCerradas, p.ventasCerradas), sufijo: '%' }} />
+        <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
+                contra={`${m.ventas} de ${m.asistencias} reuniones del período`}
                 comoSeCalcula={DEFINICIONES.cierrePct!.formula}
-                tendencia={{ valor: variacion(m.ventas, p.ventas), sufijo: '%' }} />
+                tendencia={{ valor: variacion(m.cierrePct ?? 0, p.cierrePct ?? 0), sufijo: '%' }} />
         <Numero etiqueta="Señas" valor={m.senas}
                 contra={verPlata ? `${plata(m.senasImporte, monedaBase)} comprometidos` : undefined}
                 comoSeCalcula={DEFINICIONES.senasImporte!.formula} />
         {verPlata ? (
           <>
             <Numero etiqueta="Facturación" valor={plata(m.facturacion, monedaBase)} chico
-                    contra="vendido en el período"
+                    contra={<>vendido · <Link href="/tracker#ventas">ver cuáles →</Link></>}
                     comoSeCalcula={DEFINICIONES.facturacion!.formula}
                     tendencia={{ valor: variacion(m.facturacion, p.facturacion), sufijo: '%' }} />
             <Numero etiqueta="Cash collected" valor={plata(m.cashCollected, monedaBase)} chico

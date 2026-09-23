@@ -262,9 +262,14 @@ await paso('convertir la seña: el dinero se cuenta una vez', async () => {
 
 await paso('el cierre no puede pasar de 100%', async () => {
   await p.goto(`${RAIZ}/dashboard`)
-  const cierre = await p.locator('.tarjeta:has-text("Ventas") .contra').first().textContent()
-  const pct = Number((cierre ?? '').match(/([\d.]+)%/)?.[1] ?? '0')
+  // La tasa de cierre sale de la cohorte de reuniones del período; las ventas
+  // de al lado se cuentan por fecha de venta y son otro universo. Por eso el
+  // porcentaje se mide acá y no en la tarjeta de Ventas.
+  const cierre = await p.locator('.tarjeta:has-text("Tasa de cierre") .numero').first().textContent()
+  const pct = Number((cierre ?? '').match(/([\d.]+)/)?.[1] ?? '0')
   comprobar(pct <= 100, `el cierre es ${pct}% · nunca más de 100 porque sale del mismo universo`)
+  const ventas = await p.locator('.tarjeta:has-text("Ventas") .etiqueta').first().textContent()
+  comprobar(ventas?.includes('Ventas'), 'y las ventas del período están al lado, por fecha de venta')
 })
 
 await paso('un lead en seguimiento entra solo al pipeline', async () => {

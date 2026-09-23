@@ -340,6 +340,38 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(medidas.facturacion).toBe(5000)
   })
 
+  it('las ventas del período se cuentan por la fecha de la venta, no por la de la llamada', async () => {
+    // Lo que se mostraba en el tablero era el cierre de la cohorte —de las
+    // reuniones de este mes, cuántas cerraron— y no las ventas del mes. Una
+    // llamada de agosto que firma en septiembre es una venta de septiembre, y
+    // el mes que la cobra es el que la tiene que ver.
+    const deAgosto = await leads.crearLead(
+      { nombre: 'Llamó en agosto', closerId: closerKevin, fechaSesion: '2026-08-20' }, usuarioId)
+    await resultado.cargarResultado(deAgosto, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-05', cobradoAhora: 1000 },
+    }, usuarioId)
+
+    const deSeptiembre = await alta('Llamó y firmó en septiembre')
+    await resultado.cargarResultado(deSeptiembre, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 6000, moneda: 'USD', fecha: '2026-09-12', cobradoAhora: 3000 },
+    }, usuarioId)
+
+    const { medidas } = await metricas.metricas(rango, TODO)
+    expect(medidas.ventasCerradas).toBe(2)     // las dos firmaron en septiembre
+    expect(medidas.ventas).toBe(1)             // pero sólo una reunión fue de septiembre
+    expect(medidas.facturacion).toBe(10000)
+    expect(medidas.cashCollected).toBe(4000)
+    // Y el porcentaje que importa: de lo vendido, cuánto entró.
+    expect(medidas.cobranzaPct).toBe(40)
+
+    // La lista que abre el número tiene las dos, para que se pueda verificar.
+    const lista = await metricas.ventasDelPeriodo(rango, TODO)
+    expect(lista).toHaveLength(2)
+    expect(lista.reduce((a, v) => a + v.importe, 0)).toBe(10000)
+  })
+
   it('el embudo y las tasas salen de los datos, no de una suma a mano', async () => {
     const cargar = async (
       nombre: string, estado: 'asistio' | 'no_show', oferta: boolean, r: 'venta' | 'seguimiento',
