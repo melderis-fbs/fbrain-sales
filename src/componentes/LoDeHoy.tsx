@@ -82,15 +82,15 @@ export function LoDeHoy({
             const falta = sinCargar.includes(l)
             const viene = porVenir.includes(l)
             return (
-              <div key={l.id} className={falta ? 'cita pide' : viene ? 'cita viene' : 'cita'}>
-                <div className="cita-hora">{l.horaSesion ? hora(l.horaSesion) : '—'}</div>
-                <div className="cita-quien">
+              <div key={l.id} className={falta ? 'turno pide' : viene ? 'turno viene' : 'turno'}>
+                <div className="turno-hora">{l.horaSesion ? hora(l.horaSesion) : '—'}</div>
+                <div className="turno-quien">
                   <Link href={`/leads/${l.id}?volver=tracker`} style={{ fontWeight: 650 }}>{l.nombre}</Link>
-                  <div className="cita-detalle">
+                  <div className="turno-detalle">
                     {[l.empresa, l.closer].filter(Boolean).join(' · ') || 'sin closer asignado'}
                   </div>
                 </div>
-                <div className="cita-estado">
+                <div className="turno-estado">
                   {/* El desplegable está en las que ya pasaron Y en las que
                       todavía no: el closer que corta a las once no tiene por
                       qué esperar a que el reloj pase la hora agendada, y una

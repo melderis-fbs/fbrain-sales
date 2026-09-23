@@ -8,6 +8,7 @@ import {
 } from '@/dominio/rubrica'
 import { adherencia, notaDeFases, type Ejecucion, type Fase } from '@/dominio/fases'
 import type { ErrorCritico, LecturaJusta, Recomendacion } from '@/dominio/informe'
+import type { Resultado } from '@/dominio/resultados'
 import type { FaseEvaluada } from '@/ia/analizar'
 
 /**
@@ -411,6 +412,8 @@ export type AnalisisCompleto = {
   }[]
   /** Qué lead le tocó y hasta dónde se podía llegar con ése. */
   lecturaJusta: LecturaJusta | null
+  /** En qué quedó la llamada, según la ficha del lead. */
+  resultado: Resultado
   erroresCriticos: ErrorCritico[]
   recomendaciones: Recomendacion[]
   conclusion: string | null
@@ -418,7 +421,7 @@ export type AnalisisCompleto = {
 
 export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> {
   const a = await fila<Record<string, any>>(
-    `select a.*, ll.lead_id, ll.fecha, l.nombre as lead, c.nombre as closer,
+    `select a.*, ll.lead_id, ll.fecha, l.nombre as lead, l.resultado, c.nombre as closer,
             cs.score, cs.base, cs.penalizacion, cs.bonificacion, cs.tope_aplicado, cs.id as score_id,
             sc.version
        from analisis a
@@ -457,6 +460,8 @@ export async function verAnalisis(id: number): Promise<AnalisisCompleto | null> 
       analisis: f.analisis, seDejoPasar: f.se_dejo_pasar,
     })),
     lecturaJusta: (a.lectura_justa ?? null) as LecturaJusta | null,
+    /** En qué quedó la llamada. Va arriba del informe: es el titular. */
+    resultado: a.resultado as Resultado,
     erroresCriticos: (a.errores_criticos ?? []) as ErrorCritico[],
     recomendaciones: (a.recomendaciones ?? []) as Recomendacion[],
     conclusion: a.conclusion ?? null,

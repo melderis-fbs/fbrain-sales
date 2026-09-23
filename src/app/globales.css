@@ -430,8 +430,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* ── El analizador ──────────────────────────────────────────────────────── */
 
 .cita {
-  border-left: 2px solid var(--borde); padding: 2px 0 2px 10px; margin: 6px 0 0;
-  font-size: 12.5px; color: var(--gris); font-style: italic;
+  border-left: 2px solid var(--borde); padding: 2px 0 2px 10px; margin: 8px 0 0;
+  font-size: 12.5px; line-height: 1.6; color: var(--gris); font-style: italic;
 }
 .nivel { display: flex; gap: 3px; margin-top: 4px; }
 .nivel i {
@@ -561,15 +561,19 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* El único color del bloque, y sólo cuando hay trabajo pendiente de verdad. */
 .hoy-num.pide .hoy-valor { color: var(--rojo); }
 
+/* Un renglón de la agenda del día. Se llamaba «cita» igual que la cita
+ * textual del analizador, y como esta regla viene después la pisaba: cada
+ * frase citada se dibujaba dentro de una grilla de tres columnas y salía en
+ * una tira de una palabra por renglón. Dos cosas distintas, dos nombres. */
 .agenda { border-top: 1px solid var(--borde); }
-.cita { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px; align-items: center;
-        padding: 9px 0; border-bottom: 1px solid var(--borde); }
-.cita:last-child { border-bottom: none; }
-.cita-hora { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 650; color: var(--negro); }
-.cita.viene .cita-hora { color: var(--gris-claro); font-weight: 600; }
-.cita.pide { background: var(--ambar-suave); margin: 0 -14px; padding: 9px 14px; }
-.cita-detalle { font-size: 11.5px; color: var(--gris); margin-top: 1px; }
-.cita-estado { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.turno { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px; align-items: center;
+         padding: 9px 0; border-bottom: 1px solid var(--borde); }
+.turno:last-child { border-bottom: none; }
+.turno-hora { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 650; color: var(--negro); }
+.turno.viene .turno-hora { color: var(--gris-claro); font-weight: 600; }
+.turno.pide { background: var(--ambar-suave); margin: 0 -14px; padding: 9px 14px; }
+.turno-detalle { font-size: 11.5px; color: var(--gris); margin-top: 1px; }
+.turno-estado { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ── El recorrido de cada closer en el mes ───────────────────────────────── */
 .titulo-seccion { font-size: 11px; font-weight: 700; color: var(--gris-claro);
@@ -691,8 +695,64 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 
 /* ── El informe de una llamada ──────────────────────────────────────────── */
-.informe .escala { font-size: 38px; }
-.informe .fase { border-left: 2px solid var(--borde); padding-left: 12px; }
+
+/* El titular: la nota grande, en qué quedó la llamada y de quién es. Todo lo
+ * demás del informe explica este renglón. */
+.informe-titulo {
+  display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  padding: 18px 20px; background: var(--blanco);
+  border: 1px solid var(--borde); border-radius: var(--radio); box-shadow: var(--sombra);
+}
+.informe-nota { line-height: 1; }
+.informe-nota b {
+  font-size: 46px; font-weight: 700; letter-spacing: -.04em; color: var(--negro);
+  font-variant-numeric: tabular-nums;
+}
+.informe-nota span { font-size: 15px; color: var(--gris-claro); font-weight: 600; margin-left: 3px; }
+.informe-titulo .quien { flex: 1; min-width: 190px; }
+.informe-titulo .quien strong { display: block; font-size: 17px; letter-spacing: -.01em; }
+.informe-titulo .quien .meta { font-size: 12.5px; color: var(--gris); margin-top: 2px; }
+
+/* Los tres números. Sin marco propio: el marco es la fila. */
+.informe-numeros {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--borde); border: 1px solid var(--borde);
+  border-radius: var(--radio); overflow: hidden;
+}
+.informe-numeros > div { background: var(--blanco); padding: 14px 16px; }
+.informe-numeros .valor {
+  font-size: 27px; font-weight: 700; letter-spacing: -.03em; color: var(--negro);
+  font-variant-numeric: tabular-nums; line-height: 1.15; margin-top: 2px;
+}
+
+/* Una fase del guion, un error, una recomendación: las tres son puntos en
+ * orden, así que se dibujan igual. El número afuera y todo lo demás alineado
+ * con él es lo que hace que se lea como una lista y no como un muro. */
+.fase, .punto { display: grid; grid-template-columns: 30px 1fr; gap: 12px; }
+.fase + .fase, .punto + .punto { border-top: 1px solid var(--borde-suave); padding-top: 16px; }
+.fase .orden, .punto .orden {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 99px;
+  background: var(--gris-fondo); color: var(--gris);
+  font-size: 12px; font-weight: 700;
+}
+/* Lo que costó plata sí lleva color. Es la única lista del informe que lo
+ * lleva, y por eso se ve. */
+.punto .orden.malo { background: var(--rojo-suave); color: var(--rojo); }
+.punto strong { font-size: 14px; letter-spacing: -.01em; }
+.punto p { margin: 3px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--tinta); }
+.fase .cabeza { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.fase .cabeza strong { font-size: 14.5px; letter-spacing: -.01em; }
+.fase .cabeza .nota { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fase .cabeza .peso { font-size: 11.5px; color: var(--gris-claro); }
+
+/* «Lo que hizo», «lo que decía el guion»: el rótulo arriba y chiquito, el
+ * texto abajo. En la misma línea, el rótulo compite con lo que dice. */
+.dato-largo + .dato-largo, .cita + .dato-largo { margin-top: 10px; }
+/* Salvo cuando van lado a lado: ahí el margen desalinea las dos columnas. */
+.dos > .dato-largo + .dato-largo { margin-top: 0; }
+.dato-largo .etiqueta { display: block; margin-bottom: 2px; }
+.dato-largo p { margin: 0; font-size: 13.5px; line-height: 1.55; }
 
 /* ── Imprimir: lo que se ve es lo que se guarda ─────────────────────────── */
 /* No hay una segunda maqueta para el PDF. Una segunda maqueta se desactualiza:

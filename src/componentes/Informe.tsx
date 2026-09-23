@@ -1,6 +1,8 @@
 import type { AnalisisCompleto } from '@/datos/analisis'
 import { Tarjeta, Pildora } from './Piezas'
 import { comoSeLee } from '@/dominio/rubrica'
+import { NOMBRE_DE_RESULTADO, COLOR_DE_RESULTADO } from '@/dominio/resultados'
+import { fechaCorta } from './Piezas'
 import { NOMBRE_DE_EJECUCION, COLOR_DE_EJECUCION } from '@/dominio/fases'
 import {
   NOMBRE_DE_TECHO, NOMBRE_DE_APROVECHAMIENTO, COLOR_DE_APROVECHAMIENTO,
@@ -24,56 +26,77 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
 
   return (
     <div className="apilado informe">
-      {/* ── Cómo le fue con lo que tenía ─────────────────────────────── */}
-      {a.lecturaJusta ? (
-        <Tarjeta titulo="Cómo le fue con lo que tenía"
-                 ayuda="Un closer no elige el lead que le toca. Esto se lee antes que la nota.">
-          <div className="fila" style={{ marginBottom: 10 }}>
-            <Pildora color="gris">{NOMBRE_DE_TECHO[a.lecturaJusta.techo]}</Pildora>
+      {/* ── El titular: la nota, en qué quedó y de quién es ───────────── */}
+      <div className="informe-titulo">
+        <div className="informe-nota">
+          <b>{a.score === null ? '—' : a.score.toFixed(1)}</b><span>/10</span>
+          <div className="contra" style={{ marginTop: 2 }}>
+            {a.score === null ? 'sin nota' : comoSeLee(a.score)}
+          </div>
+        </div>
+        <div className="quien">
+          <strong>{a.lead}</strong>
+          <div className="meta">
+            {[a.closer, a.fecha ? fechaCorta(a.fecha) : null].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+        <div className="fila">
+          <Pildora color={COLOR_DE_RESULTADO[a.resultado]}>
+            {NOMBRE_DE_RESULTADO[a.resultado]}
+          </Pildora>
+          {a.lecturaJusta ? (
             <Pildora color={COLOR_DE_APROVECHAMIENTO[a.lecturaJusta.aprovecho]}>
               {NOMBRE_DE_APROVECHAMIENTO[a.lecturaJusta.aprovecho]}
             </Pildora>
+          ) : null}
+        </div>
+      </div>
+
+      {/* ── Los tres números ──────────────────────────────────────────── */}
+      <div className="informe-numeros">
+        <div>
+          <div className="etiqueta">Calidad comercial</div>
+          <div className="valor">{a.score === null ? '—' : a.score.toFixed(1)}</div>
+          <div className="contra">sobre 10</div>
+        </div>
+        <div>
+          <div className="etiqueta">Adherencia al guion</div>
+          <div className="valor">{a.adherenciaPct === null ? '—' : `${a.adherenciaPct}%`}</div>
+          <div className="contra">cuánto se ejecutó</div>
+        </div>
+        <div>
+          <div className="etiqueta">Ejecución del guion</div>
+          <div className="valor">{a.notaFases === null ? '—' : a.notaFases.toFixed(1)}</div>
+          <div className="contra">qué tan bien se hizo</div>
+        </div>
+      </div>
+
+      {/* ── Cómo le fue con lo que tenía ─────────────────────────────── */}
+      {a.lecturaJusta ? (
+        <Tarjeta titulo="Cómo le fue con lo que tenía">
+          <div className="fila" style={{ marginBottom: 10 }}>
+            <Pildora color="gris">{NOMBRE_DE_TECHO[a.lecturaJusta.techo]}</Pildora>
           </div>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>{a.lecturaJusta.insight}</p>
+          <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65 }}>{a.lecturaJusta.insight}</p>
           <div className="separador" />
           <div className="dos">
-            <div>
-              <div className="etiqueta">Qué lead le tocó</div>
-              <p style={{ margin: '3px 0 0', fontSize: 13 }}>{a.lecturaJusta.queRecibio}</p>
+            <div className="dato-largo">
+              <span className="etiqueta">Qué lead le tocó</span>
+              <p>{a.lecturaJusta.queRecibio}</p>
             </div>
-            <div>
-              <div className="etiqueta">Por qué ése era el techo</div>
-              <p style={{ margin: '3px 0 0', fontSize: 13 }}>{a.lecturaJusta.porQueEseTecho}</p>
+            <div className="dato-largo">
+              <span className="etiqueta">Por qué ése era el techo</span>
+              <p>{a.lecturaJusta.porQueEseTecho}</p>
             </div>
           </div>
         </Tarjeta>
       ) : null}
 
-      {/* ── Los tres números ──────────────────────────────────────────── */}
-      <div className="rejilla g3">
-        <Tarjeta titulo="Calidad comercial">
-          <div className="escala">{a.score === null ? '—' : a.score.toFixed(1)}</div>
-          <div className="contra">
-            {a.score === null ? 'sin nota' : `${comoSeLee(a.score)} · sobre 10`}
-          </div>
-        </Tarjeta>
-        <Tarjeta titulo="Adherencia al guion">
-          <div className="escala">
-            {a.adherenciaPct === null ? '—' : `${a.adherenciaPct}%`}
-          </div>
-          <div className="contra">cuánto del guion se ejecutó</div>
-        </Tarjeta>
-        <Tarjeta titulo="Ejecución del guion">
-          <div className="escala">{a.notaFases === null ? '—' : a.notaFases.toFixed(1)}</div>
-          <div className="contra">qué tan bien se hizo lo que se hizo</div>
-        </Tarjeta>
-      </div>
-
       {/* ── El guion, fase por fase ───────────────────────────────────── */}
       {a.fases.length > 0 ? (
         <>
           <Tarjeta titulo="Puntuación por fase"
-                   ayuda="«Adherencia» es si el paso se hizo; «nota» es qué tan bien. Son dos preguntas.">
+                   ayuda="«Adherencia» es si el paso se hizo; la nota, qué tan bien.">
             <div className="tabla-scroll">
               <table>
                 <thead>
@@ -100,35 +123,48 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
           </Tarjeta>
 
           <Tarjeta titulo="Fase por fase, con lo que se dijo">
-            <div className="apilado" style={{ gap: 18 }}>
+            <div className="apilado" style={{ gap: 16 }}>
               {a.fases.map((f, i) => (
                 <div key={f.clave} className="fase">
-                  <div className="entre" style={{ alignItems: 'baseline' }}>
-                    <strong style={{ fontSize: 14 }}>{i + 1}. {f.nombre}</strong>
-                    <span style={{ fontSize: 12.5, color: 'var(--gris)' }}>
-                      {f.nota === null ? 'sin nota' : `${f.nota.toFixed(1)}/10`} ·{' '}
-                      {NOMBRE_DE_EJECUCION[f.ejecucion].toLowerCase()}
-                    </span>
+                  <div className="orden">{i + 1}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="cabeza">
+                      <strong>{f.nombre}</strong>
+                      <span className="nota">
+                        {f.nota === null ? <span className="sindato">sin nota</span> : f.nota.toFixed(1)}
+                      </span>
+                      <Pildora color={COLOR_DE_EJECUCION[f.ejecucion]}>
+                        {NOMBRE_DE_EJECUCION[f.ejecucion]}
+                      </Pildora>
+                      <span className="peso">pesa {f.peso}%</span>
+                    </div>
+
+                    {f.loQueHizo ? (
+                      <div className="dato-largo" style={{ marginTop: 8 }}>
+                        <span className="etiqueta">Lo que hizo</span>
+                        <p>{f.loQueHizo}</p>
+                      </div>
+                    ) : null}
+                    {f.cita ? <p className="cita">«{f.cita}»</p> : null}
+                    {f.loQueDebia ? (
+                      <div className="dato-largo">
+                        <span className="etiqueta">Lo que decía el guion</span>
+                        <p>{f.loQueDebia}</p>
+                      </div>
+                    ) : null}
+                    {f.analisis ? (
+                      <div className="dato-largo">
+                        <span className="etiqueta">La diferencia</span>
+                        <p>{f.analisis}</p>
+                      </div>
+                    ) : null}
+                    {f.seDejoPasar ? (
+                      <div className="dato-largo">
+                        <span className="etiqueta">Lo que se dejó pasar</span>
+                        <p>{f.seDejoPasar}</p>
+                      </div>
+                    ) : null}
                   </div>
-                  {f.loQueHizo ? (
-                    <p style={{ margin: '6px 0 0', fontSize: 13 }}>
-                      <strong>Lo que hizo:</strong> {f.loQueHizo}
-                    </p>
-                  ) : null}
-                  {f.cita ? <p className="cita">«{f.cita}»</p> : null}
-                  {f.loQueDebia ? (
-                    <p style={{ margin: '6px 0 0', fontSize: 13 }}>
-                      <strong>Lo que decía el guion:</strong> {f.loQueDebia}
-                    </p>
-                  ) : null}
-                  {f.analisis ? (
-                    <p style={{ margin: '6px 0 0', fontSize: 13 }}>{f.analisis}</p>
-                  ) : null}
-                  {f.seDejoPasar ? (
-                    <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--gris)' }}>
-                      <strong>Lo que se dejó pasar:</strong> {f.seDejoPasar}
-                    </p>
-                  ) : null}
                 </div>
               ))}
             </div>
@@ -139,11 +175,14 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
       {/* ── Lo que costó y qué hacer ──────────────────────────────────── */}
       {a.erroresCriticos.length > 0 ? (
         <Tarjeta titulo="Los errores que costaron">
-          <div className="apilado" style={{ gap: 12 }}>
+          <div className="apilado" style={{ gap: 16 }}>
             {a.erroresCriticos.map((e, i) => (
-              <div key={i}>
-                <strong style={{ fontSize: 13.5 }}>{i + 1}. {e.titulo}</strong>
-                <p style={{ margin: '3px 0 0', fontSize: 13 }}>{e.detalle}</p>
+              <div key={i} className="punto">
+                <div className="orden malo">{i + 1}</div>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{e.titulo}</strong>
+                  <p>{e.detalle}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -152,11 +191,14 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
 
       {a.recomendaciones.length > 0 ? (
         <Tarjeta titulo="Para la próxima">
-          <div className="apilado" style={{ gap: 12 }}>
+          <div className="apilado" style={{ gap: 16 }}>
             {a.recomendaciones.map((r, i) => (
-              <div key={i}>
-                <strong style={{ fontSize: 13.5 }}>{i + 1}. {r.titulo}</strong>
-                <p style={{ margin: '3px 0 0', fontSize: 13 }}>{r.detalle}</p>
+              <div key={i} className="punto">
+                <div className="orden">{i + 1}</div>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{r.titulo}</strong>
+                  <p>{r.detalle}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -171,7 +213,7 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
 
       {/* ── El detalle, para discutir una nota ────────────────────────── */}
       <Tarjeta titulo="Dimensión por dimensión"
-               ayuda="La venta consultiva, aparte del guion. Cada nivel con la frase que lo sostiene: sin cita, el nivel no entra al cálculo.">
+               ayuda="La venta consultiva, aparte del guion.">
         <div className="apilado" style={{ gap: 14 }}>
           {a.niveles.map((n) => (
             <div key={n.dimension}>
@@ -234,8 +276,7 @@ export function Informe({ a }: { a: AnalisisCompleto }) {
         </Tarjeta>
       ) : null}
 
-      <Tarjeta titulo="Cuánto habló cada uno"
-               ayuda="Se cuenta en código, no se le pregunta al modelo: contar palabras es aritmética.">
+      <Tarjeta titulo="Cuánto habló cada uno">
         <div className="rejilla g3">
           <div>
             <div className="etiqueta">Turnos del closer</div>

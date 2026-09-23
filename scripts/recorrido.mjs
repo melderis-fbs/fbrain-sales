@@ -415,10 +415,10 @@ await paso('un lead sin fecha no desaparece: el Tracker lo reclama', async () =>
 await paso('el closer carga el resultado sin salir del Tracker', async () => {
   await p.goto(`${RAIZ}/tracker`)
   const carga = p.locator('.contenido .tarjeta:has-text("Hoy")').first()
-  comprobar(await carga.locator('.cita').count() > 0,
+  comprobar(await carga.locator('.turno').count() > 0,
             'el Tracker abre con la agenda del día y se carga desde ahí')
 
-  const fila = carga.locator(`.cita:has-text("Sin Fecha ${marca}")`)
+  const fila = carga.locator(`.turno:has-text("Sin Fecha ${marca}")`)
   await fila.locator('select[name=estado]').selectOption('asistio')
   await fila.locator('select[name=resultado]').selectOption('venta')
   // El importe aparece SOLO cuando hace falta: es la prueba de que el
