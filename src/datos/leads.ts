@@ -371,6 +371,15 @@ export type LeadEnLista = {
   proximoContacto: string | null
   valorPotencial: number | null
   moneda: string
+  /**
+   * La plata REAL, si ya la hay. `vendido` es lo firmado; `senado`, la seña
+   * abierta; `cobrado`, lo que entró. Separado del valor potencial a propósito:
+   * mostrar una estimación en la misma columna que una venta es lo que hace
+   * que el equipo deje de creerle a la columna.
+   */
+  vendido: number | null
+  senado: number | null
+  cobrado: number
   calidadScore: number | null
   calidadNivel: NivelDeCalidad | null
   llamadas: number
@@ -387,6 +396,17 @@ const SELECT_LISTA = `
          l.proximo_contacto, l.valor_potencial, l.moneda, l.creado_en,
          fu.nombre as fuente, fn.nombre as funnel, s.nombre as setter, c.nombre as closer,
          q.score as calidad_score, q.nivel as calidad_nivel,
+         -- La plata REAL del lead, no la estimada. Sin esto la lista mostraba
+         -- el valor potencial en la columna «Valor» incluso en un lead ya
+         -- vendido: una venta de 5.000 se veía como su estimación de 4.000, o
+         -- como «—» si nadie la había estimado. La columna decía «Valor» y no
+         -- era el valor de nada.
+         vn.importe as venta_importe, vn.moneda as venta_moneda,
+         sn.importe as sena_importe, sn.moneda as sena_moneda,
+         coalesce((select sum(p.importe) from pagos p
+                     join ventas v2 on v2.id = p.venta_id and v2.borrado_en is null
+                    where v2.lead_id = l.id and p.borrado_en is null
+                      and p.estado = 'cobrado'), 0) as cobrado,
          (select count(*) from llamadas x where x.lead_id = l.id) as llamadas,
          ll.id as llamada_id, ll.tiene_transcripcion, ll.score as nota_llamada
     from leads l
@@ -407,7 +427,13 @@ const SELECT_LISTA = `
     left join setters s  on s.id  = l.setter_id
     left join closers c  on c.id  = l.closer_id
     left join lateral (select score, nivel from lead_quality q2
-                        where q2.lead_id = l.id order by q2.creado_en desc, q2.id desc limit 1) q on true`
+                        where q2.lead_id = l.id order by q2.creado_en desc, q2.id desc limit 1) q on true
+    left join lateral (select importe, moneda from ventas v
+                        where v.lead_id = l.id and v.borrado_en is null
+                        order by v.fecha desc, v.id desc limit 1) vn on true
+    left join lateral (select importe, moneda from senias sx
+                        where sx.lead_id = l.id and sx.borrado_en is null and sx.estado <> 'convertida'
+                        order by sx.fecha desc, sx.id desc limit 1) sn on true`
 
 function aLeadEnLista(x: Record<string, any>): LeadEnLista {
   return {
@@ -417,7 +443,10 @@ function aLeadEnLista(x: Record<string, any>): LeadEnLista {
     estado: x.estado, resultado: x.resultado, ciclo: Number(x.ciclo),
     proximoContacto: x.proximo_contacto,
     valorPotencial: x.valor_potencial === null ? null : Number(x.valor_potencial),
-    moneda: x.moneda,
+    moneda: x.venta_moneda ?? x.sena_moneda ?? x.moneda,
+    vendido: x.venta_importe === null || x.venta_importe === undefined ? null : Number(x.venta_importe),
+    senado: x.sena_importe === null || x.sena_importe === undefined ? null : Number(x.sena_importe),
+    cobrado: Number(x.cobrado ?? 0),
     calidadScore: x.calidad_score === null || x.calidad_score === undefined ? null : Number(x.calidad_score),
     calidadNivel: x.calidad_nivel ?? null,
     llamadas: Number(x.llamadas),
@@ -451,7 +480,17 @@ export async function listarLeads(
     ['closerId', 'l.closer_id'], ['resultado', 'l.resultado'], ['estado', 'l.estado'],
   ] as const) {
     const v = filtros[campo]
-    if (v !== undefined) { valores.push(v); condiciones.push(`${columna} = $${valores.length}`) }
+    // Vacío es SIN FILTRO, no «igual a vacío».
+    //
+    // Un `<select>` con «Todos» manda `resultado=` en la URL, y eso llega como
+    // cadena vacía, no como `undefined`. Filtrar por ella buscaba leads con el
+    // resultado literalmente vacío —que no existe ninguno— y la lista aparecía
+    // en cero: elegir «Todos» era la forma más rápida de no ver nada.
+    // El tipo dice que no puede venir vacío; la URL dice que sí. Gana la URL.
+    if (v !== undefined && v !== null && String(v) !== '') {
+      valores.push(v)
+      condiciones.push(`${columna} = $${valores.length}`)
+    }
   }
   if (filtros.desde) { valores.push(filtros.desde); condiciones.push(`l.fecha_sesion >= $${valores.length}`) }
   if (filtros.hasta) { valores.push(filtros.hasta); condiciones.push(`l.fecha_sesion <= $${valores.length}`) }

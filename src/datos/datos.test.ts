@@ -1048,6 +1048,53 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await metricas.metricas(rango, TODO)).medidas.facturacion).toBe(1000)
   })
 
+  it('elegir «Todos» en un filtro no vacía la lista', async () => {
+    // Un `<select>` con «Todos» manda `resultado=` en la URL. Eso llegaba como
+    // cadena vacía y se filtraba por ella: la lista aparecía en cero y parecía
+    // que no había leads. Vacío es SIN filtro.
+    const id = await alta('María')
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' } }, usuarioId)
+    await alta('Pedro')
+
+    expect(await leads.listarLeads(TODO)).toHaveLength(2)
+    expect(await leads.listarLeads(TODO, { resultado: '' as never })).toHaveLength(2)
+    expect(await leads.listarLeads(TODO, { estado: '' as never })).toHaveLength(2)
+    expect(await leads.listarLeads(TODO, { closerId: '' as never })).toHaveLength(2)
+
+    // Y un filtro de verdad sigue filtrando.
+    expect((await leads.listarLeads(TODO, { resultado: 'venta' })).map((l) => l.nombre))
+      .toEqual(['María'])
+  })
+
+  it('la lista de leads muestra la plata que entró, no la que se estimó', async () => {
+    // La columna decía «Valor» y traía el valor POTENCIAL, incluso en un lead
+    // ya vendido: una venta de 5.000 se veía como su estimación de 4.000, o
+    // como «—» si nadie la había estimado. La columna no era el valor de nada.
+    const vendido = await leads.crearLead(
+      { nombre: 'Vendido', closerId: closerKevin, fechaSesion: '2026-09-10', valorPotencial: 4000 }, usuarioId)
+    await resultado.cargarResultado(vendido, { estado: 'asistio', resultado: 'venta',
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-10' } }, usuarioId)
+    await resultado.registrarPago(vendido, { importe: 2000, moneda: 'USD', fecha: '2026-09-12' }, usuarioId)
+
+    const senado = await leads.crearLead(
+      { nombre: 'Señado', closerId: closerKevin, fechaSesion: '2026-09-11' }, usuarioId)
+    await resultado.cargarResultado(senado, { estado: 'asistio', resultado: 'sena',
+      sena: { importe: 900, moneda: 'USD', fecha: '2026-09-11' } }, usuarioId)
+
+    const soloEstimado = await leads.crearLead(
+      { nombre: 'Estimado', closerId: closerKevin, fechaSesion: '2026-09-12', valorPotencial: 3000 }, usuarioId)
+
+    const porNombre = Object.fromEntries(
+      (await leads.listarLeads(TODO)).map((l) => [l.nombre, l]))
+
+    expect(porNombre['Vendido']).toMatchObject({ vendido: 5000, cobrado: 2000, valorPotencial: 4000 })
+    expect(porNombre['Señado']).toMatchObject({ vendido: null, senado: 900 })
+    // Y el que sólo tiene estimación no inventa una venta.
+    expect(porNombre['Estimado']).toMatchObject({ vendido: null, senado: null, valorPotencial: 3000 })
+    expect(soloEstimado).toBeGreaterThan(0)
+  })
+
   it('las reuniones que pasaron sin resultado se cuentan aparte y se pueden listar', async () => {
     await leads.crearLead(
       { nombre: 'Sin cargar', closerId: closerKevin, fechaSesion: '2026-09-01' }, usuarioId)

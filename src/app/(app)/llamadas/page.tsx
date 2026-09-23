@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
+import { opcion } from '@/lib/busqueda'
 import { alcanceDe } from '@/lib/permisos'
 import { listarLeads } from '@/datos/leads'
 import { metricas, sinCargar } from '@/datos/metricas'
@@ -50,7 +51,7 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
       desde: r.desde, hasta: r.hasta,
       closerId: filtros.closerId,
       texto: q.q,
-      resultado: q.resultado as Resultado | undefined,
+      resultado: opcion<Resultado>(q.resultado),
     }, 400),
     sinCargar(alcance, hoy, 100),
     catalogos(),

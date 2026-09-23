@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
+import { opcion } from '@/lib/busqueda'
 import { alcanceDe, puede } from '@/lib/permisos'
 import { restaurarLeadAccion } from './acciones'
 import { cuando } from '@/componentes/Piezas'
@@ -41,8 +42,8 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
       funnelId: q.funnel ? Number(q.funnel) : undefined,
       setterId: q.setter ? Number(q.setter) : undefined,
       closerId: q.closer ? Number(q.closer) : undefined,
-      resultado: q.resultado as Resultado | undefined,
-      estado: q.estado as Estado | undefined,
+      resultado: opcion<Resultado>(q.resultado),
+      estado: opcion<Estado>(q.estado),
       desde: q.desde,
       hasta: q.hasta,
       soloAbiertos: q.abiertos === '1',
@@ -131,7 +132,7 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
                   <th>Nombre</th><th>Quality</th><th>Fuente</th><th>Setter</th>
                   <th>Closer</th><th>Reunión</th><th>Estado</th><th>Resultado</th>
                   <th>Próximo contacto</th>
-                  {verPlata ? <th className="num">Valor</th> : null}
+                  {verPlata ? <th className="num">Plata</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -166,8 +167,30 @@ export default async function Leads({ searchParams }: { searchParams: Busqueda }
                               : fechaCorta(l.proximoContacto))
                           : <span className="sindato">—</span>}
                       </td>
+                      {/* Lo firmado gana sobre lo estimado: una venta de 5.000
+                          se veía como su estimación, o como «—» si nadie la
+                          había estimado. */}
                       {verPlata ? (
-                        <td className="num">{l.valorPotencial ? plata(l.valorPotencial, l.moneda) : '—'}</td>
+                        <td className="num">
+                          {l.vendido !== null ? (
+                            <>
+                              <strong>{plata(l.vendido, l.moneda)}</strong>
+                              <div style={{ fontSize: 11, color: 'var(--gris)', fontWeight: 500 }}>
+                                {l.cobrado > 0 ? `${plata(l.cobrado, l.moneda)} cobrado` : 'sin cobrar'}
+                              </div>
+                            </>
+                          ) : l.senado !== null ? (
+                            <>
+                              <strong>{plata(l.senado, l.moneda)}</strong>
+                              <div style={{ fontSize: 11, color: 'var(--gris)', fontWeight: 500 }}>seña</div>
+                            </>
+                          ) : l.valorPotencial ? (
+                            <span style={{ color: 'var(--gris)' }}>
+                              {plata(l.valorPotencial, l.moneda)}
+                              <div style={{ fontSize: 11, color: 'var(--gris-claro)', fontWeight: 500 }}>estimado</div>
+                            </span>
+                          ) : <span className="sindato">—</span>}
+                        </td>
                       ) : null}
                     </tr>
                   )
