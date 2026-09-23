@@ -29,6 +29,7 @@ import type { LeadEnLista } from '@/datos/leads'
 function paraReportar(l: LeadEnLista) {
   return {
     id: l.id, nombre: l.nombre, empresa: l.empresa, closer: l.closer,
+    tipoSesion: l.tipoSesion, fuente: l.fuente,
     moneda: l.moneda, fechaSesion: l.fechaSesion,
     estado: l.estado, resultado: l.resultado,
     huboOferta: l.huboOferta, seguimientoLargo: l.seguimientoLargo,

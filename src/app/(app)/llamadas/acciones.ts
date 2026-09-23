@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, exigir, puede } from '@/lib/permisos'
-import { exigirAccesoAlLead } from '@/datos/leads'
+import { exigirAccesoAlLead, verLead } from '@/datos/leads'
 import {
   crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead, transcripcionDe,
 } from '@/datos/llamadas'
@@ -12,9 +12,10 @@ import { guardarPlaybook } from '@/datos/playbooks'
 import { cargarResultado, agendarSegundaLlamada } from '@/datos/resultado'
 import { leerResultado } from '@/datos/formularioDeResultado'
 import { agregarNota } from '@/datos/notas'
+import { textoParaSlack } from '@/dominio/reporte'
+import { salidaDe, type MotivoPerdida, type TipoSesion } from '@/dominio/resultados'
 import { analizarLlamada } from '@/ia/correr'
 import { recalcular } from '@/datos/analisis'
-import type { TipoSesion } from '@/dominio/resultados'
 import type { Guardado } from '../leads/acciones'
 
 function texto(datos: FormData, campo: string): string | null {
@@ -257,9 +258,35 @@ export async function reportarAccion(_previo: Guardado, datos: FormData): Promis
       hecho.push('la segunda llamada')
     }
 
+    /**
+     * La nota del lead ES el reporte, con el mismo formato que va al canal.
+     *
+     * Se vuelve a componer acá, del lead ya guardado, y no se copia lo que
+     * mandó la pantalla: así el historial dice lo que quedó cargado y no lo
+     * que alguien vio en la pantalla antes de guardar. Si las dos cosas se
+     * separan, la que miente es la que se lee.
+     */
     if (nota !== null) {
-      await agregarNota(leadId, nota, usuario.id)
-      hecho.push('la nota')
+      const guardado = await verLead(leadId)
+      if (guardado) {
+        await agregarNota(leadId, textoParaSlack({
+          tipoSesion: guardado.tipoSesion,
+          fuente: guardado.fuente,
+          lead: guardado.nombre,
+          resumen: nota,
+          oferta: guardado.huboOferta ? texto(datos, 'oferta') : null,
+          estado: guardado.estado,
+          salida: salidaDe(guardado.resultado, guardado.seguimientoLargo !== null),
+          importe: guardado.venta?.importe ?? guardado.sena?.importe ?? null,
+          moneda: guardado.venta?.moneda ?? guardado.sena?.moneda ?? guardado.moneda,
+          programa: guardado.venta?.programa ?? null,
+          motivoPerdida: guardado.motivoPerdida as MotivoPerdida | null,
+          volverEl: guardado.seguimientoLargo,
+          fechaSegunda: leido.salida === 'segunda' ? leido.fechaSegunda : null,
+          proximosPasos: guardado.proximoPaso,
+        }), usuario.id)
+        hecho.push('el reporte')
+      }
     }
 
     if (transcripcion !== '') {

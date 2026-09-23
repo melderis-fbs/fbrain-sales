@@ -36,6 +36,8 @@ type LeadParaReportar = {
   nombre: string
   empresa: string | null
   closer: string | null
+  tipoSesion: import('@/dominio/resultados').TipoSesion
+  fuente: string | null
   moneda: string
   fechaSesion: string | null
   estado: Estado
@@ -125,6 +127,7 @@ export function Reportar({ lead, hoy, compacto }: {
     horaSegunda: '',
     volverEl: lead.seguimientoLargo ?? '',
     motivoPerdida: lead.motivoPerdida ?? '',
+    oferta: '',
     proximoPaso: '',
     notas: '',
     transcripcion: '',
@@ -143,14 +146,17 @@ export function Reportar({ lead, hoy, compacto }: {
   const cuantasCuotas = Math.min(Math.max(Number(valores.cuotas) || 1, 1), MAXIMO_DE_CUOTAS)
 
   const paraSlack = textoParaSlack({
-    lead: lead.nombre, empresa: lead.empresa, closer: lead.closer,
-    fecha: lead.fechaSesion ?? hoy,
-    estado, salida, huboOferta,
+    tipoSesion: lead.tipoSesion, fuente: lead.fuente, lead: lead.nombre,
+    resumen: valores.notas || null,
+    oferta: huboOferta ? (valores.oferta || null) : null,
+    estado, salida,
     importe: pide === 'venta' || pide === 'sena' ? Number(valores.importe) || null : null,
     moneda: lead.moneda,
+    programa: pide === 'venta' ? (valores.programa || null) : null,
     motivoPerdida: pide === 'motivo' ? (valores.motivoPerdida || null) as MotivoPerdida | null : null,
-    proximoPaso: valores.proximoPaso || null,
-    notas: valores.notas || null,
+    volverEl: pide === 'volverEl' ? (valores.volverEl || null) : null,
+    fechaSegunda: pide === 'segunda' ? (valores.fechaSegunda || null) : null,
+    proximosPasos: valores.proximoPaso || null,
   })
 
   const copiar = async () => {
@@ -219,9 +225,15 @@ export function Reportar({ lead, hoy, compacto }: {
                   No se llegó
                 </button>
               </div>
+              {huboOferta ? (
+                <div className="campo" style={{ marginTop: 10 }}>
+                  <label htmlFor={`r${lead.id}-oferta`}>Qué se ofreció</label>
+                  <input {...campo('oferta')} placeholder="GROWTH a 4.000, tres cuotas" />
+                </div>
+              ) : null}
               <div className="nota">
-                Es el denominador del cierre sobre oferta: sin esto no se sabe si se pierde
-                antes o después de mostrar el precio.
+                El sí o el no es el denominador del cierre sobre oferta: sin eso no se sabe si
+                se pierde antes o después de mostrar el precio. Lo que se ofreció va al reporte.
               </div>
             </Paso>
           ) : null}
@@ -379,20 +391,20 @@ export function Reportar({ lead, hoy, compacto }: {
                 </div>
               ) : null}
 
-              <div className="campo" style={{ marginTop: 12 }}>
-                <label htmlFor={`r${lead.id}-proximoPaso`}>Próximo paso</label>
-                <input {...campo('proximoPaso')}
-                       placeholder="Mandar la propuesta, hablar con la socia, cobrar la cuota 2…" />
-              </div>
             </Paso>
           ) : null}
 
           {/* ── 4 · Notas ──────────────────────────────────────────────── */}
           <Paso n={pasos.indexOf('notas') + 1} paso="notas">
             <div className="campo">
-              <label htmlFor={`r${lead.id}-notas`}>Qué contarle al equipo</label>
-              <textarea {...campo('notas')} style={{ minHeight: 80 }}
-                        placeholder="Lo que no se ve en los campos: qué objetó, con quién tiene que hablar, qué prometiste." />
+              <label htmlFor={`r${lead.id}-notas`}>Resumen de la llamada</label>
+              <textarea {...campo('notas')} style={{ minHeight: 110 }}
+                        placeholder="Quién es, qué necesita, qué la frena, en qué quedaron. Lo que no entra en ningún campo." />
+            </div>
+            <div className="campo">
+              <label htmlFor={`r${lead.id}-proximoPaso`}>Próximos pasos</label>
+              <input {...campo('proximoPaso')}
+                     placeholder="Mandar la propuesta, hablar con la socia, cobrar la cuota 2…" />
             </div>
             <div className="slack">
               <div className="entre" style={{ marginBottom: 6 }}>
@@ -404,8 +416,9 @@ export function Reportar({ lead, hoy, compacto }: {
               <pre>{paraSlack}</pre>
             </div>
             <div className="nota">
-              La cabecera la arma el sistema para que los tres reporten igual y el canal se
-              pueda leer de corrido. Lo de abajo es lo único que el sistema no sabe.
+              Los seis renglones y su orden los pone el sistema, y el estado lo calcula solo:
+              es lo que hace que los tres reporten igual y que el canal se pueda leer de
+              corrido. Este mismo texto queda en el historial del lead.
             </div>
           </Paso>
 

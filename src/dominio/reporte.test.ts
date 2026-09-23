@@ -30,38 +30,84 @@ describe('qué se le pregunta al closer', () => {
 })
 
 const base = {
-  lead: 'María Fernández', empresa: 'Estudio Fernández', closer: 'Kevin',
-  fecha: '18 sep', estado: 'asistio' as const, salida: 'venta' as const,
-  huboOferta: true, importe: 4000, moneda: 'USD',
-  motivoPerdida: null, proximoPaso: null, notas: null,
+  tipoSesion: 'primera' as const,
+  fuente: 'Webinar',
+  lead: 'Rosa Saez',
+  resumen: 'Es foniatra y quiere convertir su profesión en un negocio.',
+  oferta: null,
+  estado: 'asistio' as const,
+  salida: 'venta' as const,
+  importe: 4000,
+  moneda: 'USD',
+  programa: 'GROWTH',
+  motivoPerdida: null,
+  volverEl: null,
+  fechaSegunda: null,
+  proximosPasos: null,
 }
 
 describe('el mensaje que va al canal', () => {
-  it('abre con quién es y quién lo atendió', () => {
+  it('son seis renglones con sus rótulos, siempre los mismos', () => {
+    const renglones = textoParaSlack(base).split('\n')
+    expect(renglones.map((r) => r.split(':')[0])).toEqual([
+      'Tipo de llamada', 'Nombre del lead', 'Resumen de la llamada',
+      'Oferta', 'Estado', 'Próximos pasos',
+    ])
+  })
+
+  it('el tipo de llamada junta cómo lo llama el equipo con la fuente', () => {
+    expect(textoParaSlack(base)).toContain('Tipo de llamada: Llamada de venta WEBINAR')
+    expect(textoParaSlack({ ...base, tipoSesion: 'segunda' }))
+      .toContain('Tipo de llamada: Segunda llamada WEBINAR')
+    // Sin fuente cargada no se inventa una.
+    expect(textoParaSlack({ ...base, fuente: null }))
+      .toContain('Tipo de llamada: Llamada de venta\n')
+  })
+
+  it('un rótulo sin nada al lado va igual, y sin el espacio que sobra', () => {
     const t = textoParaSlack(base)
-    expect(t.split('\n')[0]).toBe('*María Fernández · Estudio Fernández*')
-    expect(t).toContain('18 sep · Kevin')
+    expect(t).toContain('\nOferta:\n')
+    expect(t.endsWith('Próximos pasos:')).toBe(true)
   })
 
-  it('dice el resultado con la plata', () => {
-    expect(textoParaSlack(base)).toContain('Resultado: Venta · 4.000 USD')
+  it('el estado de una venta lleva programa e importe', () => {
+    expect(textoParaSlack(base)).toContain('Estado: Venta · GROWTH · 4.000 USD')
   })
 
-  it('al que no vino no le inventa oferta ni importe', () => {
-    const t = textoParaSlack({ ...base, estado: 'no_show', salida: 'pendiente', importe: null })
-    expect(t).toContain('Resultado: No show')
-    expect(t).not.toContain('Oferta presentada')
-  })
-
-  it('el motivo de pérdida sale escrito igual para todos', () => {
+  it('el de un seguimiento largo, el día en que hay que volver', () => {
     const t = textoParaSlack({
-      ...base, salida: 'perdida', importe: null, motivoPerdida: 'no_era_decisor',
+      ...base, salida: 'seguimiento_largo', importe: null, programa: null,
+      volverEl: '2027-01-05',
     })
-    expect(t).toContain('Motivo: No era decisor')
+    expect(t).toContain('Estado: Seguimiento largo · vuelve el 05/01/2027')
   })
 
-  it('y lo que escribe el closer va al final, tal cual', () => {
-    const t = textoParaSlack({ ...base, notas: '  Quedó en hablar con la socia el lunes.  ' })
-    expect(t.endsWith('Quedó en hablar con la socia el lunes.')).toBe(true)
+  it('el de una segunda llamada, cuándo es', () => {
+    const t = textoParaSlack({
+      ...base, salida: 'segunda', importe: null, programa: null, fechaSegunda: '2026-10-12',
+    })
+    expect(t).toContain('Estado: Segunda llamada · 12/10/2026')
+  })
+
+  it('el de un perdido, el motivo escrito igual para todos', () => {
+    const t = textoParaSlack({
+      ...base, salida: 'perdida', importe: null, programa: null, motivoPerdida: 'no_era_decisor',
+    })
+    expect(t).toContain('Estado: Perdido · No era decisor')
+  })
+
+  it('y al que no vino no le inventa ni oferta ni plata', () => {
+    const t = textoParaSlack({ ...base, estado: 'no_show', salida: 'pendiente', importe: null })
+    expect(t).toContain('Estado: No show')
+    expect(t).not.toContain('4.000')
+  })
+
+  it('lo que escribe el closer va donde va, y se le sacan los espacios de más', () => {
+    const t = textoParaSlack({
+      ...base, oferta: '  GROWTH a 4.000  ', proximosPasos: '  Mandar el contrato  ',
+    })
+    expect(t).toContain('Oferta: GROWTH a 4.000')
+    expect(t).toContain('Próximos pasos: Mandar el contrato')
+    expect(t).toContain('Resumen de la llamada: Es foniatra')
   })
 })

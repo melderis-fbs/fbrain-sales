@@ -369,6 +369,7 @@ export type LeadEnLista = {
   closer: string | null
   fechaSesion: string | null
   horaSesion: string | null
+  tipoSesion: TipoSesion
   estado: Estado
   resultado: Resultado
   ciclo: number
@@ -415,7 +416,8 @@ export type LeadEnLista = {
 }
 
 const SELECT_LISTA = `
-  select l.id, l.nombre, l.empresa, l.fecha_sesion, l.hora_sesion, l.estado, l.resultado, l.ciclo,
+  select l.id, l.nombre, l.empresa, l.fecha_sesion, l.hora_sesion, l.tipo_sesion,
+         l.estado, l.resultado, l.ciclo,
          l.proximo_contacto, l.valor_potencial, l.moneda, l.creado_en,
          l.hubo_oferta, l.motivo_perdida,
          case when se.situacion = 'largo' then se.fecha_larga end as seguimiento_largo,
@@ -476,7 +478,7 @@ function aLeadEnLista(x: Record<string, any>): LeadEnLista {
   return {
     id: x.id, nombre: x.nombre, empresa: x.empresa,
     fuente: x.fuente, setter: x.setter, funnel: x.funnel, closer: x.closer,
-    fechaSesion: x.fecha_sesion, horaSesion: x.hora_sesion,
+    fechaSesion: x.fecha_sesion, horaSesion: x.hora_sesion, tipoSesion: x.tipo_sesion,
     estado: x.estado, resultado: x.resultado, ciclo: Number(x.ciclo),
     proximoContacto: x.proximo_contacto,
     valorPotencial: x.valor_potencial === null ? null : Number(x.valor_potencial),

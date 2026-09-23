@@ -1,6 +1,6 @@
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_SALIDA, NOMBRE_DE_MOTIVO,
-  type Estado, type Salida, type MotivoPerdida,
+  type Estado, type Salida, type MotivoPerdida, type TipoSesion,
 } from './resultados'
 
 /**
@@ -27,7 +27,7 @@ export const NOMBRE_DE_PASO: Record<Paso, string> = {
   asistencia: 'Asistencia',
   oferta: 'Oferta',
   resultado: 'Resultado',
-  notas: 'Notas para el equipo',
+  notas: 'Reporte de la llamada',
   transcripcion: 'Transcripción',
 }
 
@@ -35,7 +35,7 @@ export const AYUDA_DE_PASO: Record<Paso, string> = {
   asistencia: '¿Vino a la reunión?',
   oferta: '¿Se llegó a presentar el precio?',
   resultado: '¿En qué quedó?',
-  notas: 'Lo que se manda al canal. Sale armado, se edita antes de copiarlo.',
+  notas: 'El reporte que va al canal. El sistema arma el formato; vos escribís lo que pasó.',
   transcripcion: 'Para poder analizar la llamada después. Se pega entera.',
 }
 
@@ -70,51 +70,107 @@ export const PIDE_DE_SALIDA: Record<Salida, Pide> = {
   no_calificado: null,
 }
 
+/**
+ * El mensaje que va al canal.
+ *
+ * Seis renglones con sus rótulos, siempre los mismos y siempre en el mismo
+ * orden, aunque alguno quede vacío. Es el formato que el equipo ya usa, y el
+ * motivo por el que lo arma el sistema es el mismo por el que los motivos de
+ * pérdida son una lista cerrada: tres personas escribiendo el mismo reporte
+ * de tres maneras distintas es un canal que no se puede leer de corrido ni
+ * buscar.
+ *
+ * Tres renglones los sabe el sistema —el tipo de llamada, el lead y el
+ * estado— y tres los escribe el closer: el resumen, la oferta y los próximos
+ * pasos. El que se calcula es el estado: que «seguimiento largo» se escriba
+ * siempre igual es lo que hace que después se pueda contar.
+ */
 export type ParaSlack = {
+  tipoSesion: TipoSesion
+  fuente: string | null
   lead: string
-  empresa: string | null
-  closer: string | null
-  fecha: string
+  resumen: string | null
+  oferta: string | null
   estado: Estado
   salida: Salida
-  huboOferta: boolean
   importe: number | null
   moneda: string
+  programa: string | null
   motivoPerdida: MotivoPerdida | null
-  proximoPaso: string | null
-  notas: string | null
+  /** Si quedó en seguimiento largo, el día en que hay que volver. */
+  volverEl: string | null
+  /** Si quedó una segunda llamada, cuándo es. */
+  fechaSegunda: string | null
+  proximosPasos: string | null
 }
 
 const MILES = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
 
+/** «2027-01-05» → «05/01/2027». Sin `Date`, que corre la fecha un día. */
+function dia(iso: string | null): string | null {
+  if (iso === null) return null
+  const [a, m, d] = iso.slice(0, 10).split('-')
+  return a && m && d ? `${d}/${m}/${a}` : iso
+}
+
 /**
- * El mensaje que se manda al canal.
+ * Cómo se nombra cada llamada en el canal.
  *
- * Lo arma el sistema y no cada closer, por el mismo motivo por el que los
- * motivos de pérdida son una lista cerrada: tres personas escribiendo el mismo
- * reporte de tres maneras distintas es un canal que no se puede leer de
- * corrido ni buscar. Lo que sí escribe cada uno es lo de abajo, que es lo
- * único que el sistema no sabe.
+ * «Primera sesión» es como lo llama la base; «Llamada de venta» es como lo
+ * llama el equipo. Los reportes los leen personas, así que gana el segundo.
  */
-export function textoParaSlack(d: ParaSlack): string {
-  const quien = d.empresa ? `${d.lead} · ${d.empresa}` : d.lead
-  const renglones = [
-    `*${quien}*`,
-    `${d.fecha}${d.closer ? ` · ${d.closer}` : ''}`,
-  ]
+export const LLAMADA_DE: Record<TipoSesion, string> = {
+  primera: 'Llamada de venta',
+  segunda: 'Segunda llamada',
+  seguimiento: 'Llamada de seguimiento',
+  onboarding: 'Onboarding',
+  otra: 'Llamada',
+}
 
-  if (d.estado !== 'asistio') {
-    renglones.push(`Resultado: ${NOMBRE_DE_ESTADO[d.estado]}`)
-  } else {
-    const plata = d.importe !== null && d.importe > 0
-      ? ` · ${MILES.format(d.importe)} ${d.moneda}` : ''
-    renglones.push(`Resultado: ${NOMBRE_DE_SALIDA[d.salida]}${plata}`)
-    renglones.push(`Oferta presentada: ${d.huboOferta ? 'sí' : 'no'}`)
-    if (d.motivoPerdida) renglones.push(`Motivo: ${NOMBRE_DE_MOTIVO[d.motivoPerdida]}`)
+/** El renglón de estado, que es el único que se calcula. */
+export function estadoEnUnaLinea(d: ParaSlack): string {
+  if (d.estado !== 'asistio') return NOMBRE_DE_ESTADO[d.estado]
+
+  const plata = d.importe !== null && d.importe > 0
+    ? `${MILES.format(d.importe)} ${d.moneda}` : null
+
+  switch (d.salida) {
+    case 'venta':
+      return ['Venta', d.programa, plata].filter(Boolean).join(' · ')
+    case 'sena':
+      return ['Seña', plata].filter(Boolean).join(' · ')
+    case 'segunda': {
+      const cuando = dia(d.fechaSegunda)
+      return cuando ? `Segunda llamada · ${cuando}` : 'Segunda llamada'
+    }
+    case 'seguimiento_largo': {
+      const cuando = dia(d.volverEl)
+      return cuando ? `Seguimiento largo · vuelve el ${cuando}` : 'Seguimiento largo'
+    }
+    case 'seguimiento_cadencia':
+      return 'Seguimiento · 12 toques'
+    case 'perdida':
+      return d.motivoPerdida
+        ? `Perdido · ${NOMBRE_DE_MOTIVO[d.motivoPerdida]}`
+        : 'Perdido'
+    default:
+      return NOMBRE_DE_SALIDA[d.salida]
   }
+}
 
-  if (d.proximoPaso) renglones.push(`Próximo paso: ${d.proximoPaso}`)
-  if (d.notas) renglones.push('', d.notas.trim())
+export function textoParaSlack(d: ParaSlack): string {
+  const tipo = [LLAMADA_DE[d.tipoSesion], d.fuente?.toUpperCase()].filter(Boolean).join(' ')
+  // Un rótulo sin nada al lado va igual, y sin el espacio que sobra: el bloque
+  // se lee por su forma, y un renglón que falta obliga a contar cuál falta.
+  const renglon = (rotulo: string, valor: string | null) =>
+    valor && valor.trim() !== '' ? `${rotulo}: ${valor.trim()}` : `${rotulo}:`
 
-  return renglones.join('\n')
+  return [
+    renglon('Tipo de llamada', tipo),
+    renglon('Nombre del lead', d.lead),
+    renglon('Resumen de la llamada', d.resumen),
+    renglon('Oferta', d.oferta),
+    renglon('Estado', estadoEnUnaLinea(d)),
+    renglon('Próximos pasos', d.proximosPasos),
+  ].join('\n')
 }

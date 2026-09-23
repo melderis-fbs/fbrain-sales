@@ -550,7 +550,7 @@ await paso('el closer reporta la llamada del día sin salir de Llamadas', async 
   const pasos = async () =>
     (await hoja.locator('.paso .cabeza strong').allTextContents()).map((t) => t.trim())
   comprobar((await pasos()).join(' · ')
-              === 'Asistencia · Oferta · Resultado · Notas para el equipo · Transcripción',
+              === 'Asistencia · Oferta · Resultado · Reporte de la llamada · Transcripción',
             'con las cinco cosas a reportar, en el orden en que pasaron')
 
   // La venta pide el importe; el motivo de pérdida es de otro resultado.
@@ -573,12 +573,18 @@ await paso('el closer reporta la llamada del día sin salir de Llamadas', async 
   await hoja.locator('input[name=cuota1Fecha]').fill(HOY)
   await hoja.locator('select[name=cuota1Pagado]').selectOption('si')
 
+  await hoja.locator('input[name=oferta]').fill('GROWTH a 3.500')
   await hoja.locator('textarea[name=notas]').fill('Cerró en la primera llamada.')
+  await hoja.locator('input[name=proximoPaso]').fill('Mandar el contrato')
   const alCanal = await hoja.locator('.slack pre').textContent() ?? ''
-  comprobar(alCanal.includes('Resultado: Venta · 3.500 USD'),
-            'el mensaje para el canal se arma solo con lo que se va cargando')
-  comprobar(alCanal.includes('Cerró en la primera llamada.'),
-            'y termina con lo que escribió el closer')
+  comprobar(alCanal.split('\n').map((r) => r.split(':')[0]).join(' | ')
+              === 'Tipo de llamada | Nombre del lead | Resumen de la llamada | Oferta | Estado | Próximos pasos',
+            'el mensaje sale con los seis renglones del equipo, en su orden')
+  comprobar(alCanal.includes('Estado: Venta · 3.500 USD'),
+            'y el estado lo calcula el sistema, para que se escriba siempre igual')
+  comprobar(alCanal.includes('Resumen de la llamada: Cerró en la primera llamada.')
+              && alCanal.includes('Próximos pasos: Mandar el contrato'),
+            'con lo que escribió el closer en su renglón')
 
   await hoja.locator('button:has-text("Guardar el reporte")').click()
   await p.waitForSelector('dialog.hoja .aviso', { timeout: 15000 }).catch(() => {})
@@ -592,8 +598,10 @@ await paso('el closer reporta la llamada del día sin salir de Llamadas', async 
   comprobar(await p.inputValue('#salida') === 'venta', 'la ficha del lead quedó en Venta')
   comprobar(await p.inputValue('#importe') === '3500', 'con su importe')
   await p.goto(`${RAIZ}/leads/${unToque}?pestana=notas`)
-  comprobar((await p.locator('.contenido').textContent())?.includes('Cerró en la primera llamada.'),
-            'y la nota del reporte quedó en el lead')
+  const enElLead = await p.locator('.contenido').textContent() ?? ''
+  comprobar(enElLead.includes('Cerró en la primera llamada.')
+              && enElLead.includes('Estado: Venta'),
+            'y el historial del lead guarda el reporte entero, no sólo el resumen suelto')
 
   // Y el plan de pagos vuelve a salir cargado: un formulario que muestra las
   // cuotas vacías sobre una venta que ya las tiene se lee como «no se guardó».
@@ -625,7 +633,7 @@ await paso('al que no vino no se le pregunta el resto', async () => {
   comprobar(!titulos.includes('Resultado'),
             'con «No show» desaparece el paso del resultado')
   comprobar(!titulos.includes('Oferta'), 'y el de la oferta: no hubo oferta que mostrar')
-  comprobar(titulos.includes('Notas para el equipo'), 'y queda qué contarle al equipo')
+  comprobar(titulos.includes('Reporte de la llamada'), 'y queda qué contarle al equipo')
 
   await hoja.locator('textarea[name=notas]').fill('No se conectó, le escribí por WhatsApp.')
   await hoja.locator('button:has-text("Guardar el reporte")').click()
