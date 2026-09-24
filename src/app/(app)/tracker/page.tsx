@@ -3,6 +3,7 @@ import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import {
   metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser, ventasDelPeriodo,
+  cierresEnOtroMes,
   DEFINICIONES,
 } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
@@ -62,7 +63,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
   const deHoy = { desde: hoy, hasta: hoy, etiqueta: 'hoy' }
 
   const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats,
-         agendaDeHoy, hoyMetricas, recorrido, ventas] = await Promise.all([
+         agendaDeHoy, hoyMetricas, recorrido, ventas, enOtroMes] = await Promise.all([
     metricas(r, alcance, filtros, monedaBase),
     listarLeads(alcance, {
       desde: r.desde, hasta: r.hasta,
@@ -80,6 +81,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     metricas(deHoy, alcance, filtros, monedaBase),
     recorridoPorCloser(r, alcance, hoy, monedaBase),
     ventasDelPeriodo(r, alcance, filtros),
+    cierresEnOtroMes(r, alcance, filtros),
   ])
 
   const m = datos.medidas
@@ -233,9 +235,9 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
 
       {verPlata ? (
         <div id="ventas">
-          <Tarjeta titulo={`Ventas de ${r.etiqueta} (${ventas.length})`}
-                   ayuda="Por fecha de venta, no por la fecha de la reunión: una llamada de septiembre firmada en octubre es una venta de octubre. Tocá el nombre para abrir la ficha, o cargá el cobro acá mismo.">
-            <VentasDelPeriodo ventas={ventas} etiqueta={r.etiqueta}
+          <Tarjeta titulo={`Cierres de ${r.etiqueta} (${ventas.length})`}
+                   ayuda="Por fecha de venta, no por la fecha de la reunión: una llamada de septiembre firmada en octubre es un cierre de octubre. Las dos fechas están al lado, así que el número se puede verificar sin abrir nada.">
+            <VentasDelPeriodo ventas={ventas} etiqueta={r.etiqueta} enOtroMes={enOtroMes}
                               puedeCobrar={puede(usuario, 'editarDinero')} />
           </Tarjeta>
         </div>

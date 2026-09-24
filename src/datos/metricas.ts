@@ -966,7 +966,15 @@ export type VentaDelPeriodo = {
   empresa: string | null
   closer: string | null
   setter: string | null
+  /** La fecha de la VENTA: por ésta se cuenta y por ésta entra a este mes. */
   fecha: string
+  /**
+   * La fecha de la REUNIÓN. Va al lado de la otra a propósito: cuando las dos
+   * son de meses distintos —una llamada de agosto firmada en septiembre— es
+   * exactamente el caso que hace dudar del número, y verlas juntas lo
+   * contesta sin abrir la ficha.
+   */
+  fechaSesion: string | null
   importe: number
   moneda: string
   /**
@@ -1003,7 +1011,8 @@ export async function ventasDelPeriodo(
   }
 
   const f = await filas<Record<string, any>>(
-    `select l.id, l.nombre, l.empresa, l.tipo_sesion, c.nombre as closer, s.nombre as setter,
+    `select l.id, l.nombre, l.empresa, l.tipo_sesion, l.fecha_sesion,
+            c.nombre as closer, s.nombre as setter,
             v.fecha, v.importe, v.moneda, v.programa,
             coalesce((select sum(p.importe) from pagos p
                        where p.venta_id = v.id and p.borrado_en is null
@@ -1021,10 +1030,57 @@ export async function ventasDelPeriodo(
   return f.map((x) => ({
     leadId: x.id, lead: x.nombre, empresa: x.empresa,
     closer: x.closer, setter: x.setter,
-    fecha: x.fecha, importe: Number(x.importe), moneda: x.moneda,
+    fecha: x.fecha, fechaSesion: x.fecha_sesion,
+    importe: Number(x.importe), moneda: x.moneda,
     cobrado: Number(x.cobrado), programa: x.programa,
     enSegunda: x.tipo_sesion === 'segunda',
   }))
 }
 
 export { redondear }
+
+/**
+ * Las reuniones de este período que se cerraron en OTRO mes.
+ *
+ * Es el espejo exacto de la pregunta que hace dudar del número: «tengo ocho
+ * cierres y la pantalla dice cinco». Las que faltan están acá, con las dos
+ * fechas, y entonces se ve de una si el problema es la cuenta o el dato —una
+ * venta que quedó fechada el día de la llamada, por ejemplo, porque entró por
+ * planilla sin columna de fecha de cierre—.
+ *
+ * Va aparte de `ventasDelPeriodo` porque son universos opuestos: aquélla sale
+ * de las ventas de este mes, ésta de las reuniones de este mes.
+ */
+export type CierreEnOtroMes = {
+  leadId: number
+  lead: string
+  closer: string | null
+  fechaSesion: string
+  fechaVenta: string
+  importe: number
+  moneda: string
+}
+
+export async function cierresEnOtroMes(
+  rango: Rango,
+  alcance: Alcance,
+  filtros: FiltrosDeMetricas = {},
+): Promise<CierreEnOtroMes[]> {
+  const d = donde(rango, alcance, filtros)
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, c.nombre as closer, l.fecha_sesion,
+            v.fecha as fecha_venta, v.importe, v.moneda
+       from leads l
+       join ventas v on v.lead_id = l.id and v.borrado_en is null
+       left join closers c on c.id = l.closer_id
+      where ${d.sql} and (v.fecha < $1 or v.fecha > $2)
+      order by v.fecha desc
+      limit 50`,
+    d.valores,
+  )
+  return f.map((x) => ({
+    leadId: x.id, lead: x.nombre, closer: x.closer,
+    fechaSesion: x.fecha_sesion, fechaVenta: x.fecha_venta,
+    importe: Number(x.importe), moneda: x.moneda,
+  }))
+}

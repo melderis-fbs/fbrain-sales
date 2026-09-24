@@ -643,6 +643,22 @@ await paso('un cierre se cuenta en el mes en que se firmó, no en el de la llama
   comprobar(await numero('Total llamadas') >= 1,
             'pero la reunión sí sigue siendo de ese mes: son dos cosas distintas')
 
+  // El número se puede abrir, y la lista trae las DOS fechas. Es lo que
+  // contesta «tengo ocho y la pantalla dice cinco» sin tener que preguntar:
+  // o las que faltan están ahí con su fecha de llamada en azul, o no están y
+  // entonces el problema es el dato, no la cuenta.
+  await p.goto(`${RAIZ}/llamadas?periodo=mes`)
+  await p.locator('.contenido .tarjeta:has-text("Cierres") a:has-text("ver cuáles")').click()
+  await esperar()
+  await p.waitForTimeout(600)
+  const enLista = p.locator('#ventas .lista-cierres table')
+  comprobar(await enLista.count() === 1, 'el número de cierres se puede abrir')
+  const columnas = (await enLista.locator('thead th').allInnerTexts()).map((t) => t.trim())
+  comprobar(/fecha de venta/i.test(columnas[0] ?? '') && /llamada/i.test(columnas[1] ?? ''),
+            `y la lista trae las dos fechas al lado: ${columnas.slice(0, 2).join(' · ')}`)
+  comprobar(await p.locator('#ventas .lista-cierres tbody td[style*="acento"]').count() >= 1,
+            'marcando la que vino de una llamada de otro mes')
+
   // El desglose del Tracker es donde se vio el problema: la columna de
   // ventas contaba por fecha de llamada al lado de una facturación que
   // contaba por fecha de venta, así que un closer aparecía con menos cierres

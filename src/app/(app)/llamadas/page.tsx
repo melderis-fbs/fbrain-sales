@@ -155,8 +155,18 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
             fecha de la llamada dejaba a un closer con la facturación bien y
             los cierres mal en la misma fila: una llamada de agosto firmada
             en septiembre no es una venta de agosto. */}
+        {/* El número se puede abrir. Un número que no se puede abrir no se
+            puede verificar: «9 cierres» sin poder ver cuáles son se discute
+            en una reunión en vez de mirarse, y la lista trae las dos fechas
+            —la de la llamada y la de la venta— que es lo que contesta la
+            pregunta de por qué son 9 y no 12. */}
         <Numero etiqueta="Cierres" valor={m.ventasCerradas}
-                contra="firmados en el período" />
+                contra={<Link href={`/tracker?${new URLSearchParams(
+                  Object.entries({ periodo: q.dia || aMano ? undefined : periodo,
+                                   desde: q.dia ?? aMano?.desde, hasta: q.dia ?? aMano?.hasta,
+                                   closer: q.closer })
+                    .filter(([, v]) => v) as [string, string][],
+                )}#ventas`}>ver cuáles →</Link>} />
         <Numero etiqueta="Cierre" valor={`${m.cierrePct ?? 0}%`}
                 contra={`${m.ventas} de ${m.asistencias} asistencias del período`} />
         <Numero etiqueta="Call score" valor={promedio}
