@@ -12,7 +12,7 @@ import { versionQueCorre } from '@/lib/version'
  * contestó la API y, sobre todo, QUÉ ESTÁ USANDO la aplicación ahora mismo.
  *
  * Lo último es la mitad del valor: si la huella de la clave no es la de la
- * clave nueva, el problema no es la clave, es que el deploy no la tomó. Sin
+ * clave nueva, el problema no es la clave, es que el build no la tomó. Sin
  * esto, la respuesta a eso es cambiarla de nuevo.
  *
  * El pedido es de un token: cuesta una fracción de centavo y no se anota como
@@ -35,14 +35,21 @@ export type Diagnostico = {
   /**
    * Lo que la aplicación tiene cargado AHORA. Ninguna clave completa.
    *
-   * `deploy` es el que cierra la pregunta «a mí me funciona y a ellos no». La
-   * clave vive en el servidor, así que en un mismo deploy la respuesta es la
-   * misma para todos, sea admin o closer. Si a dos personas les contesta
-   * distinto, no están en el mismo deploy —una entró por una URL de preview,
-   * o por una vieja— y eso no se ve por ningún lado hasta que se compara
-   * este renglón.
+   * Esto es lo que cierra la pregunta «a mí me funciona y a ellos no». La
+   * clave vive en el servidor, así que en un mismo build la respuesta es la
+   * misma para todos, sea admin o closer: el rol no entra en esta función en
+   * ningún momento. Si a dos personas les contesta distinto, están en builds
+   * distintos, y eso no se ve por ningún lado hasta que se comparan estos
+   * renglones.
+   *
+   * `build` está separado de `deploy` porque el commit NO alcanza para
+   * contestar eso, y creer que sí costó una ronda entera: dos pantallas
+   * mostraban el mismo commit con dos claves distintas. Cada «Redeploy»
+   * después de tocar una variable publica el mismo commit con otras
+   * variables adentro. El commit dice qué código corre; `build` dice cuál de
+   * sus publicaciones, que es la que tiene las variables.
    */
-  config: { clave: string; workspace: string; modelo: string; deploy: string }
+  config: { clave: string; workspace: string; modelo: string; deploy: string; build: string }
 }
 
 /**
@@ -66,6 +73,7 @@ export async function probarConexion(): Promise<Diagnostico> {
     workspace: workspace ?? 'sin cargar',
     modelo,
     deploy: v.commit ? `${v.entorno} · ${v.commit}` : v.entorno,
+    build: v.despliegue ?? 'local',
   }
 
   if (!clave) {

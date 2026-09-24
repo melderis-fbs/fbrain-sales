@@ -132,11 +132,23 @@ export default async function Configuracion() {
             {version.mensaje
               ? <p className="ayuda" style={{ margin: '6px 0 0' }}>{version.mensaje}</p>
               : null}
+            {version.despliegue
+              ? <p className="ayuda" style={{ margin: '6px 0 0' }}>
+                  Build <code>{version.despliegue}</code>
+                </p>
+              : null}
             <div className="separador" />
             <p className="ayuda" style={{ margin: 0 }}>
               Si algo se arregló y en la pantalla sigue igual, mirá acá primero: si este número
               no cambió desde antes del arreglo, lo que estás viendo es el deploy anterior y no
               hay nada roto que perseguir.
+            </p>
+            <p className="ayuda" style={{ margin: '6px 0 0' }}>
+              Y si a dos personas la aplicación les contesta distinto, el que hay que comparar
+              es el <strong>build</strong>, no el commit: el mismo commit se publica de nuevo
+              cada vez que se toca una variable de entorno, y las variables quedan congeladas
+              en cada publicación. Mismo commit con builds distintos es normal, y explica que
+              a uno le ande y al otro no.
             </p>
           </>
         )}

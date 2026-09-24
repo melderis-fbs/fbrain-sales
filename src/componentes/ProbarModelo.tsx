@@ -13,7 +13,7 @@ import type { Diagnostico } from '@/ia/prueba'
  * API y QUÉ ESTÁ USANDO la aplicación ahora mismo.
  *
  * Lo segundo es la mitad del valor: si la huella de la clave no termina como
- * la que acabás de pegar, el problema no es la clave —es que el deploy no la
+ * la que acabás de pegar, el problema no es la clave —es que el build no la
  * tomó— y cambiarla de nuevo no iba a arreglar nada.
  */
 export function ProbarModelo() {
@@ -43,20 +43,25 @@ export function ProbarModelo() {
             </div>
           ) : null}
           <p style={{ margin: '8px 0 0', fontSize: 12.5 }}>
-            Deploy <code>{r.config.deploy}</code> · clave <code>{r.config.clave}</code> ·
-            workspace <code>{r.config.workspace}</code> · modelo <code>{r.config.modelo}</code>.
+            Deploy <code>{r.config.deploy}</code> · build <code>{r.config.build}</code> ·
+            clave <code>{r.config.clave}</code> · workspace <code>{r.config.workspace}</code> ·
+            modelo <code>{r.config.modelo}</code>.
           </p>
-          {/* La clave vive en el servidor: en un mismo deploy, esta prueba
-              contesta lo mismo para todos, sea admin o closer. Si a dos
-              personas les contesta distinto, están en deploys distintos —una
-              entró por una URL de preview o por una vieja— y hasta que no se
-              comparan estos renglones eso se lee como un problema de
-              permisos. */}
+          {/* El build va aparte del commit a propósito. Antes acá figuraba
+              sólo el commit, dos pantallas mostraban el mismo y contestaban
+              distinto, y ese renglón hacía parecer imposible lo que estaba
+              pasando: un mismo commit se publica muchas veces, y cada
+              «Redeploy» después de tocar una variable trae otras variables
+              adentro. El que hay que comparar es el build. */}
           <p style={{ margin: '6px 0 0', fontSize: 12.5 }}>
-            Esto no depende del rol: la clave es del servidor y en un mismo deploy contesta lo
-            mismo para todos. Si a otra persona le dice algo distinto, <strong>no están en el
-            mismo deploy</strong>: compará este renglón con el suyo. Y si la clave no termina
-            como la que cargaste, el deploy todavía no la tomó — volvé a desplegar.
+            Esto <strong>no depende del rol</strong>: la clave es del servidor y en un mismo
+            build contesta lo mismo para todos, sea admin o closer. Si a otra persona le dice
+            algo distinto, están en <strong>builds distintos</strong> — y el commit no sirve
+            para verlo, porque el mismo commit se publica muchas veces y las variables se
+            congelan en cada publicación. Compará el renglón <code>build</code>, no el commit.
+            El que quedó en el viejo lo deja recargando a fondo (Ctrl+Shift+R) o cerrando y
+            abriendo la pestaña. Y si la clave no termina como la que cargaste, este build
+            todavía no la tomó: volvé a desplegar.
           </p>
         </div>
       ) : (
