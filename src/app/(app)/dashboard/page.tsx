@@ -192,7 +192,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Busque
                 comoSeCalcula={DEFINICIONES.ventasCerradas!.formula}
                 tendencia={{ valor: variacion(m.ventasCerradas, p.ventasCerradas), sufijo: '%' }} />
         <Numero etiqueta="Tasa de cierre" valor={m.cierrePct} unidad="%"
-                contra={`${m.ventas} de ${m.asistencias} asistencias del período`}
+                contra={`${m.ventasCerradas} ${m.ventasCerradas === 1 ? 'cierre' : 'cierres'} de ${m.asistencias} ${m.asistencias === 1 ? 'asistencia' : 'asistencias'}`}
                 comoSeCalcula={DEFINICIONES.cierrePct!.formula}
                 tendencia={{ valor: variacion(m.cierrePct ?? 0, p.cierrePct ?? 0), sufijo: '%' }} />
         <Numero etiqueta="Señas" valor={m.senas}

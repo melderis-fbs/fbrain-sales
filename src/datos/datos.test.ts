@@ -327,11 +327,16 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     // Ocho cierres, no cinco: los tres de agosto se firmaron en septiembre.
     expect(kevin?.cerradas).toBe(8)
     expect(kevin?.facturacion).toBe(8000)
-    // Y las cinco reuniones de septiembre siguen siendo el numerador del
-    // cierre: es otra pregunta, y por eso vive en otro campo.
     expect(kevin?.ventas).toBe(5)
     expect(kevin?.asistencias).toBe(5)
-    expect(kevin?.cierrePct).toBe(100)
+
+    // LA REGLA: la tasa de cierre es CIERRES ÷ ASISTENCIAS. Ocho cierres
+    // sobre cinco asistencias da 160%, y está bien que lo diga: ese mes
+    // entró más de lo que se atendió. La alternativa —dividir por el
+    // numerador del embudo para que nunca pase de 100— es la que hacía que
+    // la tabla dijera «8 cierres · 11,6%» con un 11,6 que salía de un
+    // número que no estaba en la pantalla.
+    expect(kevin?.cierrePct).toBe(160)
 
     // El total de arriba dice lo mismo que la fila de abajo.
     const { medidas } = await metricas.metricas(rango, TODO)
@@ -517,16 +522,21 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await leads.verLead(otro))?.seguimientoLargo).toBe(null)
   })
 
-  it('el cierre no puede pasar de 100%: ventas y asistencias salen del mismo universo', async () => {
-    // El bug que traía el sistema anterior: el tablero decía 111% porque las
-    // ventas venían de la tabla de ventas, por fecha de venta, y las
-    // asistencias de las reuniones del mes. Acá los dos numeradores cuentan
-    // sobre los leads con reunión en el período, así que no puede pasar.
+  it('la tasa de cierre es CIERRES ÷ ASISTENCIAS, y puede pasar de 100%', async () => {
+    // LA REGLA, puesta por dirección: «de lo que atendí este mes, cuánto
+    // cerré este mes». El numerador son los cierres FIRMADOS en el período
+    // —por fecha de venta— y el denominador, las asistencias del período.
+    //
+    // Antes esta prueba afirmaba lo contrario: que el cierre no podía pasar
+    // de 100% porque los dos números salían de las reuniones del mes. Esa
+    // definición tenía una consecuencia que en la pantalla no se podía
+    // explicar: la tabla mostraba «8 cierres» al lado de «11,6%», y el 11,6
+    // salía de un 5 que no estaba a la vista.
     const vieja = await leads.crearLead(
       { nombre: 'Vendida en agosto', closerId: closerKevin, fechaSesion: '2026-08-20' }, usuarioId)
     await resultado.cargarResultado(vieja, {
       estado: 'asistio', resultado: 'venta',
-      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-05' },   // cobra en septiembre
+      venta: { importe: 5000, moneda: 'USD', fecha: '2026-09-05' },   // se firma en septiembre
     }, usuarioId)
 
     const deSeptiembre = await alta('De septiembre')
@@ -534,11 +544,15 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
     const { medidas } = await metricas.metricas(rango, TODO)
     expect(medidas.asistencias).toBe(1)
-    expect(medidas.ventas).toBe(0)          // la venta es de una reunión de agosto
-    expect(medidas.cierrePct).toBe(0)
-    // La facturación sí la cuenta, porque se cuenta por la fecha de la venta.
-    // Son universos distintos a propósito, y por eso no se dividen entre sí.
+    // La reunión de agosto no es asistencia de septiembre…
+    expect(medidas.ventas).toBe(0)
+    // …pero su cierre SÍ es cierre de septiembre, y entra al numerador.
+    expect(medidas.ventasCerradas).toBe(1)
     expect(medidas.facturacion).toBe(5000)
+
+    // 1 cierre sobre 1 asistencia. Con dos cierres y una asistencia daría
+    // 200%, y también estaría bien: diría que entró más de lo que se atendió.
+    expect(medidas.cierrePct).toBe(100)
   })
 
   it('las ventas del período se cuentan por la fecha de la venta, no por la de la llamada', async () => {
@@ -646,7 +660,9 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(medidas.asistencias).toBe(3)
     expect(medidas.asistenciaPct).toBe(75)
     expect(medidas.ofertas).toBe(2)
-    expect(medidas.cierrePct).toBe(33.3)     // 1 venta sobre 3 asistencias
+    // LA REGLA: cierres del período ÷ asistencias del período. Acá la venta
+    // se firmó dentro del período, así que el numerador es 1.
+    expect(medidas.cierrePct).toBe(33.3)     // 1 cierre sobre 3 asistencias
     expect(etapas.find((e) => e.clave === 'asistidas')?.paso).toBe(75)
 
     // El cierre se mide sobre las ASISTENCIAS, no sobre las agendadas. Con
@@ -669,6 +685,20 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
 
     const elSetter = (await equipo.performanceDeSetters(rango))[0]
     if (elSetter) expect(elSetter.cierrePct).toBe(elSetter.asistencias === 0 ? null : 33.3)
+
+    // Y el mismo caso que reportó dirección: una venta firmada en el período
+    // de una llamada ANTERIOR entra al numerador. Es lo que distingue esta
+    // regla de la vieja, y por eso se comprueba con un lead aparte.
+    const deAntes = await alta('Cerró Este Mes', { fechaSesion: '2026-08-15' })
+    await resultado.cargarResultado(deAntes, {
+      estado: 'asistio', resultado: 'venta',
+      venta: { importe: 1000, moneda: 'USD', fecha: '2026-09-20' },
+    }, usuarioId)
+    const conLaVieja = await metricas.metricas(rango, TODO)
+    expect(conLaVieja.medidas.asistencias).toBe(3)        // la de agosto no suma acá
+    expect(conLaVieja.medidas.ventasCerradas).toBe(2)     // pero su cierre sí
+    expect(conLaVieja.medidas.cierrePct).toBe(66.7)       // 2 ÷ 3, no 1 ÷ 3
+
   })
 
   it('marcar «seguimiento» mete el lead en el pipeline solo', async () => {

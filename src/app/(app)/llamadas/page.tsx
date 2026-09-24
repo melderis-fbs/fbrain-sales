@@ -143,7 +143,7 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
                     .filter(([, v]) => v) as [string, string][],
                 )}#ventas`}>ver cuáles →</Link>} />
         <Numero etiqueta="Cierre" valor={`${m.cierrePct ?? 0}%`}
-                contra={`${m.ventas} de ${m.asistencias} asistencias del período`} />
+                contra={`${m.ventasCerradas} ${m.ventasCerradas === 1 ? 'cierre' : 'cierres'} de ${m.asistencias} ${m.asistencias === 1 ? 'asistencia' : 'asistencias'}`} />
         <Numero etiqueta="Call score" valor={promedio}
                 contra={promedio === null ? 'sin llamadas analizadas' : `${comoSeLee(promedio)} · ${conNota.length} analizadas`} />
         <Numero etiqueta="Transcripciones" valor={conTranscripcion}

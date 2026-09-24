@@ -89,7 +89,7 @@ export default async function FichaDeCloser({
             pueden mirar juntos. */}
         <Numero etiqueta="Cierres" valor={m.ventasCerradas} contra="firmados en el período" />
         <Numero etiqueta="Cierre" valor={porcentaje(m.cierrePct)}
-                contra={`${m.ventas} de ${m.asistencias} asistencias del período`} />
+                contra={`${m.ventasCerradas} ${m.ventasCerradas === 1 ? 'cierre' : 'cierres'} de ${m.asistencias} ${m.asistencias === 1 ? 'asistencia' : 'asistencias'}`} />
         <Numero etiqueta="Cierre sobre oferta" valor={m.cierreSobreOfertaPct} unidad="%"
                 contra="de los que vieron el precio" />
         <Numero etiqueta="Lead quality recibido" valor={suyo?.calidadPromedio ?? null}

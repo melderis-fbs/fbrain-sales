@@ -191,8 +191,11 @@ export async function performanceDeClosers(
       asistenciaPct: tasa(asistencias, agendadas),
       ofertas, ofertaPct: tasa(ofertas, asistencias),
       senas: Number(x.senas),
-      ventas, cerradas, cierrePct: tasa(ventas, asistencias),
-      cierreSobreOfertaPct: tasa(ventas, ofertas),
+      // LA REGLA: cierres del período ÷ asistencias del período. Los cierres
+      // van por fecha de venta, igual que la facturación de al lado; las
+      // asistencias son las reuniones de este mes a las que el lead vino.
+      ventas, cerradas, cierrePct: tasa(cerradas, asistencias),
+      cierreSobreOfertaPct: tasa(cerradas, ofertas),
       ajuste: cierreAjustado(mezcla, generales.porNivel, generales.general),
       calidadPromedio: x.calidad === null ? null : Math.round(Number(x.calidad)),
       facturacion, cash: Number(x.cash),
@@ -296,7 +299,8 @@ export async function performanceDeSetters(
       asistencias, asistenciaPct: tasa(asistencias, agendas),
       noShows: Number(x.no_shows),
       ofertas: Number(x.ofertas), ventas, cerradas: Number(x.cerradas),
-      cierrePct: tasa(ventas, asistencias),
+      // La misma regla que para los closers.
+      cierrePct: tasa(Number(x.cerradas), asistencias),
       calidadPromedio: x.calidad === null ? null : Math.round(Number(x.calidad)),
       calificados, sinCalificar: agendas - calificados,
       facturacionOriginada: Number(x.facturacion),

@@ -18,13 +18,14 @@ import { plata } from './Piezas'
  *   CIERRES    las ventas FIRMADAS en el período, por fecha de venta.
  *   FACTURADO  la plata de esas mismas ventas. Son las dos la misma columna
  *              de la base, así que no pueden discrepar.
- *   CIERRE %   de las reuniones DE ESTE período, cuántas terminaron en venta.
- *              Es otra pregunta y por eso está aparte: sale de las
- *              asistencias de este mes, y así no puede pasar de 100%.
+ *   CIERRE %   CIERRES ÷ ASISTIÓ, las dos columnas de esta misma fila. Es la
+ *              regla del negocio y se puede rehacer a mano mirando la fila,
+ *              que es justamente el punto: un porcentaje cuyo numerador no
+ *              está en la pantalla no se puede verificar, y fue lo que hizo
+ *              que esta tabla dijera «8 cierres · 11,6%» —el 11,6 salía de
+ *              otro número, que no estaba a la vista—.
  *
- * Mezclarlas es lo que hacía que la pantalla dijera «0 cierres · USD 4.000»
- * —y, después, que un closer con tres llamadas del mes pasado firmadas este
- * mes apareciera con cinco cierres teniendo ocho—.
+ * Mezclarlas es lo que hacía que la pantalla dijera «0 cierres · USD 4.000».
  */
 function Inicial({ nombre }: { nombre: string }) {
   const letras = nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0] ?? '').join('').toUpperCase()
@@ -67,13 +68,15 @@ export function DesgloseDeClosers({
             <th>{soloUno ? 'Vos' : 'Closer'}</th>
             <th>Llamadas</th><th>Asistió</th><th>Ofertas</th>
             <th title="Ventas firmadas en el período, por fecha de venta.">Cierres</th>
-            <th title="De las reuniones de este período, cuántas terminaron en venta, sobre sus asistencias.">Cierre / asist.</th>
+            <th title="Cierres ÷ asistencias: los dos números de esta misma fila.">Cierre / asist.</th>
             {verPlata ? <><th>Facturado</th><th>Cash</th><th>Ticket</th></> : null}
           </tr>
         </thead>
         <tbody>
           {filas.map((f) => {
-            const pct = tasa(f.ventas, f.asistencias)
+            // LA REGLA: cierres ÷ asistencias. Los dos números están en esta
+            // misma fila, así que la cuenta se puede rehacer a mano mirándola.
+            const pct = tasa(f.cerradas, f.asistencias)
             const t = ticket(f.facturacion, f.cerradas)
             return (
               <tr key={f.id ?? 'sin'}>
@@ -117,9 +120,9 @@ export function DesgloseDeClosers({
               <td>{total.agendadas}</td><td>{total.asistencias}</td><td>{total.ofertas}</td>
               <td>{total.cerradas}</td>
               <td className="cierre">
-                {tasa(total.ventas, total.asistencias) === null
+                {tasa(total.cerradas, total.asistencias) === null
                   ? <span className="apagado">—</span>
-                  : <>{tasa(total.ventas, total.asistencias)}%</>}
+                  : <>{tasa(total.cerradas, total.asistencias)}%</>}
               </td>
               {verPlata ? (
                 <>
@@ -137,8 +140,9 @@ export function DesgloseDeClosers({
         <p className="ayuda" style={{ marginTop: 12 }}>
           <strong>Cierres</strong> y <strong>Facturado</strong> son lo firmado en el período,
           por fecha de venta: una llamada del mes pasado que se cierra este mes cuenta acá.{' '}
-          <strong>Cierre / asist.</strong> es otra pregunta —de las reuniones de ESTE período, de
-          los que asistieron, cuántos compraron— y por eso nunca pasa de 100%.
+          <strong>Cierre / asist.</strong> es esa misma columna dividida por <strong>Asistió</strong>.
+          Un mes que firma muchas llamadas viejas puede pasar de 100%: quiere decir que entró más
+          de lo que se atendió.
         </p>
       ) : null}
     </div>

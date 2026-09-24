@@ -488,7 +488,7 @@ await paso('el mini tablero del Tracker trae las medidas que pidió el equipo', 
     // Métricas
     'Llamadas agendadas', 'Asistencias', 'Asistencias válidas', 'No calificadas', 'No show',
     'Canceladas', 'Reagendadas', 'Segundas llamadas', 'Asistencia a segunda', 'Ofertas hechas',
-    'Reservas', 'Cierres', 'Cierres de reuniones del período', 'Facturación',
+    'Reservas', 'Cierres', 'Facturación',
     'Cash collected', 'Cash por agenda', 'Cash por asistencia',
     // Conversión
     'Asistencia', 'Asistencia válida', 'Canceladas', 'Asistencia a segunda', 'Ofertas hechas',
@@ -601,6 +601,8 @@ await paso('el cierre se mide sobre las asistencias, no sobre las agendas', asyn
   await p.goto(`${RAIZ}/llamadas?periodo=hoy`)
   await p.locator(`[aria-label="Filtrar por closer"] a:has-text("${SOLO}")`).click()
   await esperar()
+  const idDelCloser = new URL(p.url()).searchParams.get('closer') ?? ''
+  await esperar()
   await p.waitForTimeout(500)
 
   const { pct, contra } = await p.evaluate(() => {
@@ -612,10 +614,25 @@ await paso('el cierre se mide sobre las asistencias, no sobre las agendas', asyn
     }
   })
   comprobar(pct.startsWith('33'),
-            `con 4 agendas, 3 asistencias y 1 venta el cierre da ${pct}: sobre las asistencias, ` +
+            `con 4 agendas, 3 asistencias y 1 cierre da ${pct}: sobre las ASISTENCIAS, ` +
             `no sobre las agendas —que daría 25%—`)
-  comprobar(contra.includes('asistencias'),
-            `y la pantalla dice contra qué mide: «${contra}»`)
+  comprobar(/cierres?/.test(contra) && /asistencias?/.test(contra),
+            `y la pantalla muestra la cuenta entera: «${contra}»`)
+
+  // Y la regla se puede rehacer a mano mirando la fila: el numerador del
+  // porcentaje es la columna de cierres que está al lado, no otro número.
+  await p.goto(`${RAIZ}/tracker?periodo=hoy&closer=${idDelCloser}`)
+  await esperar()
+  await p.waitForTimeout(400)
+  const enLaFila = await p.evaluate(() => {
+    const tr = [...document.querySelectorAll('.contenido table.desglose tbody tr')][0]
+    const c = [...(tr?.querySelectorAll('td') ?? [])].map((x) => x.textContent?.trim() ?? '')
+    return { asistio: c[2] ?? '', cierres: c[4] ?? '', pct: c[5] ?? '' }
+  })
+  const esperado = Math.round((Number(enLaFila.cierres) / Number(enLaFila.asistio)) * 1000) / 10
+  comprobar(enLaFila.pct.startsWith(String(esperado)),
+            `en el desglose, ${enLaFila.cierres} ÷ ${enLaFila.asistio} = ${enLaFila.pct}: ` +
+            `el numerador está en la misma fila y la cuenta se puede rehacer mirándola`)
 })
 
 await paso('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {

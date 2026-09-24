@@ -17,10 +17,20 @@ import type { Resultado } from '@/dominio/resultados'
  * La regla acá es una sola y es la que pidió el equipo: cada número sale de un
  * solo lugar, y el lugar está escrito. Por eso:
  *
- *  - Todo lo del EMBUDO —agendadas, asistencias, ofertas, señas, ventas— se
- *    cuenta sobre el mismo universo: los leads cuya reunión cayó en el período.
- *    El cierre es ventas de ese universo sobre asistencias de ese universo, y
- *    por construcción no puede pasar de 100%.
+ *  - LA TASA DE CIERRE ES CIERRES DEL PERÍODO ÷ ASISTENCIAS DEL PERÍODO.
+ *
+ *    Los CIERRES son los del mes en que se FIRMÓ —fecha de venta— y las
+ *    ASISTENCIAS, las reuniones de este mes a las que el lead vino. Es una
+ *    regla del negocio, puesta por dirección, y no se cambia: «de lo que
+ *    atendí este mes, cuánto cerré este mes».
+ *
+ *    Los dos números salen de universos distintos a propósito, y eso tiene
+ *    una consecuencia que hay que saber: un mes en el que se firman muchas
+ *    llamadas viejas puede dar más de 100%. No está roto — está diciendo que
+ *    ese mes entró más de lo que se atendió.
+ *
+ *  - El resto del EMBUDO —agendadas, asistencias, ofertas, señas— se cuenta
+ *    sobre los leads cuya reunión cayó en el período.
  *  - La PLATA se cuenta por su propia fecha: una venta en el mes que se firmó,
  *    un cobro en el mes que entró. Una llamada de septiembre cobrada en octubre
  *    es agenda de septiembre y cash de octubre. Están en universos distintos a
@@ -142,7 +152,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   ofertas:      { nombre: 'Ofertas', formula: 'De esos, los que tienen marcado que hubo oferta.', universo: 'reunión' },
   senas:        { nombre: 'Señas', formula: 'De esos, los que tienen una seña cargada.', universo: 'reunión' },
   ventas:       { nombre: 'Ventas', formula: 'De esos, los que quedaron en «venta».', universo: 'reunión' },
-  cierrePct:    { nombre: 'Cierre', formula: 'Ventas ÷ ASISTENCIAS, no sobre las agendadas: al que no vino no se le pudo vender, así que no es del closer. Las dos cifras salen de las reuniones de este período, así que nunca pasa de 100%. No es la cantidad de cierres del mes: ésa va por fecha de venta.', universo: 'reunión' },
+  cierrePct:    { nombre: 'Cierre', formula: 'Cierres del período ÷ ASISTENCIAS del período. Los cierres son los firmados este mes, por fecha de venta; las asistencias, las reuniones de este mes a las que el lead vino. No se mide sobre las agendadas: al que no vino no se le pudo vender. Un mes que firma muchas llamadas viejas puede pasar de 100%: eso dice que entró más de lo que se atendió.', universo: 'venta' },
   asistenciasValidas: { nombre: 'Asistencias válidas', formula: 'Asistencias que no quedaron en «no calificado».', universo: 'reunión' },
   noCalificadas:{ nombre: 'No calificadas', formula: 'De los que asistieron, los que quedaron en «no calificado».', universo: 'reunión' },
   cancelados:   { nombre: 'Canceladas', formula: 'De los agendados, los que quedaron en «cancelado».', universo: 'reunión' },
@@ -272,9 +282,13 @@ export async function metricas(
   ])
 
   const n = (k: string) => Number(c?.[k] ?? 0)
+  // El embudo termina en los CIERRES DEL PERÍODO, por fecha de venta: es la
+  // regla, y vale también acá para que el embudo y las tarjetas digan lo
+  // mismo. `n('ventas')` —cuántas reuniones de este mes terminaron en venta—
+  // se sigue calculando porque es otra pregunta, pero no es la tasa.
   const conteo: Conteos = {
     agendadas: n('agendadas'), asistidas: n('asistencias'), ofertas: n('ofertas'),
-    senas: n('senas'), ventas: n('ventas'),
+    senas: n('senas'), ventas: factura.cantidad,
   }
 
   return {
@@ -288,7 +302,7 @@ export async function metricas(
       reagendados: n('reagendados'),
       ofertas: conteo.ofertas,
       senas: conteo.senas,
-      ventas: conteo.ventas,
+      ventas: n('ventas'),
       perdidos: n('perdidos'),
       enSeguimiento: n('en_seguimiento'),
       pendientesDeCargar: n('pendientes'),
@@ -304,12 +318,13 @@ export async function metricas(
       cancelacionPct: tasa(n('cancelados'), conteo.agendadas),
       ofertaPct: tasa(conteo.ofertas, conteo.asistidas),
       senaPct: tasa(conteo.senas, conteo.asistidas),
-      cierrePct: tasa(conteo.ventas, conteo.asistidas),
-      cierreSobreOfertaPct: tasa(conteo.ventas, conteo.ofertas),
+      // LA REGLA: cierres del período ÷ asistencias del período.
+      cierrePct: tasa(factura.cantidad, conteo.asistidas),
+      cierreSobreOfertaPct: tasa(factura.cantidad, conteo.ofertas),
       asistenciaValidaPct: tasa(n('asistencias_validas'), conteo.agendadas),
       noCalificadasPct: tasa(n('no_calificadas'), conteo.asistidas),
       segundaAsistenciaPct: tasa(n('segundas_asistidas'), n('segundas')),
-      cierreSobreValidaPct: tasa(conteo.ventas, n('asistencias_validas')),
+      cierreSobreValidaPct: tasa(factura.cantidad, n('asistencias_validas')),
 
       ventasCerradas: factura.cantidad,
       facturacion: factura.total,
@@ -547,7 +562,7 @@ export async function apertura(
       asistenciaPct: tasa(asistencias, agendadas),
       ofertas: Number(x.ofertas), ventas,
       cerradas: suyo?.cerradas ?? 0,
-      cierrePct: tasa(ventas, asistencias),
+      cierrePct: tasa(suyo?.cerradas ?? 0, asistencias),
       facturacion: suyo?.facturacion ?? 0,
     }
   })
@@ -939,7 +954,7 @@ export async function recorridoPorCloser(
       agendadas, asistencias, ventas,
       ofertas: Number(r?.ofertas ?? 0),
       asistenciaPct: tasa(asistencias, agendadas),
-      cierrePct: tasa(ventas, asistencias),
+      cierrePct: tasa(Number(porVenta.get(k)?.cantidad ?? 0), asistencias),
       cerradas: Number(porVenta.get(k)?.cantidad ?? 0),
       facturacion: Number(porVenta.get(k)?.importe ?? 0),
       cash: Number(porCobro.get(k)?.importe ?? 0),
