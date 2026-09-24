@@ -4,7 +4,7 @@ import { revisar } from '@/lib/revision'
 import { BarraLateral } from '@/componentes/BarraLateral'
 import { BaseSinAndar } from '@/componentes/BaseSinAndar'
 import { CuentaSinVincular } from '@/componentes/CuentaSinVincular'
-import { sinFiguraVinculada } from '@/lib/permisos'
+import { sinFiguraVinculada, puede } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,9 @@ export default async function MarcoApp({ children }: { children: React.ReactNode
     <div className="marco">
       <BarraLateral nombre={usuario.nombre} rol={usuario.rol} />
       <main className="contenido">
-        {sinFiguraVinculada(usuario) ? <CuentaSinVincular rol={usuario.rol} /> : null}
+        {sinFiguraVinculada(usuario)
+          ? <CuentaSinVincular rol={usuario.rol} puedeConfigurar={puede(usuario, 'configurar')} />
+          : null}
         {children}
       </main>
     </div>

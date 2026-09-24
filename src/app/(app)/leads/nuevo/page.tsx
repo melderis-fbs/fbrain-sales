@@ -1,12 +1,15 @@
 import { exigirUsuario } from '@/lib/auth'
-import { figuraDe, exigir } from '@/lib/permisos'
+import { figuraDe, puede } from '@/lib/permisos'
 import { catalogos } from '@/datos/catalogos'
 import { Encabezado } from '@/componentes/Piezas'
+import { SinPermiso } from '@/componentes/SinPermiso'
 import { AltaDeLead, type QuienCarga } from '@/componentes/AltaDeLead'
 
 export default async function LeadNuevo() {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'editarLead')
+  if (!puede(usuario, 'editarLead')) {
+    return <SinPermiso rol={usuario.rol} que="registrar leads" />
+  }
   const cats = await catalogos()
 
   // Para un closer o un setter, de quién es el lead no se elige: es suyo. Lo

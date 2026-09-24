@@ -72,8 +72,9 @@ export function PlaybookDelCloser({
         <strong>Tu cuenta todavía no está vinculada a un closer.</strong>
         <p style={{ margin: '6px 0 0', fontSize: 13 }}>
           Por eso no podés cargar tu playbook: el sistema no sabe a nombre de quién guardarlo.
-          Se vincula en Configuración, en «El equipo». Mientras tanto tus llamadas se analizan
-          igual, midiéndolas contra las fases de la casa.
+          Lo vincula dirección, en Configuración → El equipo. <strong>Mientras tanto el
+          analizador te funciona igual</strong>: podés subir transcripciones y analizar tus
+          llamadas: se miden contra las fases de la casa en vez de contra tu guion.
         </p>
       </div>
     )

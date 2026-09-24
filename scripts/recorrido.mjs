@@ -1104,6 +1104,45 @@ await paso('un closer entra con su cuenta y carga su histórico', async () => {
               'y en Llamadas también')
   }
 
+  // ── Y el Analizador, que es lo que se reportó como inaccesible ──────
+  //
+  // Podían entrar —la pantalla nunca estuvo cerrada— pero el aviso de «tu
+  // cuenta no está vinculada» los mandaba a Configuración, y Configuración
+  // les devolvía un 500. Un permiso que falta contestado con «Algo se rompió
+  // en esta pantalla» se lee como que la aplicación no anda.
+  comprobar(await p.locator('.lateral a[href="/analizador"]').count() === 1,
+            'el Analizador está en el menú del closer')
+  await p.goto(`${RAIZ}/analizador`)
+  await esperar()
+  comprobar((await p.locator('.contenido h1').first().textContent() ?? '')
+              .includes('Llamadas analizadas'),
+            'y lo abre, sin cartel de permiso denegado')
+
+  // Lo que SÍ es de dirección se contesta, no revienta.
+  await p.goto(`${RAIZ}/configuracion`)
+  await esperar()
+  await p.waitForTimeout(400)
+  comprobar(await p.locator('.contenido:has-text("Esto no lo hace tu rol")').count() === 1,
+            'Configuración le dice que eso lo hace dirección, en vez de darle un error')
+  comprobar(await p.locator('.contenido:has-text("Algo se rompió")').count() === 0,
+            'y no le muestra «Algo se rompió en esta pantalla»')
+
+  // Y analiza de punta a punta: sube la transcripción y llega al botón.
+  await p.goto(`${RAIZ}/llamadas`)
+  const subirla = p.locator('.contenido button:has-text("Subir")').first()
+  if (await subirla.count() > 0) {
+    await subirla.click()
+    await p.waitForURL(/analizador\/\d+/, { timeout: 15000 }).catch(() => {})
+    comprobar(/analizador\/\d+/.test(p.url()), 'entra a la pantalla de una llamada suya')
+    await p.fill('.contenido textarea[name=texto]',
+      'Nadia: Hola, contame en qué andás con el negocio. Ana: Facturo ocho mil por mes. '.repeat(5))
+    await p.click('.contenido button:has-text("Guardar la transcripción")')
+    await esperar()
+    await p.waitForTimeout(700)
+    comprobar(await p.locator('.contenido button:has-text("Analizar")').count() === 1,
+              'sube la transcripción y le queda el botón de Analizar')
+  }
+
   // Y vuelve a entrar dirección, que es con quien terminó todo lo demás.
   await p.locator('.lateral .pie button[type=submit]').click()
   await p.waitForURL('**/login')

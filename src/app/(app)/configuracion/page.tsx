@@ -1,5 +1,5 @@
 import { exigirUsuario } from '@/lib/auth'
-import { exigir } from '@/lib/permisos'
+import { puede } from '@/lib/permisos'
 import { filas } from '@/lib/db'
 import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn, rango } from '@/motor/periodos'
@@ -10,12 +10,19 @@ import { toques } from '@/datos/seguimientos'
 import { modeloVigente } from '@/datos/analisis'
 import { Equipo } from '@/componentes/Equipo'
 import { Encabezado } from '@/componentes/Piezas'
+import { SinPermiso } from '@/componentes/SinPermiso'
 import { guardarCadenciaAccion } from '../seguimientos/acciones'
 import { altaDeCatalogoAccion, objetivoAccion, monedaBaseAccion } from './acciones'
 
 export default async function Configuracion() {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'configurar')
+  // Un permiso que falta se CONTESTA, no se rompe. Antes esto tiraba una
+  // excepción y la pantalla daba 500: el closer que llegaba acá desde el
+  // aviso de «tu cuenta no está vinculada» veía «Algo se rompió» y concluía,
+  // con razón, que la aplicación no andaba.
+  if (!puede(usuario, 'configurar')) {
+    return <SinPermiso rol={usuario.rol} que="la configuración del equipo, los objetivos y las comisiones" />
+  }
 
   const hoy = hoyEn()
   const mes = rango('mes', hoy)

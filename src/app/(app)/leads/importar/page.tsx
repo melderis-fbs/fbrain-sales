@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { exigirUsuario } from '@/lib/auth'
-import { exigir } from '@/lib/permisos'
+import { puede } from '@/lib/permisos'
 import { catalogos, config } from '@/datos/catalogos'
 import { Encabezado } from '@/componentes/Piezas'
+import { SinPermiso } from '@/componentes/SinPermiso'
 import { Importacion } from '@/componentes/Importacion'
 
 export default async function ImportarLeads() {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'editarLead')
+  if (!puede(usuario, 'editarLead')) {
+    return <SinPermiso rol={usuario.rol} que="cargar el histórico" />
+  }
   const [cats, moneda] = await Promise.all([catalogos(), config<string>('moneda_base', 'USD')])
 
   return (
