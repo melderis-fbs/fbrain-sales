@@ -414,33 +414,52 @@ await paso('un lead sin fecha no desaparece: el Tracker lo reclama', async () =>
   await fila.locator('input[type=date]').fill(HOY)
   await fila.locator('button[type=submit]').click()
   await esperar()
-  await esperarCuantos('.tarjeta .tabla-carga tr', 0, 3000)
+  await p.waitForTimeout(900)
   comprobar(await p.locator('.contenido .tarjeta:has-text("Sin fecha de reunión")').count() === 0,
             'al ponerle fecha entra al Tracker y deja de reclamarse')
 })
 
-await paso('el closer carga el resultado sin salir del Tracker', async () => {
+await paso('reportar es el MISMO botón, entre por donde entre', async () => {
+  // Había dos formas de cargar una llamada: el reporte en Llamadas y un
+  // desplegable propio en el Tracker. Dos formas de cargar una cosa son dos
+  // formas de cargarla distinto, y encima sólo una guardaba la nota y la
+  // transcripción.
   await p.goto(`${RAIZ}/tracker`)
   const carga = p.locator('.contenido .tarjeta:has-text("Hoy")').first()
   comprobar(await carga.locator('.turno').count() > 0,
-            'el Tracker abre con la agenda del día y se carga desde ahí')
+            'el Tracker abre con la agenda del día')
+  comprobar(await carga.locator('button:has-text("Reportar")').count()
+              === await carga.locator('.turno').count(),
+            'y cada renglón tiene su botón de reportar, el mismo de Llamadas')
 
   const fila = carga.locator(`.turno:has-text("Sin Fecha ${marca}")`)
-  await fila.locator('select[name=estado]').selectOption('asistio')
-  await fila.locator('select[name=resultado]').selectOption('venta')
-  // El importe aparece SOLO cuando hace falta: es la prueba de que el
-  // formulario no pide catorce campos para cargar un no-show.
-  comprobar(await fila.locator('input[name=importe]').count() === 1,
-            'al elegir «venta» aparece el importe, y sólo entonces')
-  await fila.locator('input[name=importe]').fill('2500')
-  await fila.locator('button[type=submit]').click()
-  await esperar()
-  await p.waitForTimeout(900)
+  await fila.locator('button:has-text("Reportar")').click()
+  await p.waitForTimeout(400)
+  const hoja = p.locator('dialog.hoja[open]')
+  comprobar(await hoja.count() === 1, 'abre la misma hoja de reporte')
+
+  await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("Asistió")').click()
+  await hoja.locator('.paso .cabeza:has-text("Resultado") ~ .botonera .accion:has-text("Venta")')
+    .first().click()
+  await p.waitForTimeout(300)
+  await hoja.locator('input[name=importe]').fill('2500')
+  await hoja.locator('input[name=fecha]').fill(HOY)
+  await hoja.locator('button:has-text("Guardar el reporte")').click()
+  await p.waitForSelector('dialog.hoja .aviso.dato', { timeout: 15000 }).catch(() => {})
+  await p.waitForTimeout(600)
 
   await p.goto(`${RAIZ}/leads`)
   const estado = await p.locator(`.contenido tr:has-text("Sin Fecha ${marca}")`).textContent()
   comprobar((estado ?? '').includes('Venta'), 'quedó cargado como venta sin abrir la ficha')
   await foto('tracker-carga')
+})
+
+await paso('y está en TODA llamada, no sólo en las de hoy', async () => {
+  await p.goto(`${RAIZ}/llamadas?periodo=mes`)
+  const tabla = p.locator('.contenido .tarjeta table').last()
+  const renglones = await tabla.locator('tbody tr').count()
+  comprobar(renglones > 0 && await tabla.locator('button:has-text("Reportar")').count() === renglones,
+            `las ${renglones} llamadas del mes tienen su botón, no sólo las de hoy`)
 })
 
 /** El valor de una fila de las listas de métricas, por su etiqueta EXACTA. */

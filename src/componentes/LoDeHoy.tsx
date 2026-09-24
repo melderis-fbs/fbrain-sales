@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { LeadEnLista } from '@/datos/leads'
-import { CargaRapida } from './CargaRapida'
+import { Reportar } from './Reportar'
+import { paraReportar } from './reportar'
 import { Pildora, plata, hora } from './Piezas'
 import {
   NOMBRE_DE_ESTADO, NOMBRE_DE_RESULTADO, COLOR_DE_ESTADO, COLOR_DE_RESULTADO,
@@ -91,23 +92,21 @@ export function LoDeHoy({
                   </div>
                 </div>
                 <div className="turno-estado">
-                  {/* El desplegable está en las que ya pasaron Y en las que
-                      todavía no: el closer que corta a las once no tiene por
-                      qué esperar a que el reloj pase la hora agendada, y una
-                      reunión sin hora no tiene hora que esperar. Lo que
-                      distingue a las que faltan es el color, no el poder
-                      cargarlas. */}
-                  {falta || viene ? (
-                    <CargaRapida leadId={l.id} estado={l.estado} resultado={l.resultado}
-                                 moneda={l.moneda} hoy={hoy} compacto />
-                  ) : (
+                  {/* Lo ya cargado muestra en qué quedó; el botón está
+                      siempre, porque corregir un resultado mal cargado tiene
+                      que costar lo mismo que cargarlo.
+                      Y es el MISMO botón que en Llamadas: antes acá había un
+                      desplegable aparte, así que reportar una llamada era una
+                      cosa distinta según por qué pantalla se entrara. */}
+                  {!falta && !viene ? (
                     <>
                       <Pildora color={COLOR_DE_ESTADO[l.estado]}>{NOMBRE_DE_ESTADO[l.estado]}</Pildora>
                       {l.resultado !== 'pendiente' ? (
                         <Pildora color={COLOR_DE_RESULTADO[l.resultado]}>{NOMBRE_DE_RESULTADO[l.resultado]}</Pildora>
                       ) : null}
                     </>
-                  )}
+                  ) : null}
+                  <Reportar lead={paraReportar(l)} hoy={hoy} compacto />
                 </div>
               </div>
             )

@@ -14,6 +14,7 @@ import {
 import {
   PIDE_DE_SALIDA, pasosQueAplican, textoParaSlack, NOMBRE_DE_PASO, AYUDA_DE_PASO,
 } from '@/dominio/reporte'
+import type { LeadParaReportar } from './reportar'
 
 /**
  * El reporte de una llamada, en una sola pantalla.
@@ -30,25 +31,6 @@ import {
  * importe. Un campo que no aplica no se deja vacío: se completa con cualquier
  * cosa para poder seguir, y eso ensucia el número.
  */
-
-type LeadParaReportar = {
-  id: number
-  nombre: string
-  empresa: string | null
-  closer: string | null
-  tipoSesion: import('@/dominio/resultados').TipoSesion
-  fuente: string | null
-  moneda: string
-  fechaSesion: string | null
-  estado: Estado
-  resultado: import('@/dominio/resultados').Resultado
-  huboOferta: boolean
-  seguimientoLargo: string | null
-  motivoPerdida: MotivoPerdida | null
-  venta: { importe: number; fecha: string; programa: string | null; cuotas: number | null } | null
-  /** Lo que ya está cargado del plan de pagos, para abrir mostrándolo. */
-  plan: { n: number; importe: number; fecha: string; medio: string | null; pagado: boolean }[]
-}
 
 /** Cómo se ve cada resultado en la botonera. El color ya es el del resultado. */
 const ICONO_DE_SALIDA: Record<Salida, keyof typeof Iconos> = {

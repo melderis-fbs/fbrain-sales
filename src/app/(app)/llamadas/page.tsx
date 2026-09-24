@@ -15,34 +15,9 @@ import {
 } from '@/dominio/resultados'
 import { COLOR_DE_CALIDAD } from '@/dominio/calidad'
 import { Reportar } from '@/componentes/Reportar'
+import { paraReportar } from '@/componentes/reportar'
 import { Cargado, cargoElCloser } from '@/componentes/Cargado'
 import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
-import type { LeadEnLista } from '@/datos/leads'
-
-/**
- * De lo que la lista sabe del lead a lo que el reporte necesita.
- *
- * Está acá y no dentro del componente para que la pantalla sea la que decide
- * qué le pasa: el reporte no consulta nada por su cuenta, y una lista de
- * cuarenta llamadas no dispara cuarenta consultas para dibujar cuarenta
- * botones.
- */
-function paraReportar(l: LeadEnLista) {
-  return {
-    id: l.id, nombre: l.nombre, empresa: l.empresa, closer: l.closer,
-    tipoSesion: l.tipoSesion, fuente: l.fuente,
-    moneda: l.moneda, fechaSesion: l.fechaSesion,
-    estado: l.estado, resultado: l.resultado,
-    huboOferta: l.huboOferta, seguimientoLargo: l.seguimientoLargo,
-    motivoPerdida: l.motivoPerdida,
-    venta: l.vendido !== null && l.ventaFecha !== null
-      ? { importe: l.vendido, fecha: l.ventaFecha,
-          programa: l.ventaPrograma, cuotas: l.ventaCuotas }
-      : null,
-    plan: l.plan,
-  }
-}
-
 type Busqueda = Promise<Record<string, string | undefined>>
 
 /**
@@ -342,9 +317,12 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
                         </form>
                       )}
                     </td>
+                    {/* Reportar en TODA llamada, no sólo en las de hoy.
+                        Una llamada de hace tres días se corrige desde donde
+                        se la está mirando; mandar a abrir la ficha para eso
+                        es el viaje que hace que no se corrija. */}
                     <td className="num">
-                      <Link href={`/leads/${l.id}?volver=llamadas`}
-                            style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>Abrir →</Link>
+                      <Reportar lead={paraReportar(l)} hoy={hoy} compacto />
                     </td>
                   </tr>
                 ))}

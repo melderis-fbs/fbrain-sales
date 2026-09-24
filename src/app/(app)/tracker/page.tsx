@@ -12,7 +12,8 @@ import { catalogos, config } from '@/datos/catalogos'
 import { rango, hoyEn, PERIODOS, type NombreDePeriodo } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, porcentaje, fechaCorta, hora, Vacio } from '@/componentes/Piezas'
 import { Iconos } from '@/componentes/Iconos'
-import { CargaRapida } from '@/componentes/CargaRapida'
+import { Reportar } from '@/componentes/Reportar'
+import { paraReportar } from '@/componentes/reportar'
 import { Tablero } from '@/componentes/Tablero'
 import { LoDeHoy } from '@/componentes/LoDeHoy'
 import { DesgloseDeClosers } from '@/componentes/DesgloseDeClosers'
@@ -255,7 +256,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           <div className="tabla-scroll">
             <table className="tabla-carga">
               <thead>
-                <tr><th>Hora</th><th>Lead</th><th>Closer</th><th>Qué pasó</th></tr>
+                <tr><th>Hora</th><th>Lead</th><th>Closer</th><th></th></tr>
               </thead>
               <tbody>
                 {porCargar.map((l) => (
@@ -268,9 +269,11 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                       {l.empresa ? <div style={{ fontSize: 11.5, color: 'var(--gris)' }}>{l.empresa}</div> : null}
                     </td>
                     <td style={{ fontSize: 12.5 }}>{l.closer ?? <span className="sindato">sin asignar</span>}</td>
-                    <td>
-                      <CargaRapida leadId={l.id} estado={l.estado} resultado={l.resultado}
-                                   moneda={l.moneda} hoy={hoy} />
+                    {/* El mismo botón que en Llamadas y en la agenda de
+                        arriba: reportar una llamada es una sola cosa, pase
+                        por la pantalla que pase. */}
+                    <td className="num">
+                      <Reportar lead={paraReportar(l)} hoy={hoy} compacto />
                     </td>
                   </tr>
                 ))}
@@ -278,7 +281,8 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
             </table>
           </div>
           <p className="ayuda" style={{ marginTop: 10 }}>
-            Para el resto —próximo paso, observaciones, saldo de la seña, cobros— está la
+            «Reportar» abre todo lo que hay que cargar de esa llamada, en orden y de una vez.
+            Para el resto —saldo de la seña, cobros de cuotas siguientes— está la
             pestaña <strong>Resultado</strong> de la ficha del lead.
           </p>
         </Tarjeta>
