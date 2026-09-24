@@ -65,6 +65,15 @@ describe('la clave que no está en un workspace', () => {
     expect(texto).not.toContain('rechazó el pedido')
   })
 
+  it('y arranca por el arreglo rápido, que es el que pide la propia API', () => {
+    // La API dice literalmente «must include the anthropic-workspace-id
+    // header», y la aplicación manda ese encabezado cuando hay
+    // ANTHROPIC_WORKSPACE_ID. Ése es el camino de una variable; rotar la
+    // clave es el de fondo y va segundo.
+    const texto = enCastellano(400, MOTIVO, 'claude-sonnet-5', null)
+    expect(texto.indexOf('ANTHROPIC_WORKSPACE_ID')).toBeLessThan(texto.indexOf('DESDE ADENTRO'))
+  })
+
   it('con un id ya cargado, dice que ÉSE es el que falla', () => {
     // Repetir «agregá la variable» a quien ya la agregó lo manda a hacer de
     // nuevo el paso que ya hizo, y a dudar de que el sistema lea algo.

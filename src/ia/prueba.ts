@@ -21,6 +21,16 @@ export type Diagnostico = {
   ok: boolean
   titulo: string
   detalle: string
+  /**
+   * Lo que contestó la API, TEXTUAL.
+   *
+   * `detalle` es nuestra traducción, y una traducción puede estar equivocada:
+   * si clasificamos mal el error, la persona lee una explicación convincente
+   * del problema que no tiene y persigue el arreglo que no era. Ya pasó. El
+   * mensaje crudo es feo y es en inglés, y es el único dato que no depende de
+   * que hayamos acertado.
+   */
+  motivo: string | null
   /** Lo que la aplicación tiene cargado AHORA. Ninguna clave completa. */
   config: { clave: string; workspace: string; modelo: string }
 }
@@ -49,6 +59,7 @@ export async function probarConexion(): Promise<Diagnostico> {
   if (!clave) {
     return {
       ok: false,
+      motivo: null,
       titulo: 'Falta la clave',
       detalle: 'No hay ANTHROPIC_API_KEY en este deploy. Cargala en Vercel y volvé a desplegar: ' +
                'las variables se leen al construir.',
@@ -75,6 +86,7 @@ export async function probarConexion(): Promise<Diagnostico> {
     if (respuesta.ok) {
       return {
         ok: true,
+        motivo: null,
         titulo: 'La conexión funciona',
         detalle: `El modelo ${modelo} contestó. El analizador puede trabajar.`,
         config,
@@ -82,15 +94,18 @@ export async function probarConexion(): Promise<Diagnostico> {
     }
 
     const cuerpo = await respuesta.text()
+    const motivo = motivoDeLaApi(cuerpo)
     return {
       ok: false,
+      motivo,
       titulo: `La API contestó ${respuesta.status}`,
-      detalle: enCastellano(respuesta.status, motivoDeLaApi(cuerpo), modelo, workspace),
+      detalle: enCastellano(respuesta.status, motivo, modelo, workspace),
       config,
     }
   } catch (e) {
     return {
       ok: false,
+      motivo: null,
       titulo: 'No se pudo llegar a la API',
       detalle: e instanceof Error ? e.message : 'Error de red.',
       config,

@@ -106,6 +106,16 @@ export function enCastellano(
   // El mensaje cambia según lo que la aplicación TENGA CARGADO, que es la
   // diferencia entre «falta hacer algo» y «lo hiciste y está mal». Decir lo
   // mismo en los dos casos manda a repetir el paso que ya se hizo.
+  // El mensaje de la API es correcto e inservible para quien no sabe qué es un
+  // workspace: «This API key is not scoped to a workspace, so this request
+  // must include the anthropic-workspace-id header».
+  //
+  // Lo que pide es literalmente eso, y la aplicación ya manda ese encabezado
+  // cuando hay ANTHROPIC_WORKSPACE_ID cargado. Así que el arreglo rápido va
+  // primero —una variable, sin rotar la clave— y el de fondo después.
+  //
+  // El mensaje cambia según lo que la aplicación TENGA CARGADO: decir lo mismo
+  // a quien ya hizo el paso lo manda a hacerlo de nuevo.
   if (m.includes('workspace')) {
     if (workspace) {
       return `Hay un ANTHROPIC_WORKSPACE_ID cargado («${workspace}») y la API lo rechaza igual. ` +
@@ -113,12 +123,12 @@ export function enCastellano(
              'El id está en la URL de console.anthropic.com cuando entrás al workspace, y empieza ' +
              'con «wrkspc_». Si lo cambiás en Vercel, acordate de volver a desplegar.'
     }
-    return 'La clave de Anthropic es de la organización y no de un workspace, así que la API ' +
-           'no sabe a cuál cobrarle. Lo más simple: entrá a console.anthropic.com, abrí el ' +
-           'workspace que uses y creá la clave DESDE ADENTRO (Settings → API keys); ' +
-           'reemplazá ANTHROPIC_API_KEY en Vercel y volvé a desplegar. Si preferís no cambiar ' +
-           'la clave, agregá en Vercel ANTHROPIC_WORKSPACE_ID con el id del workspace ' +
-           '—empieza con «wrkspc_» y está en la URL de la consola— y desplegá igual.'
+    return 'La clave es de la organización y no de un workspace, así que la API no sabe a cuál ' +
+           'cobrarle. Lo más rápido, sin tocar la clave: en Vercel agregá la variable ' +
+           'ANTHROPIC_WORKSPACE_ID con el id del workspace —empieza con «wrkspc_» y está en la ' +
+           'URL de console.anthropic.com cuando entrás al workspace— y volvé a desplegar. ' +
+           'La alternativa, si preferís no agregar variables: entrá a ese workspace y creá la ' +
+           'clave DESDE ADENTRO (Settings → API keys), y reemplazá ANTHROPIC_API_KEY.'
   }
   if (m.includes('credit') || m.includes('billing')) {
     return 'La cuenta de Anthropic no tiene crédito. Se carga en console.anthropic.com, en Billing.'
@@ -226,7 +236,15 @@ export async function pedirJson<T>(opciones: {
       }
 
       await anotarUso(opciones.para, modelo, ceroUso(modelo, Date.now() - comienzo), opciones, cuerpo.slice(0, 500))
-      throw new ErrorDelModelo(enCastellano(respuesta.status, motivo, modelo), cuerpo.slice(0, 500))
+      // Nuestra lectura del error PRIMERO, y lo que dijo Anthropic textual
+      // después. Si clasificamos mal —y clasificar por palabras del mensaje
+      // se equivoca— lo de adelante explica muy bien un problema que no es el
+      // que hay, y sin el crudo no hay forma de darse cuenta.
+      throw new ErrorDelModelo(
+        enCastellano(respuesta.status, motivo, modelo) +
+        (motivo ? ` · Anthropic dijo: «${motivo}»` : ''),
+        cuerpo.slice(0, 500),
+      )
     }
 
     const cuerpo = await respuesta.json() as {

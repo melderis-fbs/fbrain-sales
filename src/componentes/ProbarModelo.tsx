@@ -31,6 +31,17 @@ export function ProbarModelo() {
         <div className={r.ok ? 'aviso dato' : 'aviso problema'} style={{ marginTop: 10 }}>
           <strong>{r.titulo}</strong>
           <p style={{ margin: '6px 0 0', fontSize: 13 }}>{r.detalle}</p>
+          {/* Lo que dijo la API, TEXTUAL. Lo de arriba es nuestra lectura del
+              error, y una lectura puede estar equivocada: si clasificamos mal,
+              el de arriba explica muy bien un problema que no es el que hay.
+              Esto es feo y está en inglés, y es lo único que no depende de que
+              hayamos acertado. */}
+          {r.motivo ? (
+            <div className="slack" style={{ marginTop: 10 }}>
+              <span className="etiqueta">Lo que contestó Anthropic, textual</span>
+              <pre style={{ marginTop: 4 }}>{r.motivo}</pre>
+            </div>
+          ) : null}
           <p style={{ margin: '8px 0 0', fontSize: 12.5 }}>
             Lo que está usando este deploy: clave <code>{r.config.clave}</code> ·
             workspace <code>{r.config.workspace}</code> · modelo <code>{r.config.modelo}</code>.
