@@ -525,6 +525,19 @@ await paso('las demás pantallas abren sin romperse', async () => {
   await foto('comisiones')
 })
 
+await paso('la aplicación dice qué versión está corriendo', async () => {
+  // Existe porque costó tres idas y vueltas: se arreglaba un número, se
+  // publicaba, y del otro lado seguía mal. No estaba mal el arreglo —era un
+  // deploy anterior— y no había forma de saberlo desde la aplicación.
+  await p.goto(`${RAIZ}/configuracion`)
+  const tarjeta = p.locator('.contenido .tarjeta:has-text("Qué versión está corriendo")')
+  comprobar(await tarjeta.count() === 1, 'Configuración dice qué versión está corriendo')
+  // Este servidor corre fuera de Vercel, así que tiene que decir eso y no
+  // inventar un número.
+  comprobar((await tarjeta.innerText()).includes('fuera de Vercel'),
+            'y sin las variables del deploy lo dice, en vez de inventar un número')
+})
+
 await paso('el cierre se mide sobre las asistencias, no sobre las agendas', async () => {
   // Cuatro agendas, tres asistencias, un cierre: sobre asistencias da 33,3%
   // y sobre agendas daría 25%. Los dos números existen, así que la prueba

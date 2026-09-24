@@ -3,6 +3,7 @@ import { exigir } from '@/lib/permisos'
 import { filas } from '@/lib/db'
 import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn, rango } from '@/motor/periodos'
+import { versionQueCorre } from '@/lib/version'
 import { Tarjeta, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
 import { equipo } from '@/datos/personas'
 import { toques } from '@/datos/seguimientos'
@@ -18,6 +19,8 @@ export default async function Configuracion() {
 
   const hoy = hoyEn()
   const mes = rango('mes', hoy)
+  // No consulta nada: son variables de entorno, así que no va en el Promise.all.
+  const version = versionQueCorre()
   const [cats, monedaBase, personas, cadencia, modelo, objetivos] = await Promise.all([
     catalogos(),
     config<string>('moneda_base', 'USD'),
@@ -101,6 +104,35 @@ export default async function Configuracion() {
           </div>
           <button type="submit" style={{ marginTop: 12 }}>Guardar la cadencia</button>
         </form>
+      </Tarjeta>
+
+      <Tarjeta titulo="Qué versión está corriendo"
+               ayuda="Para poder distinguir «esto está mal» de «esto todavía no salió». Son dos problemas distintos y se arreglan en lugares distintos.">
+        {version.commit === null ? (
+          <p className="ayuda" style={{ margin: 0 }}>
+            Corriendo fuera de Vercel (<strong>{version.entorno}</strong>), así que no hay un
+            número de versión que mostrar. En el deploy publicado sí aparece.
+          </p>
+        ) : (
+          <>
+            <p style={{ margin: 0, fontSize: 14 }}>
+              <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{version.commit}</strong>
+              {version.rama ? <span className="contra"> · {version.rama}</span> : null}
+              {version.entorno !== 'production'
+                ? <span className="pildora ambar" style={{ marginLeft: 8 }}>{version.entorno}</span>
+                : null}
+            </p>
+            {version.mensaje
+              ? <p className="ayuda" style={{ margin: '6px 0 0' }}>{version.mensaje}</p>
+              : null}
+            <div className="separador" />
+            <p className="ayuda" style={{ margin: 0 }}>
+              Si algo se arregló y en la pantalla sigue igual, mirá acá primero: si este número
+              no cambió desde antes del arreglo, lo que estás viendo es el deploy anterior y no
+              hay nada roto que perseguir.
+            </p>
+          </>
+        )}
       </Tarjeta>
 
       <Tarjeta titulo="El modelo de scoring del analizador"
