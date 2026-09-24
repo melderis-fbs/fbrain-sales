@@ -43,10 +43,20 @@ export function ProbarModelo() {
             </div>
           ) : null}
           <p style={{ margin: '8px 0 0', fontSize: 12.5 }}>
-            Lo que está usando este deploy: clave <code>{r.config.clave}</code> ·
+            Deploy <code>{r.config.deploy}</code> · clave <code>{r.config.clave}</code> ·
             workspace <code>{r.config.workspace}</code> · modelo <code>{r.config.modelo}</code>.
-            {' '}Si la clave no termina como la que cargaste, el deploy todavía no la tomó:
-            volvé a desplegar.
+          </p>
+          {/* La clave vive en el servidor: en un mismo deploy, esta prueba
+              contesta lo mismo para todos, sea admin o closer. Si a dos
+              personas les contesta distinto, están en deploys distintos —una
+              entró por una URL de preview o por una vieja— y hasta que no se
+              comparan estos renglones eso se lee como un problema de
+              permisos. */}
+          <p style={{ margin: '6px 0 0', fontSize: 12.5 }}>
+            Esto no depende del rol: la clave es del servidor y en un mismo deploy contesta lo
+            mismo para todos. Si a otra persona le dice algo distinto, <strong>no están en el
+            mismo deploy</strong>: compará este renglón con el suyo. Y si la clave no termina
+            como la que cargaste, el deploy todavía no la tomó — volvé a desplegar.
           </p>
         </div>
       ) : (

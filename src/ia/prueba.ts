@@ -1,5 +1,6 @@
 import 'server-only'
 import { MODELO_POR_DEFECTO, motivoDeLaApi, enCastellano } from './cliente'
+import { versionQueCorre } from '@/lib/version'
 
 /**
  * Probar la conexión con el modelo, sin analizar nada.
@@ -31,8 +32,17 @@ export type Diagnostico = {
    * que hayamos acertado.
    */
   motivo: string | null
-  /** Lo que la aplicación tiene cargado AHORA. Ninguna clave completa. */
-  config: { clave: string; workspace: string; modelo: string }
+  /**
+   * Lo que la aplicación tiene cargado AHORA. Ninguna clave completa.
+   *
+   * `deploy` es el que cierra la pregunta «a mí me funciona y a ellos no». La
+   * clave vive en el servidor, así que en un mismo deploy la respuesta es la
+   * misma para todos, sea admin o closer. Si a dos personas les contesta
+   * distinto, no están en el mismo deploy —una entró por una URL de preview,
+   * o por una vieja— y eso no se ve por ningún lado hasta que se compara
+   * este renglón.
+   */
+  config: { clave: string; workspace: string; modelo: string; deploy: string }
 }
 
 /**
@@ -50,10 +60,12 @@ export async function probarConexion(): Promise<Diagnostico> {
   const clave = process.env.ANTHROPIC_API_KEY
   const workspace = process.env.ANTHROPIC_WORKSPACE_ID?.trim() || null
   const modelo = MODELO_POR_DEFECTO
+  const v = versionQueCorre()
   const config = {
     clave: clave ? huella(clave) : 'NO está cargada',
     workspace: workspace ?? 'sin cargar',
     modelo,
+    deploy: v.commit ? `${v.entorno} · ${v.commit}` : v.entorno,
   }
 
   if (!clave) {
