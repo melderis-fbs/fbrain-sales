@@ -802,6 +802,18 @@ await paso('el closer reporta la llamada del día sin salir de Llamadas', async 
               === 'Asistencia · Oferta · Resultado · Reporte de la llamada · Transcripción',
             'con las cinco cosas a reportar, en el orden en que pasaron')
 
+  // La transcripción está también cuando la llamada se perdió. Antes se pedía
+  // sólo en venta, seña y segunda: la llamada que más conviene analizar es
+  // justo la que no cerró, y era la única donde el campo no aparecía.
+  await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("Asistió")').click()
+  await hoja.locator('.paso .cabeza:has-text("Resultado") ~ .botonera .accion:has-text("Perdido")')
+    .first().click()
+  await p.waitForTimeout(300)
+  comprobar((await pasos()).includes('Transcripción'),
+            'y la transcripción se pide también en la llamada que se perdió')
+  comprobar(await hoja.locator('textarea[name=transcripcion]').count() === 1,
+            'con su campo para pegarla, que se puede dejar vacío')
+
   // La venta pide el importe; el motivo de pérdida es de otro resultado.
   await hoja.locator('.paso:has-text("Asistencia") .accion:has-text("Asistió")').click()
   await hoja.locator('.pastilla:has-text("Sí, se presentó")').click()

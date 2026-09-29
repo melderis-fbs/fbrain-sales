@@ -7,16 +7,20 @@ describe('qué se le pregunta al closer', () => {
     expect(pasosQueAplican('cancelado', 'pendiente')).toEqual(['asistencia', 'notas'])
   })
 
-  it('al que vino, todo menos la transcripción si no hubo plata ni segunda', () => {
+  it('al que vino, las cinco cosas, en el orden en que pasaron', () => {
     expect(pasosQueAplican('asistio', 'perdida'))
-      .toEqual(['asistencia', 'oferta', 'resultado', 'notas'])
+      .toEqual(['asistencia', 'oferta', 'resultado', 'notas', 'transcripcion'])
   })
 
-  it('y la transcripción donde sirve: venta, seña y segunda llamada', () => {
-    for (const s of ['venta', 'sena', 'segunda'] as const) {
+  it('la transcripción se pide en TODA llamada que ocurrió, no sólo donde hubo plata', () => {
+    // Iba sólo en venta, seña y segunda. La llamada que más conviene analizar
+    // es la que se perdió, y era justo donde el campo no aparecía.
+    for (const s of ['venta', 'sena', 'segunda', 'perdida', 'seguimiento_cadencia',
+                     'seguimiento_largo', 'no_calificado', 'pendiente'] as const) {
       expect(pasosQueAplican('asistio', s)).toContain('transcripcion')
     }
-    expect(pasosQueAplican('asistio', 'seguimiento_cadencia')).not.toContain('transcripcion')
+    // Y en la que no ocurrió, no: no hay conversación que pegar.
+    expect(pasosQueAplican('no_show', 'pendiente')).not.toContain('transcripcion')
   })
 
   it('cada resultado pide un dato distinto, y uno solo', () => {

@@ -46,14 +46,21 @@ export const AYUDA_DE_PASO: Record<Paso, string> = {
  * respuesta ya la sabemos y preguntarla es la clase de campo que se completa
  * con cualquier cosa para poder seguir.
  */
-export function pasosQueAplican(estado: Estado, salida: Salida): Paso[] {
+export function pasosQueAplican(estado: Estado, _salida: Salida): Paso[] {
+  // Sin reunión no hay nada que transcribir, y preguntar por el precio o el
+  // resultado de una llamada que no pasó es pedir un campo que se completa
+  // con cualquier cosa para poder seguir.
   if (estado !== 'asistio') return ['asistencia', 'notas']
-  const hubo: Paso[] = ['asistencia', 'oferta', 'resultado', 'notas']
-  // La transcripción sólo se pide donde sirve de verdad: es un texto largo, y
-  // pedirlo en las seis salidas lo convierte en un campo que nadie completa.
-  return salida === 'venta' || salida === 'sena' || salida === 'segunda'
-    ? [...hubo, 'transcripcion']
-    : hubo
+  /**
+   * La transcripción se pide en TODA llamada que ocurrió.
+   *
+   * Antes iba sólo en venta, seña y segunda, para no poner un campo largo en
+   * las seis salidas. El razonamiento estaba al revés: la llamada que más
+   * conviene analizar es la que se perdió, y ésa era justamente donde el campo
+   * no aparecía. Queda opcional —se puede guardar vacío y subirla después—,
+   * que es lo que evita que un texto largo frene el reporte.
+   */
+  return ['asistencia', 'oferta', 'resultado', 'notas', 'transcripcion']
 }
 
 /** Qué dato extra pide cada resultado. Es lo único que cambia entre uno y otro. */

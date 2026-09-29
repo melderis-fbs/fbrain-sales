@@ -416,8 +416,9 @@ export function Reportar({ lead, hoy, compacto }: {
                 <textarea {...campo('transcripcion')} style={{ minHeight: 120 }}
                           placeholder={'Braian: Hola, ¿cómo estás?\nMaría: Bien, acá andamos…'} />
                 <div className="nota">
-                  Sale de Meet o de Zoom. Se puede dejar vacío y subirla después desde el
-                  Analizador: lo que no se puede es analizar la llamada sin ella.
+                  Sale de Meet o de Zoom. Va en toda llamada que ocurrió, no sólo en las que
+                  cerraron: la que más conviene analizar suele ser la que se perdió. Se puede
+                  dejar vacío y subirla después desde el Analizador.
                 </div>
               </div>
             </Paso>
