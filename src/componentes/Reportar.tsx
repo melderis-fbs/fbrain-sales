@@ -172,6 +172,10 @@ export function Reportar({ lead, hoy, compacto }: {
           <input type="hidden" name="leadId" value={lead.id} />
           <input type="hidden" name="moneda" value={lead.moneda} />
           <input type="hidden" name="fechaLlamada" value={lead.fechaSesion ?? hoy} />
+          {/* La fecha y el tipo van juntos porque juntos identifican la
+              reunión: si el lead ya tuvo una llamada antes, la transcripción
+              tiene que ir a la de HOY y no a aquélla. */}
+          <input type="hidden" name="tipoLlamada" value={lead.tipoSesion} />
           <input type="hidden" name="estado" value={estado} />
 
           {guardado ? (

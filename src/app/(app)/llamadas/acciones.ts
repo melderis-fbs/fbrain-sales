@@ -6,7 +6,7 @@ import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, exigir, puede } from '@/lib/permisos'
 import { exigirAccesoAlLead, verLead } from '@/datos/leads'
 import {
-  crearLlamada, guardarTranscripcion, verLlamada, llamadasDelLead, transcripcionDe,
+  crearLlamada, guardarTranscripcion, verLlamada, transcripcionDe, llamadaDeLaReunion,
 } from '@/datos/llamadas'
 import { guardarPlaybook } from '@/datos/playbooks'
 import { cargarResultado, agendarSegundaLlamada } from '@/datos/resultado'
@@ -65,11 +65,13 @@ export async function abrirTranscripcionAccion(datos: FormData): Promise<void> {
   const leadId = Number(datos.get('leadId'))
   await exigirAccesoAlLead(leadId, alcanceDe(usuario))
 
-  const existentes = await llamadasDelLead(leadId)
-  const llamadaId = existentes[0]?.id ?? await crearLlamada(leadId, {
-    fecha: texto(datos, 'fecha'),
-    tipoSesion: (texto(datos, 'tipoSesion') ?? 'primera') as TipoSesion,
-  })
+  // La llamada de ESA reunión, no «la última del lead»: un lead con una
+  // llamada ayer y una segunda hoy tiene dos, y la de hoy es la de hoy.
+  const llamadaId = await llamadaDeLaReunion(
+    leadId,
+    texto(datos, 'fecha'),
+    (texto(datos, 'tipoSesion') ?? 'primera') as TipoSesion,
+  )
 
   revalidatePath('/llamadas')
   redirect(`/analizador/${llamadaId}`)
@@ -290,11 +292,11 @@ export async function reportarAccion(_previo: Guardado, datos: FormData): Promis
     }
 
     if (transcripcion !== '') {
-      const existentes = await llamadasDelLead(leadId)
-      const llamadaId = existentes[0]?.id ?? await crearLlamada(leadId, {
-        fecha: texto(datos, 'fechaLlamada'),
-        tipoSesion: 'primera',
-      })
+      const llamadaId = await llamadaDeLaReunion(
+        leadId,
+        texto(datos, 'fechaLlamada'),
+        (texto(datos, 'tipoLlamada') ?? 'primera') as TipoSesion,
+      )
       const ya = await transcripcionDe(llamadaId)
       // Volver a guardar la misma transcripción no agrega nada y ensucia el
       // historial de la llamada con copias idénticas.

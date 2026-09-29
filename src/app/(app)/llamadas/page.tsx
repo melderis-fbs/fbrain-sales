@@ -202,6 +202,21 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
                               </Pildora>
                         ) : null}
                         <Reportar lead={paraReportar(l)} hoy={hoy} compacto />
+                        {/* Desde acá no se llegaba al analizador. La agenda de
+                            hoy es donde el closer mira al salir de la reunión,
+                            y la única forma de subir la transcripción estaba en
+                            la tabla de más abajo — que además, si el lead tenía
+                            una llamada anterior, abría aquélla. Este botón lleva
+                            a la llamada DE HOY, exista o no todavía. */}
+                        <form action={abrirTranscripcionAccion}>
+                          <input type="hidden" name="leadId" value={l.id} />
+                          <input type="hidden" name="fecha" value={l.fechaSesion ?? hoy} />
+                          <input type="hidden" name="tipoSesion" value={l.tipoSesion} />
+                          <button type="submit" className="sutil chico">
+                            {l.tieneTranscripcion && l.llamadaFecha === l.fechaSesion
+                              ? 'Ver análisis' : 'Analizar'}
+                          </button>
+                        </form>
                       </div>
                     </div>
                   ))}
@@ -302,7 +317,15 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
                         : <span className="sindato">—</span>}
                     </td>
                     <td>
-                      {l.tieneTranscripcion ? (
+                      {/* «Ver» sólo cuando la transcripción es de ESTA reunión.
+                          Un lead con una llamada anterior tenía acá el enlace
+                          al análisis de aquélla, y la fila de hoy se leía como
+                          ya analizada: el botón para subir la de hoy no
+                          aparecía por ningún lado. Cuando lo que hay es de otro
+                          día, se ofrece subir la de hoy y se deja el enlace al
+                          otro análisis con su fecha, que es un dato y no un
+                          reemplazo. */}
+                      {l.tieneTranscripcion && l.llamadaFecha === l.fechaSesion ? (
                         <Link href={`/analizador/${l.llamadaId}`}
                               style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--acento)' }}>
                           Ver →
@@ -310,11 +333,20 @@ export default async function Llamadas({ searchParams }: { searchParams: Busqued
                       ) : (
                         /* Si todavía no hay una llamada registrada, la crea sola:
                            la reunión ya está cargada, así que la llamada existió. */
-                        <form action={abrirTranscripcionAccion}>
-                          <input type="hidden" name="leadId" value={l.id} />
-                          <input type="hidden" name="fecha" value={l.fechaSesion ?? hoy} />
-                          <button type="submit" className="secundario chico">Subir</button>
-                        </form>
+                        <>
+                          <form action={abrirTranscripcionAccion}>
+                            <input type="hidden" name="leadId" value={l.id} />
+                            <input type="hidden" name="fecha" value={l.fechaSesion ?? hoy} />
+                            <input type="hidden" name="tipoSesion" value={l.tipoSesion} />
+                            <button type="submit" className="secundario chico">Subir</button>
+                          </form>
+                          {l.tieneTranscripcion && l.llamadaId !== null ? (
+                            <Link href={`/analizador/${l.llamadaId}`}
+                                  style={{ fontSize: 11.5, color: 'var(--gris)' }}>
+                              la del {fechaCorta(l.llamadaFecha)} →
+                            </Link>
+                          ) : null}
+                        </>
                       )}
                     </td>
                     {/* Reportar en TODA llamada, no sólo en las de hoy.

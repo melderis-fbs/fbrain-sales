@@ -782,6 +782,13 @@ await paso('el closer reporta la llamada del día sin salir de Llamadas', async 
   comprobar(await hoy.locator('button:has-text("Reportar")').count()
               === await hoy.locator('.turno').count(),
             'y cada una con su botón para reportarla')
+  // Desde la agenda de hoy no se llegaba al analizador: la única entrada
+  // estaba en la tabla de abajo, y ahí —si el lead ya tenía una llamada de
+  // otro día— abría aquélla. «El analizador sólo me muestra las de ayer.»
+  const analizarHoy = hoy.locator('.turno form button:has-text("Analizar"), ' +
+                                  '.turno form button:has-text("Ver análisis")')
+  comprobar(await analizarHoy.count() === await hoy.locator('.turno').count(),
+            'y cada una con su entrada al analizador, sin pasar por la tabla de abajo')
 
   const fila = hoy.locator(`.turno:has-text("Un Toque ${marca}")`)
   await fila.locator('button:has-text("Reportar")').click()

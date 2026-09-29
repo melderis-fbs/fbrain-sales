@@ -407,8 +407,15 @@ export type LeadEnLista = {
    */
   plan: { n: number; importe: number; fecha: string; medio: string | null; pagado: boolean }[]
   llamadas: number
-  /** La última llamada registrada, para poder subirle la transcripción. */
+  /** La llamada de esta reunión, para poder subirle la transcripción. */
   llamadaId: number | null
+  /**
+   * De qué día es esa llamada.
+   *
+   * Cuando no coincide con la fecha de la reunión, lo que se está mostrando es
+   * de otro día: la pantalla lo dice en vez de hacerlo pasar por el de hoy.
+   */
+  llamadaFecha: string | null
   tieneTranscripcion: boolean
   /** La nota de la última llamada analizada. */
   notaLlamada: number | null
@@ -437,10 +444,22 @@ const SELECT_LISTA = `
                     where v2.lead_id = l.id and p.borrado_en is null
                       and p.estado = 'cobrado'), 0) as cobrado,
          (select count(*) from llamadas x where x.lead_id = l.id) as llamadas,
-         ll.id as llamada_id, ll.tiene_transcripcion, ll.score as nota_llamada
+         ll.id as llamada_id, ll.fecha as llamada_fecha,
+         ll.tiene_transcripcion, ll.score as nota_llamada
     from leads l
+    -- La llamada DE ESTA REUNIÓN, y si no hay, la última que exista.
+    --
+    -- Antes era siempre la última. En un lead con una llamada ayer y una
+    -- segunda reunión hoy, la fila de hoy mostraba la transcripción y la nota
+    -- de ayer, y «Ver» abría el análisis de ayer: no había forma de llegar a
+    -- la de hoy, ni de darse cuenta de que no se estaba llegando.
+    --
+    -- El desempate va primero por la fecha de la reunión. La caída a la última
+    -- está para no romper los leads históricos, donde la fecha de la llamada y
+    -- la de la reunión no siempre coinciden; la fecha sale afuera para que la
+    -- pantalla pueda decir de qué día es lo que está mostrando.
     left join lateral (
-         select x.id,
+         select x.id, x.fecha,
                 exists (select 1 from transcripciones t where t.llamada_id = x.id) as tiene_transcripcion,
                 (select cs.score from call_scores cs
                    join analisis a on a.id = cs.analisis_id
@@ -448,7 +467,8 @@ const SELECT_LISTA = `
                   order by cs.creado_en desc limit 1) as score
            from llamadas x
           where x.lead_id = l.id
-          order by x.fecha desc nulls last, x.id desc
+          order by (x.fecha is not distinct from l.fecha_sesion) desc,
+                   x.fecha desc nulls last, x.id desc
           limit 1
     ) ll on true
     left join fuentes fu on fu.id = l.fuente_id
@@ -502,6 +522,7 @@ function aLeadEnLista(x: Record<string, any>): LeadEnLista {
     calidadNivel: x.calidad_nivel ?? null,
     llamadas: Number(x.llamadas),
     llamadaId: x.llamada_id ?? null,
+    llamadaFecha: x.llamada_fecha ?? null,
     tieneTranscripcion: x.tiene_transcripcion ?? false,
     notaLlamada: x.nota_llamada === null || x.nota_llamada === undefined ? null : Number(x.nota_llamada),
     creadoEn: x.creado_en.toISOString(),

@@ -1613,6 +1613,65 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(venta).toMatchObject({ lead: 'María', importe: 5000, fecha: '2026-10-03', enSegunda: false })
   })
 
+  it('la transcripción de la segunda reunión NO se pega en la llamada de la primera', async () => {
+    /**
+     * El caso que se veía como «el analizador no anda para las reuniones de
+     * hoy, sólo me muestra las de ayer».
+     *
+     * Antes se buscaba «la última llamada del lead» sin mirar la fecha: el
+     * lead ya tenía la del día 5, así que la transcripción del día 6 se
+     * guardaba ahí y el analizador abría la del 5. Nunca había forma de
+     * analizar la de hoy, ni de ver que no se estaba analizando.
+     */
+    const ll = await import('./llamadas')
+    const id = await leads.crearLead(
+      { nombre: 'Dos reuniones', closerId: closerKevin, fechaSesion: '2026-09-05' }, usuarioId)
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+    await resultado.agendarSegundaLlamada(id, { fecha: '2026-09-06', hora: '15:00' }, usuarioId)
+
+    const primera = await ll.llamadaDeLaReunion(id, '2026-09-05', 'primera')
+    await ll.guardarTranscripcion(primera, 'Kevin: Ayer.\nMaría: Ayer.\n'.repeat(20), 'pegado', usuarioId)
+
+    // Antes de cargar nada de la segunda, la fila del 6 ya trae una llamada
+    // —la del 5, que es la única que hay— y decía tener transcripción. Con eso
+    // la pantalla mostraba «Ver» al análisis de ayer y no ofrecía subir el de
+    // hoy. Que la fecha salga afuera es lo que permite distinguirlo.
+    const [antes] = await leads.listarLeads(TODO, { desde: '2026-09-06', hasta: '2026-09-06' }, 10)
+    expect(antes?.llamadaId).toBe(primera)
+    expect(antes?.llamadaFecha).toBe('2026-09-05')
+    expect(antes?.fechaSesion).toBe('2026-09-06')
+
+    const segunda = await ll.llamadaDeLaReunion(id, '2026-09-06', 'segunda')
+    expect(segunda).not.toBe(primera)
+    expect((await ll.verLlamada(segunda))?.fecha).toBe('2026-09-06')
+
+    // Y volver a pedirla devuelve la misma: no se crea una llamada por clic.
+    expect(await ll.llamadaDeLaReunion(id, '2026-09-06', 'segunda')).toBe(segunda)
+
+    // La transcripción de la segunda queda en la segunda, y la primera sigue vacía.
+    await ll.guardarTranscripcion(segunda, 'Kevin: Hoy.\nMaría: Hoy.\n'.repeat(20), 'pegado', usuarioId)
+    expect((await ll.transcripcionDe(primera))?.texto).toContain('Ayer')
+    expect((await ll.transcripcionDe(segunda))?.texto).toContain('Hoy')
+
+    // Y la fila del lead —la que dibuja «Mis llamadas»— apunta a la de HOY,
+    // que es lo que hace que el botón diga «subir» en vez de «ver» lo de ayer.
+    const [fila] = await leads.listarLeads(TODO, { desde: '2026-09-06', hasta: '2026-09-06' }, 10)
+    expect(fila?.llamadaId).toBe(segunda)
+    expect(fila?.llamadaFecha).toBe('2026-09-06')
+    expect(fila?.tieneTranscripcion).toBe(true)
+  })
+
+  it('una llamada vieja sin fecha se adopta en vez de duplicarse', async () => {
+    const ll = await import('./llamadas')
+    const id = await leads.crearLead(
+      { nombre: 'Sin fecha', closerId: closerKevin, fechaSesion: '2026-09-08' }, usuarioId)
+    const huerfana = await ll.crearLlamada(id, { fecha: null })
+
+    expect(await ll.llamadaDeLaReunion(id, '2026-09-08', 'primera')).toBe(huerfana)
+    expect((await ll.verLlamada(huerfana))?.fecha).toBe('2026-09-08')
+    expect((await ll.llamadasDelLead(id)).length).toBe(1)
+  })
+
   it('una segunda llamada no es una agenda nueva, y deja escrita la primera', async () => {
     const id = await leads.crearLead(
       { nombre: 'Dos vueltas', closerId: closerKevin, fechaSesion: '2026-09-05' }, usuarioId)

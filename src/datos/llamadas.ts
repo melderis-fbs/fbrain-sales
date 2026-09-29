@@ -126,6 +126,59 @@ export async function crearLlamada(
   })
 }
 
+/**
+ * La llamada de ESA reunión, creándola si todavía no existe.
+ *
+ * Antes se tomaba «la última llamada del lead» sin mirar la fecha. Con un lead
+ * de una sola reunión da igual. Con uno que tuvo una llamada ayer y una
+ * segunda hoy, no: la transcripción de hoy se pegaba en la llamada de ayer y
+ * el analizador abría la de ayer. Del lado del closer eso se ve como que el
+ * analizador no anda para las reuniones del día y sólo funciona para las del
+ * día anterior — y tiene razón, porque es literalmente lo que pasaba.
+ *
+ * La reunión es la unidad. Dos reuniones son dos llamadas, aunque sean del
+ * mismo lead y aunque la segunda sea a la mañana siguiente.
+ */
+export async function llamadaDeLaReunion(
+  leadId: number,
+  fecha: string | null,
+  tipoSesion: TipoSesion = 'primera',
+): Promise<number> {
+  if (fecha === null) {
+    // Sin fecha no hay con qué distinguir una reunión de otra: se usa la
+    // última, que es lo que había antes, y se crea si no hay ninguna.
+    const ultima = await fila<{ id: number }>(
+      `select id from llamadas where lead_id = $1
+        order by fecha desc nulls last, numero desc, id desc limit 1`, [leadId],
+    )
+    return ultima?.id ?? crearLlamada(leadId, { fecha: null, tipoSesion })
+  }
+
+  const suya = await fila<{ id: number }>(
+    `select id from llamadas where lead_id = $1 and fecha = $2
+      order by numero desc, id desc limit 1`, [leadId, fecha],
+  )
+  if (suya) return suya.id
+
+  /**
+   * Una llamada vieja sin fecha se adopta en vez de duplicarse.
+   *
+   * Son las que entraron antes de que la fecha se cargara siempre. Crear otra
+   * al lado deja al lead con dos llamadas para una sola reunión, y la
+   * transcripción en una y el análisis en la otra.
+   */
+  const sinFecha = await fila<{ id: number }>(
+    `select id from llamadas where lead_id = $1 and fecha is null
+      order by numero desc, id desc limit 1`, [leadId],
+  )
+  if (sinFecha) {
+    await escribir('update llamadas set fecha = $1 where id = $2', [fecha, sinFecha.id], { esperadas: 1 })
+    return sinFecha.id
+  }
+
+  return crearLlamada(leadId, { fecha, tipoSesion })
+}
+
 // ── Transcripciones ─────────────────────────────────────────────────────────
 
 export type Transcripcion = { id: number; texto: string; caracteres: number; origen: string; creadoEn: string }
