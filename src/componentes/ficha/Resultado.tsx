@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useActionState, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import type { Lead } from '@/datos/leads'
 import type { CloserOpcion } from '@/datos/catalogos'
@@ -13,6 +13,7 @@ import {
 } from '@/dominio/resultados'
 import {
   cargarResultadoAccion, reasignarCloserAccion, reflotarLeadAccion, registrarPagoAccion,
+  type Guardado,
 } from '@/app/(app)/leads/acciones'
 
 /**
@@ -28,13 +29,27 @@ import {
  * eran suyos. Lo que hay que adivinar se completa mal, y un dato mal cargado
  * vale menos que ninguno porque se cuenta igual.
  */
-function Guardar() {
+function Guardar({ texto = 'Guardar el resultado', clase }: { texto?: string; clase?: string }) {
   const { pending } = useFormStatus()
   return (
-    <button type="submit" disabled={pending}>
-      {pending ? 'Guardando…' : 'Guardar el resultado'}
+    <button type="submit" disabled={pending} className={clase}>
+      {pending ? 'Guardando…' : texto}
     </button>
   )
+}
+
+/**
+ * Lo que contestó el servidor, dicho acá.
+ *
+ * Antes estas acciones devolvían `void` y dejaban salir la excepción. En
+ * producción Next reemplaza el mensaje por «An error occurred in the Server
+ * Components render» y un digest: «las cuotas suman más que la venta» se veía
+ * como «Algo se rompió en esta pantalla». Un dato mal cargado, que se corrige
+ * en diez segundos, se leía como una aplicación rota.
+ */
+function Aviso({ r }: { r: Guardado }) {
+  if (!r) return null
+  return <div className={r.ok ? 'aviso dato' : 'aviso problema'}>{r.mensaje}</div>
 }
 
 /** Una moneda es una moneda. Repetirla en tres lugares es repetir el error. */
@@ -61,10 +76,15 @@ export function Resultado({
   // eso, «3 cuotas» es una nota al pie que no se puede cobrar ni contar.
   const [cuotas, setCuotas] = useState(lead.venta?.cuotas ?? 1)
 
+  const [guardado, guardar] = useActionState(cargarResultadoAccion, null)
+  const [reflotado, reflotar] = useActionState(reflotarLeadAccion, null)
+  const [reasignado, reasignar] = useActionState(reasignarCloserAccion, null)
+  const [cobrado, cobrar] = useActionState(registrarPagoAccion, null)
+
   return (
     <div className="rejilla g2">
       <Tarjeta titulo="Cargar el resultado">
-        <form action={cargarResultadoAccion}>
+        <form action={guardar}>
           <input type="hidden" name="leadId" value={lead.id} />
 
           <div className="dos">
@@ -301,6 +321,7 @@ export function Resultado({
             <textarea id="observaciones" name="observaciones" defaultValue={lead.observaciones ?? ''} />
           </div>
 
+          <Aviso r={guardado} />
           <Guardar />
         </form>
       </Tarjeta>
@@ -309,7 +330,7 @@ export function Resultado({
         {cerrado ? (
           <Tarjeta titulo="Reflotar este lead"
                    ayuda="Se le suma un ciclo al mismo lead, no se crea otro. Queda registrado que la repesca la hiciste vos.">
-            <form action={reflotarLeadAccion}>
+            <form action={reflotar}>
               <input type="hidden" name="leadId" value={lead.id} />
               <div className="dos">
                 <div className="campo">
@@ -332,7 +353,8 @@ export function Resultado({
                 <label htmlFor="r-motivo">Por qué se reflota</label>
                 <input id="r-motivo" name="motivo" placeholder="Volvió a escribir, cambió su situación…" />
               </div>
-              <button type="submit">Reflotar · pasa al ciclo {lead.ciclo + 1}</button>
+              <Aviso r={reflotado} />
+              <Guardar texto={`Reflotar · pasa al ciclo ${lead.ciclo + 1}`} />
             </form>
           </Tarjeta>
         ) : null}
@@ -340,7 +362,7 @@ export function Resultado({
         {puedeReasignar ? (
           <Tarjeta titulo="Cambiar el closer"
                    ayuda="No se borra ni se recrea nada: queda el histórico con quién lo cambió y por qué.">
-            <form action={reasignarCloserAccion}>
+            <form action={reasignar}>
               <input type="hidden" name="leadId" value={lead.id} />
               <div className="campo">
                 <label htmlFor="c-closer">Closer</label>
@@ -353,7 +375,8 @@ export function Resultado({
                 <label htmlFor="c-motivo">Motivo</label>
                 <input id="c-motivo" name="motivo" placeholder="Por qué cambia" />
               </div>
-              <button type="submit" className="secundario">Guardar el cambio</button>
+              <Aviso r={reasignado} />
+              <Guardar texto="Guardar el cambio" clase="secundario" />
             </form>
           </Tarjeta>
         ) : null}
@@ -367,7 +390,7 @@ export function Resultado({
               {lead.venta.cuotas ? ` · ${lead.venta.cuotas} cuotas` : ''} ·
               cobrado {plata(lead.cobrado, lead.venta.moneda)}.
             </p>
-            <form action={registrarPagoAccion}>
+            <form action={cobrar}>
               <input type="hidden" name="leadId" value={lead.id} />
               <div className="dos">
                 <div className="campo">
@@ -393,7 +416,8 @@ export function Resultado({
                 <label htmlFor="p-medio">Medio</label>
                 <input id="p-medio" name="medio" placeholder="Transferencia, Stripe…" />
               </div>
-              <button type="submit" className="secundario">Registrar el cobro</button>
+              <Aviso r={cobrado} />
+              <Guardar texto="Registrar el cobro" clase="secundario" />
             </form>
           </Tarjeta>
         ) : null}

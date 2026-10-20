@@ -207,6 +207,38 @@ await paso('el closer carga el resultado: seña', async () => {
   await foto('dashboard-sena')
 })
 
+await paso('un resultado que no se puede guardar lo DICE, no rompe la pantalla', async () => {
+  /**
+   * Las acciones de esta pestaña devolvían `void` y dejaban salir la
+   * excepción. En producción Next reemplaza el mensaje por «An error occurred
+   * in the Server Components render» y un digest: «las cuotas suman más que
+   * la venta» llegaba a la pantalla como «Algo se rompió en esta pantalla».
+   * Un dato mal cargado, que se corrige en diez segundos, se leía como una
+   * aplicación rota.
+   */
+  await p.goto(`${RAIZ}/leads/${leadId}?pestana=resultado`)
+  await p.selectOption('#salida', 'venta')
+  await esperar()
+  await p.fill('#importe', '1000')
+  await p.fill('#fecha', HOY)
+  await p.selectOption('#cuotas', '2')
+  await esperar()
+  await p.fill('#c1i', '900'); await p.fill('#c1f', HOY)
+  await p.fill('#c2i', '900'); await p.fill('#c2f', HOY)
+  await p.click(enLaPantalla('form:has(#salida) button[type=submit]'))
+  await esperar()
+
+  const cuerpo = (await p.locator('body').textContent()) ?? ''
+  comprobar(!cuerpo.includes('Algo se rompió'), 'no manda a la pantalla de error')
+  const avisos = await p.locator('.contenido form:has(#salida) .aviso').allTextContents()
+  comprobar(avisos.some((a) => a.includes('Las cuotas suman más que la venta')),
+            'dice exactamente qué está mal, en el formulario donde pasó')
+
+  // Y el lead no quedó a medias: sigue como estaba.
+  await p.reload()
+  comprobar(await p.inputValue('#salida') === 'sena', 'y no guardó nada a medias')
+})
+
 await paso('la ficha pregunta sólo lo del resultado que se eligió', async () => {
   // Mostrar los cinco bloques a la vez era lo que hacía que quien carga un
   // lead perdido tuviera que decidir cuáles de los catorce campos eran suyos.

@@ -208,18 +208,26 @@ export async function editarLeadAccion(_previo: Guardado, datos: FormData): Prom
   }
 }
 
-export async function reasignarCloserAccion(datos: FormData): Promise<void> {
+export async function reasignarCloserAccion(
+  _previo: Guardado, datos: FormData,
+): Promise<Guardado> {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'reasignarCloser')
+  if (!puede(usuario, 'reasignarCloser')) {
+    return { ok: false, mensaje: 'Tu rol no puede cambiar el closer de un lead.' }
+  }
 
   const leadId = Number(datos.get('leadId'))
-  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
-
-  await reasignarCloser(leadId, numero(datos, 'closerId'), usuario.id, texto(datos, 'motivo'))
-  // Asignarle el lead a un closer congela el quality con el que se lo va a
-  // evaluar. Después de esto, bajarle la calidad al lead ya no cambia su número.
-  await congelarQuality(leadId)
-  refrescar(leadId)
+  try {
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+    await reasignarCloser(leadId, numero(datos, 'closerId'), usuario.id, texto(datos, 'motivo'))
+    // Asignarle el lead a un closer congela el quality con el que se lo va a
+    // evaluar. Después de esto, bajarle la calidad al lead ya no cambia su número.
+    await congelarQuality(leadId)
+    refrescar(leadId)
+    return { ok: true, mensaje: 'Closer cambiado. Queda en el historial quién lo cambió y por qué.' }
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo cambiar el closer.' }
+  }
 }
 
 // ── Lo que carga el setter ──────────────────────────────────────────────────
@@ -250,29 +258,56 @@ export async function guardarCalificacionAccion(
 
 // ── Lo que carga el closer ──────────────────────────────────────────────────
 
-export async function cargarResultadoAccion(datos: FormData): Promise<void> {
+/**
+ * Guardar el resultado de la reunión, y DECIR qué pasó.
+ *
+ * Devolvía `void` y dejaba salir la excepción. Next no muestra el mensaje de
+ * un error del servidor en producción —lo reemplaza por «An error occurred in
+ * the Server Components render» y un digest— así que «las cuotas suman más que
+ * la venta» o «una venta necesita importe y fecha» llegaban a la pantalla como
+ * «Algo se rompió en esta pantalla», sin decir qué ni dónde.
+ *
+ * Eso convierte un dato mal cargado, que se arregla en diez segundos, en una
+ * aplicación rota que hay que ir a reportar. Pasó con un lead que había que
+ * pasar de seña a venta: el sistema sabía perfectamente qué le faltaba y no
+ * había forma de que lo dijera.
+ */
+export async function cargarResultadoAccion(
+  _previo: Guardado, datos: FormData,
+): Promise<Guardado> {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'cargarResultado')
-
-  const leadId = Number(datos.get('leadId'))
-  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
-
-  // Lo que el formulario dice, leído en un solo lugar: la ficha y el reporte
-  // del closer mandan los mismos campos y tienen que guardar lo mismo.
-  const leido = leerResultado(datos)
-  await cargarResultado(leadId, leido.cambios, usuario.id)
-
-  // Y recién ahora se re-agenda: la reunión de hoy ya quedó escrita con su
-  // fecha y su resultado, así que la segunda no le pisa la agenda a la primera.
-  if (leido.salida === 'segunda' && leido.fechaSegunda !== null) {
-    await agendarSegundaLlamada(
-      leadId,
-      { fecha: leido.fechaSegunda, hora: leido.horaSegunda, nota: leido.proximoPaso },
-      usuario.id,
-    )
+  if (!puede(usuario, 'cargarResultado')) {
+    return { ok: false, mensaje: 'Tu rol no puede cargar resultados.' }
   }
 
-  refrescar(leadId)
+  const leadId = Number(datos.get('leadId'))
+  try {
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+  } catch {
+    return { ok: false, mensaje: 'No tenés acceso a ese lead.' }
+  }
+
+  try {
+    // Lo que el formulario dice, leído en un solo lugar: la ficha y el reporte
+    // del closer mandan los mismos campos y tienen que guardar lo mismo.
+    const leido = leerResultado(datos)
+    await cargarResultado(leadId, leido.cambios, usuario.id)
+
+    // Y recién ahora se re-agenda: la reunión de hoy ya quedó escrita con su
+    // fecha y su resultado, así que la segunda no le pisa la agenda a la primera.
+    if (leido.salida === 'segunda' && leido.fechaSegunda !== null) {
+      await agendarSegundaLlamada(
+        leadId,
+        { fecha: leido.fechaSegunda, hora: leido.horaSegunda, nota: leido.proximoPaso },
+        usuario.id,
+      )
+    }
+
+    refrescar(leadId)
+    return { ok: true, mensaje: 'Guardado. Ya está en la ficha y en el tablero.' }
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo guardar el resultado.' }
+  }
 }
 
 /**
@@ -355,24 +390,33 @@ export async function agendarRapidoAccion(datos: FormData): Promise<void> {
   refrescar(leadId)
 }
 
-export async function registrarPagoAccion(datos: FormData): Promise<void> {
+export async function registrarPagoAccion(
+  _previo: Guardado, datos: FormData,
+): Promise<Guardado> {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'editarDinero')
+  if (!puede(usuario, 'editarDinero')) {
+    return { ok: false, mensaje: 'Tu rol no puede registrar cobros.' }
+  }
 
   const leadId = Number(datos.get('leadId'))
-  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+  try {
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
 
-  const importe = numero(datos, 'importe')
-  const fecha = texto(datos, 'fecha')
-  if (importe === null || fecha === null) throw new Error('Un cobro necesita importe y fecha.')
+    const importe = numero(datos, 'importe')
+    const fecha = texto(datos, 'fecha')
+    if (importe === null || fecha === null) throw new Error('Un cobro necesita importe y fecha.')
 
-  await registrarPago(leadId, {
-    importe, fecha,
-    moneda: texto(datos, 'moneda') ?? 'USD',
-    medio: texto(datos, 'medio'),
-    nCuota: numero(datos, 'nCuota'),
-  }, usuario.id)
-  refrescar(leadId)
+    await registrarPago(leadId, {
+      importe, fecha,
+      moneda: texto(datos, 'moneda') ?? 'USD',
+      medio: texto(datos, 'medio'),
+      nCuota: numero(datos, 'nCuota'),
+    }, usuario.id)
+    refrescar(leadId)
+    return { ok: true, mensaje: 'Cobro registrado. Entra al cash collected con la fecha del cobro.' }
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo registrar el cobro.' }
+  }
 }
 
 /**
@@ -537,20 +581,28 @@ export async function importarAccion(
  * No se crea otro: se le suma un ciclo al mismo y queda escrito quién lo
  * reflotó, porque esa repesca la cobra quien la hace —suele ser el setter—.
  */
-export async function reflotarLeadAccion(datos: FormData): Promise<void> {
+export async function reflotarLeadAccion(
+  _previo: Guardado, datos: FormData,
+): Promise<Guardado> {
   const usuario = await exigirUsuario()
-  exigir(usuario, 'editarLead')
+  if (!puede(usuario, 'editarLead')) {
+    return { ok: false, mensaje: 'Tu rol no puede reflotar un lead.' }
+  }
 
   const leadId = Number(datos.get('leadId'))
-  await exigirAccesoAlLead(leadId, alcanceDe(usuario))
-
-  await reflotarLead(leadId, usuario.id, {
-    closerId: numero(datos, 'closerId'),
-    fechaSesion: texto(datos, 'fechaSesion'),
-    horaSesion: texto(datos, 'horaSesion'),
-    motivo: texto(datos, 'motivo'),
-  })
-  refrescar(leadId)
+  try {
+    await exigirAccesoAlLead(leadId, alcanceDe(usuario))
+    await reflotarLead(leadId, usuario.id, {
+      closerId: numero(datos, 'closerId'),
+      fechaSesion: texto(datos, 'fechaSesion'),
+      horaSesion: texto(datos, 'horaSesion'),
+      motivo: texto(datos, 'motivo'),
+    })
+    refrescar(leadId)
+    return { ok: true, mensaje: 'Reflotado. El lead arranca un ciclo nuevo, con su historia entera.' }
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo reflotar el lead.' }
+  }
 }
 
 // ── Notas ───────────────────────────────────────────────────────────────────
