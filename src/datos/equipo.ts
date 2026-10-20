@@ -115,8 +115,12 @@ export async function performanceDeClosers(
               count(l.id)                                        as agendadas,
               count(l.id) filter (where l.estado = 'asistio')     as asistencias,
               count(l.id) filter (where l.hubo_oferta)            as ofertas,
+              -- Señas ABIERTAS. La que ya se convirtió es una venta y está
+              -- contada como tal en la columna de al lado; contarla también
+              -- acá le suma dos veces el mismo lead al mismo closer.
               count(l.id) filter (where exists (select 1 from senias s
-                                   where s.lead_id = l.id and s.borrado_en is null)) as senas,
+                                   where s.lead_id = l.id and s.borrado_en is null
+                                     and s.estado = 'abierta')) as senas,
               count(l.id) filter (where l.resultado = 'venta')    as ventas,
               avg((select q.score from lead_quality q where q.lead_id = l.id
                     order by q.congelado desc, q.creado_en desc limit 1)) as calidad,

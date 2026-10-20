@@ -61,6 +61,7 @@ export const SIN_ESQUEMA = [
   '0008_leads_sin_dueno.sql',
   '0009_cada_reunion_su_fila.sql',
   '0012_la_cadencia_arranca_el_dia_de_la_llamada.sql',
+  '0014_la_sena_sale_de_la_cadencia.sql',
 ]
 
 /**

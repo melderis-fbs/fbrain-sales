@@ -150,7 +150,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   asistencias:  { nombre: 'Asistencias', formula: 'De esos, los que quedaron en «asistió».', universo: 'reunión' },
   noShows:      { nombre: 'No shows', formula: 'De esos, los que quedaron en «no show».', universo: 'reunión' },
   ofertas:      { nombre: 'Ofertas', formula: 'De esos, los que tienen marcado que hubo oferta.', universo: 'reunión' },
-  senas:        { nombre: 'Señas', formula: 'De esos, los que tienen una seña cargada.', universo: 'reunión' },
+  senas:        { nombre: 'Señas', formula: 'Señas tomadas en el período, por FECHA DE LA SEÑA: venga la reunión del mes que venga, igual que los cierres. Las que ya se convirtieron en venta no están: esa plata se cuenta como venta, y dejarla acá la contaría dos veces.', universo: 'seña' },
   ventas:       { nombre: 'Ventas', formula: 'De esos, los que quedaron en «venta».', universo: 'reunión' },
   cierrePct:    { nombre: 'Cierre', formula: 'Cierres del período ÷ ASISTENCIAS del período. Los cierres son los firmados este mes, por fecha de venta; las asistencias, las reuniones de este mes a las que el lead vino. No se mide sobre las agendadas: al que no vino no se le pudo vender. Un mes que firma muchas llamadas viejas puede pasar de 100%: eso dice que entró más de lo que se atendió.', universo: 'venta' },
   asistenciasValidas: { nombre: 'Asistencias válidas', formula: 'Asistencias que no quedaron en «no calificado».', universo: 'reunión' },
@@ -173,7 +173,7 @@ export const DEFINICIONES: Record<string, { nombre: string; formula: string; uni
   cobranzaPct:  { nombre: '% Cash sobre venta nueva', formula: 'Cash collected ÷ facturación del período. De lo que se vendió este mes, cuánto entró. Los dos números salen de las mismas ventas, así que no puede pasar de 100%.', universo: 'venta' },
   facturacion:  { nombre: 'Facturación', formula: 'Suma de las ventas con fecha de venta en el período.', universo: 'venta' },
   cashCollected:{ nombre: 'Cash collected', formula: 'Lo cobrado de las ventas del período por la venta misma: el pago de la firma, la seña convertida, el contado. Las cuotas siguientes no entran acá —son cobranza de algo ya vendido— y se ven en la ficha del lead. Comisiones lo cuenta distinto, por fecha del cobro, porque una comisión se paga sobre la plata que entró ese mes.', universo: 'venta' },
-  senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas del período. No es facturación ni cash.', universo: 'reunión' },
+  senasImporte: { nombre: 'Señas comprometidas', formula: 'Suma de las señas abiertas con fecha en el período. No es facturación ni cash: cuando la seña se convierte, su plata pasa a la venta y sale de acá.', universo: 'seña' },
   ticketPromedio:{ nombre: 'Ticket promedio', formula: 'Facturación ÷ cantidad de ventas del período de venta.', universo: 'venta' },
   valorEnJuego: { nombre: 'Valor en juego', formula: 'Valor potencial de los leads que siguen abiertos.', universo: 'abierto' },
 }
@@ -228,8 +228,6 @@ const CONTEOS = `
   count(*) filter (where l.resultado = 'venta'
                      and l.tipo_sesion = 'segunda')            as cierres_en_segunda,
   count(*) filter (where l.hubo_oferta)                        as ofertas,
-  count(*) filter (where exists (select 1 from senias s
-                     where s.lead_id = l.id and s.borrado_en is null)) as senas,
   count(*) filter (where l.resultado = 'venta')                as ventas,
   count(*) filter (where l.resultado = 'perdida')              as perdidos,
   count(*) filter (where l.resultado = 'seguimiento')          as en_seguimiento,
@@ -266,19 +264,20 @@ export async function metricas(
     `select ${conteos} from leads l where ${d.sql}`, conteosValores,
   )
 
-  // Las señas del período, en su propia tarjeta. No suman a facturación ni a
-  // cash: recién impactan cuando se convierten.
-  const senaValores = [...d.valores, monedaBase]
-  const sena = await fila<{ importe: number }>(
-    `select coalesce(sum(s.importe), 0) as importe
-       from senias s join leads l on l.id = s.lead_id
-      where s.borrado_en is null and s.moneda = $${senaValores.length} and ${d.sql}`,
-    senaValores,
-  )
-
-  const [factura, cash] = await Promise.all([
+  /**
+   * Las señas van por la FECHA DE LA SEÑA, no por la de la reunión.
+   *
+   * Es la misma regla que los cierres, y por el mismo motivo: un lead que
+   * tuvo la llamada en agosto, pasó por los 12 toques y señó en octubre, señó
+   * en OCTUBRE. Contándolo por la reunión, esa seña no aparecía en ningún mes
+   * que alguien estuviera mirando.
+   *
+   * Y las convertidas no están: su plata ya se cuenta como venta.
+   */
+  const [factura, cash, sena] = await Promise.all([
     dinero('ventas', rango, alcance, filtros, monedaBase),
     dinero('pagos', rango, alcance, filtros, monedaBase),
+    dinero('senias', rango, alcance, filtros, monedaBase),
   ])
 
   const n = (k: string) => Number(c?.[k] ?? 0)
@@ -288,7 +287,7 @@ export async function metricas(
   // se sigue calculando porque es otra pregunta, pero no es la tasa.
   const conteo: Conteos = {
     agendadas: n('agendadas'), asistidas: n('asistencias'), ofertas: n('ofertas'),
-    senas: n('senas'), ventas: factura.cantidad,
+    senas: sena.cantidad, ventas: factura.cantidad,
   }
 
   return {
@@ -329,7 +328,7 @@ export async function metricas(
       ventasCerradas: factura.cantidad,
       facturacion: factura.total,
       cashCollected: cash.total,
-      senasImporte: Number(sena?.importe ?? 0),
+      senasImporte: sena.total,
       ticketPromedio: factura.cantidad === 0 ? null : Math.round(factura.total / factura.cantidad),
       valorEnJuego: Number(c?.valor_en_juego ?? 0),
       // Dividir por cero no da cero: da «sin datos». Un «USD 0 por agenda»
@@ -365,23 +364,32 @@ export async function metricas(
  * mezcla pesos y dólares es un número que parece correcto y no lo es.
  */
 async function dinero(
-  tabla: 'ventas' | 'pagos',
+  tabla: 'ventas' | 'pagos' | 'senias',
   rango: Rango,
   alcance: Alcance,
   filtros: FiltrosDeMetricas,
   monedaBase: string,
 ): Promise<{ total: number; cantidad: number; otras: { moneda: string; importe: number }[] }> {
-  const union = tabla === 'ventas'
-    ? `from ventas m join leads l on l.id = m.lead_id`
-    : `from pagos m
+  const union = tabla === 'pagos'
+    ? `from pagos m
        join ventas v on v.id = m.venta_id and v.borrado_en is null
        join leads l on l.id = v.lead_id`
+    : `from ${tabla} m join leads l on l.id = m.lead_id`
 
   const valores: unknown[] = [rango.desde, rango.hasta]
-  // El período lo marca la VENTA en los dos casos: en `ventas` es la fila
-  // misma, en `pagos` es la venta de la que cuelga el cobro.
-  const cuando = tabla === 'ventas' ? 'm.fecha' : 'v.fecha'
+  // El período lo marca la fila de plata: en `ventas` y en `senias` es su
+  // propia fecha, en `pagos` es la venta de la que cuelga el cobro.
+  const cuando = tabla === 'pagos' ? 'v.fecha' : 'm.fecha'
   const condiciones = ['m.borrado_en is null', 'l.borrado_en is null', `${cuando} between $1 and $2`]
+  if (tabla === 'senias') {
+    // Sólo las ABIERTAS, el mismo filtro que la lista de señas pendientes: así
+    // la tarjeta y la lista no pueden decir cosas distintas. Una seña
+    // convertida ya no es una seña —su plata está en la venta— y dejarla acá
+    // la cuenta dos veces: es lo que pasaba con el lead que señó 2.000 y
+    // después completó el pago, contado como venta Y como seña activa por los
+    // mismos 2.000.
+    condiciones.push(`m.estado = 'abierta'`)
+  }
   if (tabla === 'pagos') {
     condiciones.push(`m.estado = 'cobrado'`)
     // Sólo lo que entró POR LA VENTA NUEVA: el pago de la firma, la seña que

@@ -250,12 +250,93 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(medidas.facturacion).toBe(3000)
     // Los 500 de la seña entraron al cash recién ahora, y una sola vez.
     expect(medidas.cashCollected).toBe(500)
-    // La seña sigue contándose en el embudo: la etapa ocurrió.
-    expect(medidas.senas).toBe(1)
+    /**
+     * Y DEJA de contarse como seña: su plata ya está en la venta.
+     *
+     * Era al revés —la etapa ocurrió, así que se contaba igual— y en la
+     * pantalla eso se leía como un lead que estaba en los dos lados: «ya está
+     * contado como venta, pero el tracker sigue tomando sus 2.000 y su caso
+     * como seña activa». Una seña convertida no es una seña pendiente, y la
+     * tarjeta de Señas es la de lo que falta cobrar.
+     */
+    expect(medidas.senas).toBe(0)
+    expect(medidas.senasImporte).toBe(0)
 
     expect(await metricas.senasAbiertas(TODO, '2026-09-20')).toHaveLength(0)
     const sena = await db.fila<{ estado: string }>('select estado from senias where lead_id = $1', [id])
     expect(sena?.estado).toBe('convertida')
+  })
+
+  it('una seña se cuenta en el mes de la SEÑA, no en el de la llamada, y sale de la cadencia', async () => {
+    /**
+     * El reporte: un lead tuvo su llamada, pasó a los 12 toques y después
+     * señó. La ficha mostraba la seña; el tracker no la mostraba en ningún
+     * mes y el lead seguía apareciendo en la cadencia.
+     *
+     * Eran dos cosas. La seña se contaba por la fecha de la REUNIÓN, así que
+     * caía en un mes que nadie estaba mirando —la misma regla que ya vale
+     * para los cierres—; y la lista de resultados que sacan del pipeline
+     * tenía venta, perdida y no calificado, pero no la seña.
+     */
+    const id = await leads.crearLead(
+      { nombre: 'Señó tarde', closerId: closerKevin, fechaSesion: '2026-09-04' }, usuarioId)
+    await resultado.cargarResultado(
+      id, { estado: 'asistio', resultado: 'seguimiento', comoSigue: 'cadencia' }, usuarioId)
+    expect((await seguimientos.seguimientoDelLead(id, '2026-09-20'))?.situacion).toBe('activo')
+
+    await resultado.cargarResultado(id, {
+      resultado: 'sena',
+      sena: { importe: 1500, moneda: 'USD', fecha: '2026-10-07', saldoPendiente: 3500 },
+    }, usuarioId)
+
+    const octubre = { desde: '2026-10-01', hasta: '2026-10-31', etiqueta: 'octubre' }
+    const oct = (await metricas.metricas(octubre, TODO)).medidas
+    const sep = (await metricas.metricas(rango, TODO)).medidas
+
+    // La seña es de octubre, aunque la reunión haya sido en septiembre.
+    expect(oct.senas).toBe(1)
+    expect(oct.senasImporte).toBe(1500)
+    expect(sep.senas).toBe(0)
+    expect(sep.senasImporte).toBe(0)
+    // Septiembre conserva lo suyo: la agenda y la asistencia.
+    expect(sep.agendadas).toBe(1)
+    expect(sep.asistencias).toBe(1)
+
+    // Y el lead salió de los 12 toques: el dinero entró, dejó de perseguirse.
+    const enPipeline = await seguimientos.seguimientoDelLead(id, '2026-10-08')
+    expect(enPipeline === null || enPipeline.situacion === 'fuera').toBe(true)
+  })
+
+  it('la seña que se convirtió deja de figurar como seña: la plata se cuenta una vez', async () => {
+    // El reporte: señó 2.000 y después completó el pago. Quedaba contado como
+    // venta Y como seña activa por los mismos 2.000, en el mismo tablero.
+    const id = await leads.crearLead(
+      { nombre: 'Completó el pago', closerId: closerKevin, fechaSesion: '2026-10-02' }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena', huboOferta: true,
+      sena: { importe: 2000, moneda: 'USD', fecha: '2026-10-02', saldoPendiente: 1000 },
+    }, usuarioId)
+
+    const octubre = { desde: '2026-10-01', hasta: '2026-10-31', etiqueta: 'octubre' }
+    const antes = (await metricas.metricas(octubre, TODO)).medidas
+    expect(antes.senas).toBe(1)
+    expect(antes.senasImporte).toBe(2000)
+
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 3000, moneda: 'USD', fecha: '2026-10-20' },
+    }, usuarioId)
+
+    const despues = (await metricas.metricas(octubre, TODO)).medidas
+    expect(despues.ventasCerradas).toBe(1)
+    expect(despues.facturacion).toBe(3000)
+    expect(despues.senas).toBe(0)
+    expect(despues.senasImporte).toBe(0)
+    expect(await metricas.senasAbiertas(TODO, '2026-10-21')).toEqual([])
+
+    // Y al closer tampoco se le cuenta dos veces el mismo lead.
+    const equipo = await import('./equipo')
+    const kevin = (await equipo.performanceDeClosers(octubre)).find((c) => c.nombre === 'Kevin')
+    expect(kevin?.senas).toBe(0)
   })
 
   it('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {

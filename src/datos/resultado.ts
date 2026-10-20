@@ -302,7 +302,17 @@ export async function cargarResultado(
         await salirDelPipeline(leadId, cx)
       }
     }
-    if (datos.resultado === 'venta' || datos.resultado === 'perdida' || datos.resultado === 'no_calificado') {
+    /**
+     * La seña también saca de la cadencia.
+     *
+     * Faltaba, y es el caso de un lead que quedó en los 12 toques y después
+     * señó: el dinero entró, la ficha decía «Seña» y el pipeline lo seguía
+     * persiguiendo como si no hubiera pasado nada. El closer veía el mismo
+     * lead en dos lugares diciendo dos cosas distintas, y el que miente es
+     * siempre el que se lee primero.
+     */
+    if (datos.resultado === 'venta' || datos.resultado === 'sena'
+        || datos.resultado === 'perdida' || datos.resultado === 'no_calificado') {
       await salirDelPipeline(leadId, cx)
     }
 
