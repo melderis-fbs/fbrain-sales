@@ -250,6 +250,17 @@ async function tarjetas(
        left join lateral (select nivel from lead_quality q2 where q2.lead_id = l.id
                            order by q2.creado_en desc, q2.id desc limit 1) q on true
       where se.situacion = any($1) and ${alc.condicion}${porCloser}
+        -- Un lead que ya resolvió no se persigue, diga lo que diga su fila de
+        -- seguimiento. El cierre de la fila lo escribe quien carga el
+        -- resultado, y durante un tiempo la seña no lo escribía: un lead que
+        -- señó seguía apareciendo acá pidiendo el toque siguiente mientras su
+        -- ficha decía «Seña». Esto lo deja afuera igual, sin depender de que
+        -- la fila esté bien cerrada.
+        --
+        -- La columna de los que YA salieron no se toca: ahí el lead resuelto
+        -- tiene que verse, que es justamente lo que esa columna cuenta.
+        and (se.situacion = 'fuera'
+             or l.resultado not in ('venta', 'sena', 'perdida', 'no_calificado'))
       order by l.nombre`,
     valores,
   )

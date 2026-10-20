@@ -305,6 +305,38 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     // Y el lead salió de los 12 toques: el dinero entró, dejó de perseguirse.
     const enPipeline = await seguimientos.seguimientoDelLead(id, '2026-10-08')
     expect(enPipeline === null || enPipeline.situacion === 'fuera').toBe(true)
+
+    // Y no está en la lista que se mira todos los días, que es lo que se veía.
+    const cadencia = await seguimientos.pipelineDeSeguimientos(TODO, '2026-10-08')
+    expect(cadencia.columnas.flatMap((c) => c.tarjetas).some((t) => t.leadId === id)).toBe(false)
+  })
+
+  it('un lead que ya resolvió no aparece en la cadencia aunque su fila diga que sí', async () => {
+    /**
+     * El cinturón además del tirante. La fila de seguimiento la cierra quien
+     * carga el resultado, y durante un tiempo la seña no la cerraba: quedaron
+     * leads con la ficha diciendo «Seña» y el pipeline pidiendo el toque
+     * siguiente. La migración 0014 limpia los que quedaron, y esto hace que
+     * la lista no dependa de que la fila esté bien cerrada.
+     */
+    const id = await leads.crearLead(
+      { nombre: 'Fila sucia', closerId: closerKevin, fechaSesion: '2026-09-04' }, usuarioId)
+    await resultado.cargarResultado(
+      id, { estado: 'asistio', resultado: 'seguimiento', comoSigue: 'cadencia' }, usuarioId)
+    const enCadencia = async () =>
+      (await seguimientos.pipelineDeSeguimientos(TODO, '2026-09-20'))
+        .columnas.flatMap((c) => c.tarjetas).some((t) => t.leadId === id)
+    expect(await enCadencia()).toBe(true)
+
+    // Se resuelve el lead y, a mano, se deja la fila como estaba: activa.
+    await resultado.cargarResultado(id, {
+      resultado: 'sena', sena: { importe: 900, moneda: 'USD', fecha: '2026-09-15' },
+    }, usuarioId)
+    await db.escribir(
+      `update seguimiento_estado set situacion = 'activo', salio_en = null where lead_id = $1`,
+      [id], { esperadas: 1 })
+
+    expect(await enCadencia()).toBe(false)
   })
 
   it('la seña que se convirtió deja de figurar como seña: la plata se cuenta una vez', async () => {
