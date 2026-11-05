@@ -335,46 +335,98 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   await esperar()
 
   await p.goto(`${RAIZ}/seguimientos`)
-  comprobar(await p.locator(`.contenido .ficha:has-text("${OTRO}")`).count() === 1,
+  const suya = () => p.locator(`.contenido table.seguimientos tbody tr:has-text("${OTRO}")`)
+  comprobar(await suya().count() === 1,
             'apareció en el pipeline sin que nadie lo agregue a mano')
-  comprobar(await p.locator('.contenido .tablero .columna').count() >= 12,
-            'el tablero tiene una columna por toque')
 
-  // En un tablero la posición ES el paso: la tarjeta tiene que estar en la
-  // columna del toque que le toca, y moverse de columna al registrarlo.
-  const enColumna = (n) => p.locator(`.contenido .tablero .columna[data-toque="${n}"] .ficha:has-text("${OTRO}")`)
-  const suya = () => p.locator(`.contenido .ficha:has-text("${OTRO}")`)
+  /**
+   * Los doce pasos, TODOS, en un renglón.
+   *
+   * El tablero en columnas no podía mostrarlos —doce columnas legibles son
+   * tres mil píxeles— así que o se cortaban a la derecha o había que recorrer
+   * la pantalla entera. La barra contesta de un vistazo la pregunta para la
+   * que el pipeline existe: dónde se junta la gente.
+   */
+  comprobar(await p.locator('.contenido .paso-barra').count() >= 12,
+            'los doce pasos están todos dibujados, con su cuenta y sus atrasados')
+  const enUnRenglon = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('.contenido .paso-barra')]
+    const y = b[0]?.getBoundingClientRect().top
+    return b.length > 0 && b.every((x) => Math.abs(x.getBoundingClientRect().top - y) < 2)
+  })
+  comprobar(enUnRenglon, 'y entran los doce en un solo renglón, sin correr nada de costado')
+  comprobar(await p.evaluate(() =>
+              document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+            'la página no se corre de costado: la única barra es la vertical')
 
-  comprobar(await enColumna(1).count() === 1, 'y arranca en la columna del primer toque')
+  const paso1 = () => p.locator('.contenido .paso-barra').nth(0)
+  comprobar((await paso1().locator('.cuantos').textContent()) === '1',
+            'y arranca contado en el primer paso')
 
-  await paso('registrar el toque mueve la tarjeta a la columna siguiente', async () => {
+  await paso('registrar el toque lo pasa al paso siguiente', async () => {
     await suya().locator('select[name=estado]').selectOption('no_contesto')
     await suya().locator('button[type=submit]').click()
-    await esperar()
-    await p.waitForFunction(
-      (nombre) => {
-        const col = document.querySelector('.contenido .tablero .columna[data-toque="2"]')
-        return col !== null && [...col.querySelectorAll('.ficha')]
-          .some((f) => f.textContent?.includes(nombre))
-      },
-      OTRO, { timeout: 5000 },
-    ).catch(() => {})
-    comprobar(await enColumna(2).count() === 1, 'pasó a la columna del toque 2')
-    comprobar(await enColumna(1).count() === 0, 'y dejó de estar en la del 1')
+    await p.waitForTimeout(2500)
+    comprobar((await suya().locator('td').nth(2).textContent())?.trim() === '2',
+              'la fila dice que ahora va por el toque 2')
+    comprobar((await p.locator('.contenido .paso-barra').nth(1).locator('.cuantos').textContent()) === '1',
+              'y la barra de pasos lo cuenta en el 2')
     await foto('pipeline')
   })
 
-  await paso('«Lo que toca» deja en el tablero sólo lo vencido y lo de hoy', async () => {
+  await paso('la lista trae lo que pasó antes, que es lo que decide qué hacer ahora', async () => {
+    // Cuatro «no contestó» seguidos y un «sigue interesado» son dos leads
+    // distintos, y antes los dos se veían igual: el rastro estaba en la ficha.
+    comprobar((await suya().textContent())?.includes('No contestó'),
+              'el renglón muestra el último toque registrado')
+  })
+
+  await paso('tocar un paso deja en la lista sólo los suyos', async () => {
+    await p.locator('.contenido .paso-barra').nth(1).click()
+    await p.waitForTimeout(1200)
+    comprobar(await suya().count() === 1, 'el lead del paso 2 sigue')
+    comprobar(await p.locator('.contenido table.seguimientos tbody tr').count() === 1,
+              'y no hay nadie más en la lista')
+    await p.locator('.contenido .paso-barra.activo').click()
+    await p.waitForTimeout(1200)
+  })
+
+  await paso('se pueden marcar varios y resolverlos de una vez', async () => {
+    /**
+     * Es lo que hace que treinta atrasados se puedan bajar. Una tarjeta por
+     * lead con su desplegable y su botón son sesenta clics para decir sesenta
+     * veces lo mismo: eso no se hace, lo que se hace es dejar de abrir la
+     * pantalla.
+     */
+    comprobar(await p.locator('.contenido .tanda-barra').count() === 0,
+              'sin nada elegido, la barra de tanda no estorba')
+    await suya().locator('input[type=checkbox]').check()
+    await p.waitForTimeout(300)
+    comprobar(await p.locator('.contenido .tanda-barra').count() === 1,
+              'al marcar uno aparece la barra de la tanda')
+    comprobar((await p.locator('.contenido .tanda-barra strong').textContent())?.includes('1'),
+              'y dice cuántos hay elegidos')
+
+    await p.locator('.contenido .tanda-barra button:has-text("Registrar en")').click()
+    await p.waitForTimeout(2500)
+    const aviso = await p.locator('.contenido .aviso').allTextContents()
+    comprobar(aviso.some((a) => a.includes('1 registrado')),
+              'la tanda dice cuántos registró')
+    comprobar(await p.locator('.contenido .tanda-barra').count() === 0,
+              'y la selección se limpia sola, sin dejar una tanda a medias')
+  })
+
+  await paso('«Lo que toca» deja sólo lo vencido y lo de hoy', async () => {
     await p.goto(`${RAIZ}/seguimientos?solo=toca`)
-    comprobar(await p.locator('.contenido .tablero .columna').count() >= 12,
-              'sigue siendo el mismo tablero, con menos tarjetas')
+    comprobar(await p.locator('.contenido .paso-barra').count() >= 12,
+              'los pasos siguen estando todos, con menos gente')
     comprobar(await p.locator(
                 '.contenido .barra-filtros .chips:not([aria-label]) a.activo').count() === 1,
               'y el filtro queda marcado')
     await p.goto(`${RAIZ}/seguimientos`)
   })
 
-  await paso('el tablero se filtra por closer, y los números de arriba también', async () => {
+  await paso('el pipeline se filtra por closer, y los números de arriba también', async () => {
     // Un filtro que deja el encabezado contando a todo el equipo dice dos
     // cosas a la vez, y la que se cree es la que está más arriba.
     await p.goto(`${RAIZ}/seguimientos`)
@@ -391,40 +443,12 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     await esperar()
     await p.waitForTimeout(400)
     comprobar(await enCadencia() === 0, 'filtrando por Kevin, el encabezado baja a 0')
-    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 0,
-              'y su tarjeta desaparece del tablero')
+    comprobar(await suya().count() === 0, 'y su renglón desaparece de la lista')
 
     await porCloser('Braian').click()
     await esperar()
     await p.waitForTimeout(400)
-    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 1,
-              'y con el closer que lo tiene, vuelve')
-
-    /**
-     * UNA sola barra: la de la página.
-     *
-     * El tablero tenía la suya, horizontal, al pie de la fila de columnas. Con
-     * un toque de treinta leads las dos peleaban: la de la página sacaba del
-     * tablero, y la del tablero quedaba tan abajo que al llegar ya no se veía
-     * de qué columna era cada tarjeta.
-     */
-    const barras = await p.evaluate(() => {
-      const t = document.querySelector('.contenido .tablero')
-      if (!t) return null
-      const e = getComputedStyle(t)
-      return {
-        propia: t.scrollWidth > t.clientWidth || t.scrollHeight > t.clientHeight,
-        overflowX: e.overflowX, overflowY: e.overflowY,
-        cabezaPegada: getComputedStyle(document.querySelector('.contenido .tablero .cabeza')).position,
-        paginaDeCostado: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      }
-    })
-    comprobar(barras?.propia === false,
-              'el tablero no tiene barra propia: no hay nada que correr de costado')
-    comprobar(barras?.paginaDeCostado === false,
-              'y la página tampoco se corre de costado: la única barra es la vertical')
-    comprobar(barras?.cabezaPegada === 'sticky',
-              'y la cabeza de cada columna se queda a la vista mientras se la recorre')
+    comprobar(await suya().count() === 1, 'y con el closer que lo tiene, vuelve')
 
     await p.goto(`${RAIZ}/seguimientos`)
   })
@@ -436,14 +460,18 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     // `:has-text()` es de Playwright, no de querySelectorAll: acá se filtra
     // por el texto a mano.
     await p.waitForFunction(
-      (nombre) => ![...document.querySelectorAll('.contenido .ficha')]
+      (nombre) => ![...document.querySelectorAll('.contenido table.seguimientos tbody tr')]
         .some((f) => f.textContent?.includes(nombre)),
-      OTRO, { timeout: 5000 },
+      OTRO, { timeout: 6000 },
     ).catch(() => {})
-    comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 0,
-              'dejó de ocupar lugar en el tablero')
-    comprobar(await p.locator(`.tarjeta:has-text("Fuera del pipeline") tr:has-text("${OTRO}")`).count() === 1,
+    comprobar(await suya().count() === 0, 'dejó de ocupar lugar en la lista')
+    const afuera = p.locator(`.tarjeta:has-text("Fuera del pipeline") tr:has-text("${OTRO}")`)
+    comprobar(await afuera.count() === 1,
               'y quedó listado por si hay que volver a meterlo')
+    // «Fuera del pipeline» era una bolsa: el que dijo que no, el que agendó y
+    // el que se cerró, todos iguales. Ahora cada salida dice por qué.
+    comprobar((await afuera.textContent())?.includes('Dijo que no'),
+              'diciendo por qué salió, y no sólo que salió')
   })
 })
 

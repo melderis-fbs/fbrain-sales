@@ -153,6 +153,63 @@ export async function registrarInteraccion(
 }
 
 /**
+ * Registrar el mismo toque en varios leads de una vez.
+ *
+ * Es lo que hace que una deuda de treinta atrasados se pueda bajar. Treinta
+ * tarjetas, cada una con un desplegable y un botón, son sesenta clics para
+ * decir sesenta veces lo mismo: «no contestó». Nadie hace eso; lo que se hace
+ * es dejar de abrir la pantalla, y ahí la cadencia deja de existir.
+ *
+ * Cada lead va en su propia transacción a propósito: si uno falla —alguien lo
+ * sacó del pipeline mientras tanto— los otros veintinueve quedan registrados
+ * igual, y el que falló se nombra. Una tanda que se deshace entera por una
+ * fila se vuelve a intentar entera, y a la tercera se abandona.
+ */
+export async function registrarEnTanda(
+  leadIds: number[],
+  estado: EstadoToque,
+  nota: string | null,
+  usuarioId: number,
+): Promise<{ hechos: number; fallaron: { leadId: number; porque: string }[] }> {
+  const fallaron: { leadId: number; porque: string }[] = []
+  let hechos = 0
+  for (const leadId of leadIds) {
+    try {
+      await registrarInteraccion(leadId, estado, nota, usuarioId)
+      hechos++
+    } catch (e) {
+      fallaron.push({ leadId, porque: e instanceof Error ? e.message : 'no se pudo' })
+    }
+  }
+  return { hechos, fallaron }
+}
+
+/**
+ * Posponer varios leads a una fecha.
+ *
+ * El otro lado de ponerse al día: de los treinta atrasados, buena parte no hay
+ * que tocarlos esta semana sino en marzo. Hoy eso es abrir cada ficha.
+ */
+export async function posponerEnTanda(
+  leadIds: number[],
+  fecha: string,
+  usuarioId: number,
+  nota: string | null,
+): Promise<{ hechos: number; fallaron: { leadId: number; porque: string }[] }> {
+  const fallaron: { leadId: number; porque: string }[] = []
+  let hechos = 0
+  for (const leadId of leadIds) {
+    try {
+      await marcarSeguimientoLargo(leadId, fecha, usuarioId, nota)
+      hechos++
+    } catch (e) {
+      fallaron.push({ leadId, porque: e instanceof Error ? e.message : 'no se pudo' })
+    }
+  }
+  return { hechos, fallaron }
+}
+
+/**
  * Moverlo a mano a otro toque.
  *
  * Existe porque la cadencia no siempre describe lo que pasó: a veces el closer

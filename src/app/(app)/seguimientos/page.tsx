@@ -5,10 +5,13 @@ import { pipelineDeSeguimientos, type Tarjeta as Ficha } from '@/datos/seguimien
 import { catalogos, config } from '@/datos/catalogos'
 import { hoyEn } from '@/motor/periodos'
 import { Numero, Tarjeta, Encabezado, Pildora, plata, fechaCorta, Vacio } from '@/componentes/Piezas'
-import { ESTADOS_TOQUE, NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION } from '@/dominio/seguimientos'
-import { COLOR_DE_CALIDAD, NOMBRE_DE_NIVEL } from '@/dominio/calidad'
+import {
+  NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION, NOMBRE_DE_SALIDA_SEG, type MotivoDeSalida,
+} from '@/dominio/seguimientos'
 import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
-import { registrarToqueAccion, volverAlPipelineAccion } from './acciones'
+import { PasosDelPipeline } from '@/componentes/PasosDelPipeline'
+import { ListaDeSeguimientos } from '@/componentes/ListaDeSeguimientos'
+import { VolverAMeterlo } from '@/componentes/VolverAMeterlo'
 
 /**
  * El pipeline de seguimientos.
@@ -57,6 +60,43 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   }))
   const largosEnElTablero = soloLoQueToca ? largos.filter(urge) : largos
 
+  // El paso elegido en la barra de arriba. `largo` son los que pidieron que
+  // los llamen en una fecha puntual, que no están en ningún toque.
+  const paso: number | 'largo' | null =
+    q.paso === 'largo' ? 'largo' : q.paso && Number.isInteger(Number(q.paso)) ? Number(q.paso) : null
+
+  /**
+   * La lista, ordenada por lo que más atrasado está.
+   *
+   * Es el orden del trabajo y no el del calendario: con treinta vencidos, lo
+   * primero que hay que ver es lo que lleva más tiempo sin que nadie lo
+   * toque. Antes el orden era alfabético dentro de cada columna, que no
+   * contesta ninguna pregunta.
+   */
+  const enLaLista = [
+    ...(paso === 'largo' ? [] : enElTablero.filter((c) => paso === null || c.toque.orden === paso)
+      .flatMap((c) => c.tarjetas)),
+    ...(paso === null || paso === 'largo' ? largosEnElTablero : []),
+  ].sort((a, b) => b.atraso - a.atraso || a.nombre.localeCompare(b.nombre))
+
+  const nombreDelPaso = paso === 'largo'
+    ? 'Seguimiento largo'
+    : columnas.find((c) => c.toque.orden === paso)?.toque.nombre
+  const titulo = paso === null
+    ? (soloLoQueToca ? `Lo que toca (${enLaLista.length})` : `Todos (${enLaLista.length})`)
+    : `${paso === 'largo' ? '★' : paso} · ${nombreDelPaso} (${enLaLista.length})`
+  const ayuda = 'Lo más atrasado primero. Se pueden marcar varios y resolverlos de una vez.'
+
+  /**
+   * Los que recorrieron los doce toques sin decidirse.
+   *
+   * No son «fuera del pipeline»: el que dijo que no está cerrado, y éstos
+   * siguen abiertos y esperando una decisión. Mezclados en la misma lista, la
+   * decisión no se toma nunca.
+   */
+  const agotados = fuera.filter((t) => t.motivoSalida === 'cadencia_agotada')
+  const otrosFuera = fuera.filter((t) => t.motivoSalida !== 'cadencia_agotada')
+
   // Cambiar un filtro sin perder el otro.
   const con = (cambio: Record<string, string | undefined>) => {
     const u = new URLSearchParams()
@@ -68,7 +108,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   return (
     <div className="apilado">
       <Encabezado kicker="Seguimientos" titulo="Pipeline de 12 toques"
-                  bajada="Una columna por toque. Registrar el toque mueve la tarjeta a la siguiente." />
+                  bajada="Los doce pasos arriba, con cuántos hay en cada uno y cuántos están atrasados. Tocá uno para trabajar sólo ése." />
 
       <div className="rejilla g4">
         <Numero etiqueta="En cadencia" valor={resumen.enCadencia} />
@@ -107,63 +147,56 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
           </Vacio>
         </Tarjeta>
       ) : (
-        <div className="tablero">
-          {enElTablero.map((c) => {
-            const tarde = c.tarjetas.filter((t) => t.urgencia === 'vencido').length
-            return (
-              <div key={c.toque.orden} data-toque={c.toque.orden}
-                   className={c.tarjetas.length === 0 ? 'columna vacia' : 'columna'}>
-                <div className="cabeza">
-                  <div className="arriba">
-                    <span className="orden">{c.toque.orden}</span>
-                    <span className="que" title={c.toque.nombre}>{c.toque.nombre}</span>
-                    <span className="cuantos">{c.tarjetas.length}</span>
-                  </div>
-                  <div className="abajo">
-                    DÍA {c.toque.dias}
-                    {tarde > 0 ? <> · <span className="tarde">{tarde} tarde</span></> : null}
-                  </div>
-                </div>
-                <Cuerpo tarjetas={c.tarjetas} />
-              </div>
-            )
-          })}
+        <>
+          {/* Los doce pasos de un vistazo. El tablero en columnas no podía
+              mostrarlos: doce columnas legibles son tres mil píxeles. */}
+          <PasosDelPipeline
+            pasos={enElTablero.map((c) => ({
+              toque: c.toque,
+              cuantos: c.tarjetas.length,
+              tarde: c.tarjetas.filter((t) => t.urgencia === 'vencido').length,
+            }))}
+            largos={largosEnElTablero.length}
+            largosTarde={largosEnElTablero.filter(urge).length}
+            elegido={paso}
+            href={(x) => con({ paso: x === null ? undefined : String(x) })} />
 
-          {largos.length > 0 ? (
-            <div data-toque="largo" className={largosEnElTablero.length === 0 ? 'columna vacia' : 'columna'}>
-              <div className="cabeza">
-                <div className="arriba">
-                  <span className="orden">★</span>
-                  <span className="que">Seguimiento largo</span>
-                  <span className="cuantos">{largosEnElTablero.length}</span>
-                </div>
-                <div className="abajo">FUERA DE LA CADENCIA</div>
-              </div>
-              <Cuerpo tarjetas={largosEnElTablero} />
-            </div>
-          ) : null}
-        </div>
+          <Tarjeta titulo={titulo} ayuda={ayuda}>
+            {enLaLista.length === 0 ? (
+              <Vacio>
+                {soloLoQueToca
+                  ? 'No hay nada vencido ni para hoy. La cadencia está al día.'
+                  : 'No hay nadie en este paso.'}
+              </Vacio>
+            ) : (
+              <ListaDeSeguimientos fichas={enLaLista} hoy={hoy} />
+            )}
+          </Tarjeta>
+        </>
       )}
 
-      {fuera.length > 0 ? (
-        <Tarjeta titulo={`Fuera del pipeline (${fuera.length})`}
-                 ayuda="Se fueron por «no interesado», porque agendaron, o porque se cerraron. Están acá por si hay que volver a meterlos.">
+      {/* La cadencia se terminó y hay que decidir. Van aparte de «fuera del
+          pipeline» porque no son lo mismo: el que dijo que no está cerrado, y
+          éstos recorrieron los doce toques sin decidirse y siguen abiertos.
+          Mezclados, la decisión no se toma nunca. */}
+      {agotados.length > 0 ? (
+        <Tarjeta titulo={`Se acabó la cadencia (${agotados.length})`}
+                 ayuda="Hicieron los doce toques y no se decidieron. No hay toque que registrarles: hay que decidir si se posponen, se cierran o se vuelven a meter.">
           <div className="tabla-scroll">
             <table>
               <tbody>
-                {fuera.slice(0, 20).map((t) => (
+                {agotados.map((t) => (
                   <tr key={t.leadId}>
-                    <td><Link href={`/leads/${t.leadId}`} style={{ fontWeight: 600 }}>{t.nombre}</Link></td>
-                    <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{t.closer ?? '—'}</td>
+                    <td>
+                      <Link href={`/leads/${t.leadId}?pestana=seguimiento&volver=seguimientos`}
+                            style={{ fontWeight: 650 }}>{t.nombre}</Link>
+                      <div className="meta">{[t.empresa, t.closer ?? 'sin closer'].filter(Boolean).join(' · ')}</div>
+                    </td>
                     <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>
-                      {t.ultimoEstado ? NOMBRE_DE_TOQUE[t.ultimoEstado] : NOMBRE_DE_SITUACION[t.situacion]}
+                      {t.ultimos.length} {t.ultimos.length === 1 ? 'toque' : 'toques'} ·{' '}
+                      {t.ultimoEstado ? NOMBRE_DE_TOQUE[t.ultimoEstado] : '—'}
                     </td>
-                    <td className="num">
-                      <form action={volverAlPipelineAccion}>
-                        <input type="hidden" name="leadId" value={t.leadId} />
-                        <button type="submit" className="sutil" style={{ fontSize: 11.5 }}>Volver a meterlo</button>
-                      </form>
-                    </td>
+                    <td className="num"><VolverAMeterlo leadId={t.leadId} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -171,104 +204,31 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
           </div>
         </Tarjeta>
       ) : null}
-    </div>
-  )
-}
 
-/**
- * Un lead dentro de la cadencia.
- *
- * Sin la barra de doce pasos que tenía antes: la columna en la que está ES el
- * paso, y dibujarlo otra vez en cada tarjeta es tinta que no dice nada nuevo.
- * Lo que queda es lo que no está en la columna: quién es, de quién es, cuándo
- * le tocaba y qué hacer ahora.
- */
-/**
- * Cuántas tarjetas se ven antes de plegar el resto.
- *
- * Con las columnas en grilla, la fila entera mide lo que mide su columna más
- * larga: un toque con treinta leads empuja a los otros tres a cuatro mil
- * píxeles de distancia, y para llegar al toque 5 hay que atravesar un campo
- * de blanco. Plegar el resto deja las doce columnas a un par de pantallas y
- * la que hay que trabajar se abre de un clic.
- */
-const A_LA_VISTA = 5
-
-/**
- * El cuerpo de una columna, con el resto plegado.
- *
- * Es un `details` de HTML y no un estado de React a propósito: abierto se
- * queda abierto cuando se registra un toque. Con estado del servidor, cada
- * tarjeta registrada plegaba la columna que se estaba trabajando.
- */
-function Cuerpo({ tarjetas }: { tarjetas: Ficha[] }) {
-  if (tarjetas.length === 0) return <div className="cuerpo"><div className="nadie">—</div></div>
-
-  const primeras = tarjetas.slice(0, A_LA_VISTA)
-  const resto = tarjetas.slice(A_LA_VISTA)
-
-  return (
-    <div className="cuerpo">
-      {primeras.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
-      {resto.length > 0 ? (
-        <details className="mas">
-          <summary>Ver las {tarjetas.length} · {resto.length} más</summary>
-          <div className="cuerpo" style={{ marginTop: 8 }}>
-            {resto.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
+      {otrosFuera.length > 0 ? (
+        <Tarjeta titulo={`Fuera del pipeline (${otrosFuera.length})`}
+                 ayuda="Se fueron por «no interesado», porque agendaron, o porque se cerraron. Están acá por si hay que volver a meterlos.">
+          <div className="tabla-scroll">
+            <table>
+              <tbody>
+                {otrosFuera.slice(0, 20).map((t) => (
+                  <tr key={t.leadId}>
+                    <td><Link href={`/leads/${t.leadId}`} style={{ fontWeight: 600 }}>{t.nombre}</Link></td>
+                    <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{t.closer ?? '—'}</td>
+                    <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>
+                      {t.motivoSalida
+                        ? NOMBRE_DE_SALIDA_SEG[t.motivoSalida as MotivoDeSalida]
+                        : t.ultimoEstado ? NOMBRE_DE_TOQUE[t.ultimoEstado]
+                        : NOMBRE_DE_SITUACION[t.situacion]}
+                    </td>
+                    <td className="num"><VolverAMeterlo leadId={t.leadId} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </details>
+        </Tarjeta>
       ) : null}
-    </div>
-  )
-}
-
-function FichaDeLead({ t }: { t: Ficha }) {
-  const clase = t.urgencia === 'vencido' ? 'ficha vencida'
-    : t.urgencia === 'hoy' ? 'ficha hoy'
-    : t.urgencia === 'proximo' ? 'ficha proxima' : 'ficha'
-
-  return (
-    <div className={clase}>
-      <div className="entre" style={{ alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ minWidth: 0 }}>
-          <Link href={`/leads/${t.leadId}?pestana=seguimiento&volver=seguimientos`} className="nombre">{t.nombre}</Link>
-          <div className="meta">
-            {[t.empresa, t.closer ?? 'sin closer'].filter(Boolean).join(' · ')}
-          </div>
-        </div>
-        {t.calidadNivel ? (
-          <Pildora color={COLOR_DE_CALIDAD[t.calidadNivel]}>{NOMBRE_DE_NIVEL[t.calidadNivel]}</Pildora>
-        ) : null}
-      </div>
-
-      <div className="paso">
-        {t.situacion === 'largo' ? (
-          <>
-            <span className="cual">Vuelve</span>
-            <span className="cuando">{fechaCorta(t.fechaLarga)}</span>
-          </>
-        ) : (
-          <>
-            <span className="cual">
-              {t.atraso > 0 ? <span style={{ color: 'var(--rojo)' }}>Tarde</span>
-                : t.atraso === 0 ? <span style={{ color: 'var(--acento)' }}>Toca hoy</span>
-                : 'Toca'}
-            </span>
-            <span className="cuando">
-              {t.atraso > 0 ? `${t.atraso} ${t.atraso === 1 ? 'día' : 'días'}` : fechaCorta(t.fecha)}
-            </span>
-          </>
-        )}
-      </div>
-
-      <form action={registrarToqueAccion} className="acciones">
-        <input type="hidden" name="leadId" value={t.leadId} />
-        <label className="oculto" htmlFor={`s-${t.leadId}`}>Qué pasó con {t.nombre}</label>
-        <select id={`s-${t.leadId}`} name="estado" defaultValue="no_contesto">
-          {ESTADOS_TOQUE.map((e) => <option key={e} value={e}>{NOMBRE_DE_TOQUE[e]}</option>)}
-        </select>
-        <button type="submit" className="chico">Registrar</button>
-      </form>
     </div>
   )
 }

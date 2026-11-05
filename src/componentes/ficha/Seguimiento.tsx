@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useActionState } from 'react'
 import type { EstadoDelLead, Interaccion } from '@/datos/seguimientos'
 import type { Toque } from '@/motor/toques'
 import { Tarjeta, Pildora, Vacio, fechaCorta, cuando } from '../Piezas'
@@ -7,6 +10,7 @@ import { ESTADOS_TOQUE, NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION } from '@/dominio/s
 import {
   registrarToqueAccion, moverToqueAccion, volverAlPipelineAccion, sacarDelPipelineAccion,
 } from '@/app/(app)/seguimientos/acciones'
+import { Aviso, Boton } from '../Respuesta'
 
 /**
  * El seguimiento de este lead, dentro de su ficha.
@@ -23,6 +27,12 @@ export function Seguimiento({
   interacciones: Interaccion[]
   cadencia: Toque[]
 }) {
+  // Las acciones contestan en vez de reventar la pantalla: un «no tenés
+  // acceso» o un «ese estado no existe» terminaba en «Algo se rompió».
+  const [registrado, registrar] = useActionState(registrarToqueAccion, null)
+  const [sacado, sacar] = useActionState(sacarDelPipelineAccion, null)
+  const [devuelto, devolver] = useActionState(volverAlPipelineAccion, null)
+
   if (!estado) {
     return (
       <div style={{ maxWidth: 680 }}>
@@ -31,9 +41,10 @@ export function Seguimiento({
             Entra solo cuando el closer marca el resultado como «Seguimiento» en la pestaña
             Resultado. También se puede meter a mano.
           </p>
-          <form action={volverAlPipelineAccion} style={{ marginTop: 10 }}>
+          <form action={devolver} style={{ marginTop: 10 }}>
             <input type="hidden" name="leadId" value={leadId} />
-            <button type="submit" className="secundario">Meterlo en la cadencia</button>
+            <Boton clase="secundario">Meterlo en la cadencia</Boton>
+            <Aviso r={devuelto} chico />
           </form>
         </Tarjeta>
       </div>
@@ -67,7 +78,7 @@ export function Seguimiento({
 
         {activo ? (
           <Tarjeta titulo={`Registrar el toque ${estado.toque}`}>
-            <form action={registrarToqueAccion}>
+            <form action={registrar}>
               <input type="hidden" name="leadId" value={leadId} />
               <div className="campo">
                 <label htmlFor="s-estado">¿Qué pasó?</label>
@@ -83,7 +94,8 @@ export function Seguimiento({
                 <label htmlFor="s-nota">Nota</label>
                 <input id="s-nota" name="nota" placeholder="Qué dijo" />
               </div>
-              <button type="submit">Registrar y avanzar</button>
+              <Aviso r={registrado} chico />
+              <Boton>Registrar y avanzar</Boton>
             </form>
           </Tarjeta>
         ) : null}
@@ -100,14 +112,16 @@ export function Seguimiento({
             <button type="submit" className="secundario">Mover</button>
           </form>
           {estado.situacion !== 'fuera' ? (
-            <form action={sacarDelPipelineAccion} style={{ marginTop: 10 }}>
+            <form action={sacar} style={{ marginTop: 10 }}>
               <input type="hidden" name="leadId" value={leadId} />
-              <button type="submit" className="sutil">Sacarlo del pipeline</button>
+              <Boton clase="sutil">Sacarlo del pipeline</Boton>
+              <Aviso r={sacado} chico />
             </form>
           ) : (
-            <form action={volverAlPipelineAccion} style={{ marginTop: 10 }}>
+            <form action={devolver} style={{ marginTop: 10 }}>
               <input type="hidden" name="leadId" value={leadId} />
-              <button type="submit" className="sutil">Volver a meterlo</button>
+              <Boton clase="sutil">Volver a meterlo</Boton>
+              <Aviso r={devuelto} chico />
             </form>
           )}
         </Tarjeta>
