@@ -124,11 +124,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
                     {tarde > 0 ? <> · <span className="tarde">{tarde} tarde</span></> : null}
                   </div>
                 </div>
-                <div className="cuerpo">
-                  {c.tarjetas.length === 0
-                    ? <div className="nadie">—</div>
-                    : c.tarjetas.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
-                </div>
+                <Cuerpo tarjetas={c.tarjetas} />
               </div>
             )
           })}
@@ -143,11 +139,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
                 </div>
                 <div className="abajo">FUERA DE LA CADENCIA</div>
               </div>
-              <div className="cuerpo">
-                {largosEnElTablero.length === 0
-                  ? <div className="nadie">—</div>
-                  : largosEnElTablero.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
-              </div>
+              <Cuerpo tarjetas={largosEnElTablero} />
             </div>
           ) : null}
         </div>
@@ -191,6 +183,45 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
  * Lo que queda es lo que no está en la columna: quién es, de quién es, cuándo
  * le tocaba y qué hacer ahora.
  */
+/**
+ * Cuántas tarjetas se ven antes de plegar el resto.
+ *
+ * Con las columnas en grilla, la fila entera mide lo que mide su columna más
+ * larga: un toque con treinta leads empuja a los otros tres a cuatro mil
+ * píxeles de distancia, y para llegar al toque 5 hay que atravesar un campo
+ * de blanco. Plegar el resto deja las doce columnas a un par de pantallas y
+ * la que hay que trabajar se abre de un clic.
+ */
+const A_LA_VISTA = 5
+
+/**
+ * El cuerpo de una columna, con el resto plegado.
+ *
+ * Es un `details` de HTML y no un estado de React a propósito: abierto se
+ * queda abierto cuando se registra un toque. Con estado del servidor, cada
+ * tarjeta registrada plegaba la columna que se estaba trabajando.
+ */
+function Cuerpo({ tarjetas }: { tarjetas: Ficha[] }) {
+  if (tarjetas.length === 0) return <div className="cuerpo"><div className="nadie">—</div></div>
+
+  const primeras = tarjetas.slice(0, A_LA_VISTA)
+  const resto = tarjetas.slice(A_LA_VISTA)
+
+  return (
+    <div className="cuerpo">
+      {primeras.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
+      {resto.length > 0 ? (
+        <details className="mas">
+          <summary>Ver las {tarjetas.length} · {resto.length} más</summary>
+          <div className="cuerpo" style={{ marginTop: 8 }}>
+            {resto.map((t) => <FichaDeLead key={t.leadId} t={t} />)}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  )
+}
+
 function FichaDeLead({ t }: { t: Ficha }) {
   const clase = t.urgencia === 'vencido' ? 'ficha vencida'
     : t.urgencia === 'hoy' ? 'ficha hoy'

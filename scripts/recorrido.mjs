@@ -400,15 +400,31 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     comprobar(await p.locator(`.contenido .tablero .ficha:has-text("${OTRO}")`).count() === 1,
               'y con el closer que lo tiene, vuelve')
 
-    // El tablero se desliza: la barra está puesta, no escondida hasta que
-    // alguien adivine que hay más columnas a la derecha.
-    const deslizador = await p.evaluate(() => {
+    /**
+     * UNA sola barra: la de la página.
+     *
+     * El tablero tenía la suya, horizontal, al pie de la fila de columnas. Con
+     * un toque de treinta leads las dos peleaban: la de la página sacaba del
+     * tablero, y la del tablero quedaba tan abajo que al llegar ya no se veía
+     * de qué columna era cada tarjeta.
+     */
+    const barras = await p.evaluate(() => {
       const t = document.querySelector('.contenido .tablero')
       if (!t) return null
-      return { ancho: t.scrollWidth - t.clientWidth, estilo: getComputedStyle(t).overflowX }
+      const e = getComputedStyle(t)
+      return {
+        propia: t.scrollWidth > t.clientWidth || t.scrollHeight > t.clientHeight,
+        overflowX: e.overflowX, overflowY: e.overflowY,
+        cabezaPegada: getComputedStyle(document.querySelector('.contenido .tablero .cabeza')).position,
+        paginaDeCostado: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }
     })
-    comprobar(deslizador?.estilo === 'scroll',
-              'y tiene barra de desplazamiento siempre visible, no sólo al arrastrar')
+    comprobar(barras?.propia === false,
+              'el tablero no tiene barra propia: no hay nada que correr de costado')
+    comprobar(barras?.paginaDeCostado === false,
+              'y la página tampoco se corre de costado: la única barra es la vertical')
+    comprobar(barras?.cabezaPegada === 'sticky',
+              'y la cabeza de cada columna se queda a la vista mientras se la recorre')
 
     await p.goto(`${RAIZ}/seguimientos`)
   })
