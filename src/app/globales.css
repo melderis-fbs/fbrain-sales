@@ -401,24 +401,74 @@ button:disabled { opacity: .45; cursor: not-allowed; }
  * cualquier punto del tablero. Y el menú se queda quieto, que es lo que hace
  * que correr de costado no se sienta como que la pantalla se rompió.
  */
-.tablero { display: flex; gap: 10px; align-items: flex-start; padding-bottom: 4px; }
+/* Los botones para correr el tablero, arriba, donde se los busca: la barra
+ * del tablero va al pie de sus columnas y el pie puede quedar abajo del borde
+ * de la pantalla. */
+.correr-tablero {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+  margin-bottom: -4px;
+}
+.correr-tablero .ayuda { margin: 0 4px 0 0; }
+.correr-tablero button {
+  width: 30px; padding: 4px 0; font-size: 14px; line-height: 1;
+  border: 1px solid var(--borde); border-radius: var(--radio); background: var(--blanco);
+}
+.correr-tablero button:hover:not(:disabled) { border-color: var(--gris-claro); color: var(--negro); }
+.correr-tablero button:disabled { opacity: .35; }
 
+.tablero {
+  display: flex; gap: 10px; align-items: flex-start;
+  /* Se desliza SÓLO el tablero: el encabezado, los números y los filtros se
+   * quedan quietos. Antes corría la página entera y, aunque la barra quedaba
+   * fija abajo de la ventana, llevaba de paseo media pantalla que no tenía
+   * nada que correr.
+   *
+   * Sin `max-height` a propósito. Si la caja se acotara en alto aparecería
+   * también una barra vertical adentro, y ahí sí serían dos: la del tablero y
+   * la de la página. Dejándola crecer, el alto siempre alcanza y la única que
+   * se dibuja es la horizontal.
+   *
+   * `scroll` y no `auto`: con `auto` el sistema esconde la barra hasta que
+   * alguien arrastra, y doce columnas que se cortan sin nada que las anuncie
+   * se leen como que el tablero está roto. */
+  overflow-x: scroll;
+  /* `min-width: 0` o no recorta nada. `.apilado` es un flex en columna, así
+   * que el tablero es un item cuyo mínimo por defecto es su contenido: sin
+   * esto la caja se estira hasta los tres mil píxeles, no hay nada que
+   * desbordar y la que termina corriéndose es la página. */
+  min-width: 0;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gris-claro) var(--gris-fondo);
+}
+.tablero::-webkit-scrollbar { height: 12px; }
+.tablero::-webkit-scrollbar-track { background: var(--gris-fondo); border-radius: 99px; }
+.tablero::-webkit-scrollbar-thumb {
+  background: var(--gris-claro); border-radius: 99px; border: 3px solid var(--papel);
+}
+.tablero::-webkit-scrollbar-thumb:hover { background: var(--gris); }
+
+/* `position: relative` no es decorativo: adentro de las tarjetas hay
+ * etiquetas en `absolute` —las que lee el lector de pantalla— y sin un
+ * ancestro posicionado se acomodan contra la página entera en vez de contra
+ * su columna. Como el recorte del tablero no las alcanza, estiraban el ancho
+ * del documento y la página terminaba corriéndose de costado igual: el
+ * tablero recortaba bien y la pantalla se movía lo mismo. */
 .tablero .columna {
+  position: relative;
   flex: 0 0 272px; display: flex; flex-direction: column; min-width: 0;
   background: var(--gris-fondo); border-radius: var(--radio); padding: 9px 9px 10px;
 }
 .tablero .columna.vacia { background: transparent; border: 1px dashed var(--borde); }
-/* La cabeza se queda pegada arriba mientras se recorre su columna: en una
- * columna larga, al bajar se perdía de vista de qué toque era lo que se
- * estaba mirando. Sólo mientras su columna está en pantalla —`sticky` no sale
- * de su caja— así que una columna de dos tarjetas no deja su título flotando. */
+/* La cabeza NO se pega arriba, y no es un olvido: desde que el tablero es el
+ * que se desliza, es él el que recorta, y `sticky` se mide contra la caja que
+ * recorta —que no se mueve en vertical— así que no tendría contra qué
+ * pegarse. Por eso las columnas muestran pocas tarjetas y el resto va
+ * plegado: con la columna corta, su título está siempre a la vista. */
 .tablero .cabeza {
-  position: sticky; top: 0; z-index: 2;
-  margin: -9px -9px 9px; padding: 9px 9px 7px;
-  background: var(--gris-fondo);
-  border-radius: var(--radio) var(--radio) 0 0;
+  margin-bottom: 9px;
 }
-.tablero .columna.vacia .cabeza { background: var(--papel); }
+.tablero .columna.vacia .cabeza { background: transparent; }
 /* Dos renglones: el nombre del toque arriba con su número, y abajo el día y
  * cuántos hay. En uno solo, un nombre largo se comía la cuenta. */
 .tablero .cabeza .arriba { display: flex; align-items: center; gap: 6px; }

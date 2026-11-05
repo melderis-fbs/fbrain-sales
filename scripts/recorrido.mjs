@@ -345,15 +345,16 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
   comprobar(await enColumna(1).count() === 1, 'y arranca en la columna del primer toque')
 
   /**
-   * El tablero se desliza, y la barra es la de la PÁGINA.
+   * Se desliza SÓLO el tablero.
    *
-   * Las doce columnas no entran en una pantalla y no tienen que entrar. Lo
-   * que no puede pasar es que el tablero se quede con su propia barra: ésa
-   * caía al pie de la fila de columnas, y con un toque de treinta leads son
-   * cinco mil píxeles hacia abajo. Para correr el tablero había que bajar
-   * hasta el fondo, y al llegar ya no se veía de qué columna era cada
-   * tarjeta. La de la página la dibuja el navegador abajo de la ventana:
-   * está siempre en el mismo lugar.
+   * Las doce columnas no entran en una pantalla y no tienen que entrar; lo
+   * que tiene que estar bien es cómo se recorre. Corre el tablero y nada
+   * más: el encabezado, los números y los filtros se quedan quietos, y la
+   * página no se mueve de costado.
+   *
+   * Y no hay una segunda barra: la caja no se acota en alto —si se acotara
+   * aparecería también una vertical adentro— así que la única que se dibuja
+   * es la horizontal.
    */
   const correr = await p.evaluate(() => {
     const t = document.querySelector('.contenido .tablero')
@@ -361,27 +362,44 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     const cols = [...t.querySelectorAll('.columna')]
     const y = cols[0]?.getBoundingClientRect().top
     return {
-      // `scrollWidth` mide el desborde aunque nadie lo recorte, así que no
-      // sirve para saber quién se queda con la barra: eso lo dice `overflow`.
-      barraPropia: getComputedStyle(t).overflowX !== 'visible',
-      laLlevaLaPagina: doc.scrollWidth > doc.clientWidth,
+      soloElTablero: getComputedStyle(t).overflowX !== 'visible'
+                     && t.scrollWidth > t.clientWidth,
+      paginaQuieta: doc.scrollWidth <= doc.clientWidth,
+      segundaBarra: t.scrollHeight > t.clientHeight,
       enUnaFila: cols.every((c) => Math.abs(c.getBoundingClientRect().top - y) < 2),
       anchoColumna: Math.round(cols[0]?.getBoundingClientRect().width ?? 0),
-      cabezaPegada: getComputedStyle(t.querySelector('.cabeza')).position,
       menuFijo: getComputedStyle(document.querySelector('.lateral')).position,
     }
   })
-  comprobar(correr.barraPropia === false,
-            'ningún recuadro de adentro se queda con la barra del tablero')
-  comprobar(correr.laLlevaLaPagina,
-            'la lleva la página: la dibuja el navegador abajo de la ventana')
+  comprobar(correr.soloElTablero, 'el que se desliza de costado es el tablero')
+  comprobar(correr.paginaQuieta,
+            'y la página no se mueve: el encabezado y los filtros se quedan quietos')
+  comprobar(correr.segundaBarra === false,
+            'sin segunda barra: el tablero no se recorta en alto, así que no hay vertical adentro')
   comprobar(correr.enUnaFila, 'las columnas van en una sola fila, de corrido')
   comprobar(correr.anchoColumna >= 250,
             'y cada columna conserva su ancho: no se aprietan para entrar')
-  comprobar(correr.cabezaPegada === 'sticky',
-            'la cabeza de cada columna se queda a la vista mientras se la recorre')
-  comprobar(correr.menuFijo === 'fixed',
-            'y el menú no se va cuando se corre la pantalla de costado')
+  comprobar(correr.menuFijo === 'fixed', 'el menú queda fijo')
+
+  await paso('el tablero se corre con las flechas, sin ir a buscar la barra', async () => {
+    // La barra del tablero va al pie de sus columnas, y el pie puede quedar
+    // abajo del borde de la pantalla: tener que bajar primero para después
+    // correr de costado es la incomodidad de siempre.
+    const flechas = p.locator('.contenido .correr-tablero button')
+    if (await flechas.count() === 0) {
+      comprobar(true, 'el tablero entra entero, así que las flechas no estorban')
+      return
+    }
+    comprobar(await flechas.nth(0).isDisabled(),
+              'al entrar, la flecha de la izquierda está apagada')
+    const antes = await p.evaluate(() => document.querySelector('.contenido .tablero').scrollLeft)
+    await flechas.nth(1).click()
+    await p.waitForTimeout(600)
+    const despues = await p.evaluate(() => document.querySelector('.contenido .tablero').scrollLeft)
+    comprobar(despues > antes, 'y la de la derecha lo corre una columna')
+    comprobar(await flechas.nth(0).isDisabled() === false,
+              'con el tablero corrido, la de la izquierda se enciende')
+  })
 
   await paso('registrar el toque mueve la tarjeta a la columna siguiente', async () => {
     await suya().locator('select[name=estado]').selectOption('no_contesto')

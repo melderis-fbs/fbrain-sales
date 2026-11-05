@@ -94,7 +94,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   return (
     <div className="apilado">
       <Encabezado kicker="Seguimientos" titulo="Pipeline de 12 toques"
-                  bajada="Una columna por toque. El tablero se desliza de costado con la barra de abajo de la ventana; registrar el toque mueve la tarjeta a la columna siguiente." />
+                  bajada="Una columna por toque. Se desliza sólo el tablero —con las flechas o la barra de abajo— y registrar el toque mueve la tarjeta a la columna siguiente." />
 
       <div className="rejilla g4">
         <Numero etiqueta="En cadencia" valor={resumen.enCadencia} />

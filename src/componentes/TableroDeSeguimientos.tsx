@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect, useMemo, useState } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Tarjeta as Ficha } from '@/datos/seguimientos'
 import type { Toque } from '@/motor/toques'
 import { Aviso, Boton, type Respuesta } from './Respuesta'
@@ -18,15 +18,16 @@ import { registrarToqueAccion, registrarTandaAccion } from '@/app/(app)/seguimie
  * de doce bloquecitos deja de ser un tablero. Lo que tiene que estar bien es
  * CÓMO se recorre.
  *
- * Por eso el tablero no se queda con la barra. Antes `.tablero` tenía
- * `overflow-x` propio, y su barra caía al pie de la fila de columnas: con un
- * toque de treinta leads eso son cinco mil píxeles hacia abajo, así que para
- * correr el tablero había que bajar hasta el fondo, y al llegar ya no se veía
- * de qué columna era cada tarjeta. Dos barras peleando.
+ * Se desliza SÓLO el tablero: el encabezado, los números y los filtros se
+ * quedan quietos, que es lo que lo hace prolijo. Correr la página entera
+ * llevaba de paseo media pantalla que no tenía nada que correr.
  *
- * Ahora la que corre es la página: su barra la dibuja el navegador abajo de
- * la ventana, está siempre en el mismo lugar y se llega desde cualquier punto
- * del tablero. Una sola barra, y el menú se queda quieto al correrla.
+ * La barra del tablero va al pie de sus columnas, y ahí está el cuidado: con
+ * un toque de treinta tarjetas eso serían cinco mil píxeles hacia abajo y
+ * habría que bajar hasta el fondo para correrlo. Por eso cada columna muestra
+ * cuatro y pliega el resto: el pie del tablero queda en la primera pantalla y
+ * la barra está donde uno la busca. Y no hay segunda barra, porque la caja no
+ * se acota en alto: si se acotara aparecería también una vertical adentro.
  */
 export function TableroDeSeguimientos({
   columnas, largos, hoy,
@@ -65,11 +66,59 @@ export function TableroDeSeguimientos({
     return s
   })
 
+  /**
+   * Los botones para deslizar el tablero.
+   *
+   * La barra del tablero va al pie de sus columnas, y el pie puede quedar
+   * abajo del borde de la pantalla: para correr el tablero habría que bajar
+   * primero, que es la incomodidad de siempre. Estos dos botones están
+   * arriba, donde se los busca, y mueven el tablero una columna por clic.
+   *
+   * Se dibujan sólo si hay algo que correr: en una pantalla ancha donde el
+   * tablero entra entero, dos flechas que no hacen nada son ruido.
+   */
+  const tablero = useRef<HTMLDivElement>(null)
+  const [puede, setPuede] = useState({ izquierda: false, derecha: false })
+
+  const mirar = useCallback(() => {
+    const el = tablero.current
+    if (!el) return
+    setPuede({
+      izquierda: el.scrollLeft > 4,
+      derecha: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = tablero.current
+    if (!el) return
+    mirar()
+    el.addEventListener('scroll', mirar, { passive: true })
+    const observador = new ResizeObserver(mirar)
+    observador.observe(el)
+    return () => { el.removeEventListener('scroll', mirar); observador.disconnect() }
+  }, [mirar])
+
+  // Una columna por clic, con su separación: así el tablero siempre queda
+  // mostrando columnas enteras y no media.
+  const correr = (hacia: 1 | -1) =>
+    tablero.current?.scrollBy({ left: hacia * 282, behavior: 'smooth' })
+
   return (
     <>
       <Aviso r={hecho} />
 
-      <div className="tablero">
+      {puede.izquierda || puede.derecha ? (
+        <div className="correr-tablero">
+          <span className="ayuda">El tablero sigue a la derecha</span>
+          <button type="button" className="sutil chico" onClick={() => correr(-1)}
+                  disabled={!puede.izquierda} aria-label="Correr el tablero a la izquierda">←</button>
+          <button type="button" className="sutil chico" onClick={() => correr(1)}
+                  disabled={!puede.derecha} aria-label="Correr el tablero a la derecha">→</button>
+        </div>
+      ) : null}
+
+      <div className="tablero" ref={tablero}>
         {columnas.map((c) => (
           <Columna key={c.toque.orden} orden={String(c.toque.orden)} nombre={c.toque.nombre}
                    abajo={`DÍA ${c.toque.dias}`} tarjetas={c.tarjetas}
@@ -97,8 +146,12 @@ export function TableroDeSeguimientos({
  * toque 1 con el 7 hay que recorrer la pantalla entera. Plegadas, las trece
  * se miran juntas y la que hay que trabajar se abre de un clic. El número de
  * arriba sigue diciendo cuántos hay de verdad.
+ *
+ * Son cuatro y no más por la barra: como el que se desliza es el tablero, su
+ * barra va al pie de las columnas. Con las columnas cortas, el pie queda en
+ * la primera pantalla y la barra está donde se la busca.
  */
-const A_LA_VISTA = 6
+const A_LA_VISTA = 4
 
 function Columna({
   orden, nombre, abajo, tarjetas, elegidos, alternar,
@@ -116,9 +169,6 @@ function Columna({
 
   return (
     <div data-toque={orden} className={tarjetas.length === 0 ? 'columna vacia' : 'columna'}>
-      {/* La cabeza se queda pegada arriba mientras se recorre su columna: en
-          una columna larga, al bajar se perdía de vista de qué toque eran las
-          tarjetas que se estaban mirando. */}
       <div className="cabeza">
         <div className="arriba">
           <span className="orden">{orden}</span>
