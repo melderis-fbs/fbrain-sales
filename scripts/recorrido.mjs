@@ -355,9 +355,40 @@ await paso('un lead en seguimiento entra solo al pipeline', async () => {
     return b.length > 0 && b.every((x) => Math.abs(x.getBoundingClientRect().top - y) < 2)
   })
   comprobar(enUnRenglon, 'y entran los doce en un solo renglón, sin correr nada de costado')
-  comprobar(await p.evaluate(() =>
-              document.documentElement.scrollWidth <= document.documentElement.clientWidth),
-            'la página no se corre de costado: la única barra es la vertical')
+  /**
+   * La lista no se aprieta: la pantalla se corre.
+   *
+   * En 1366 las seis columnas se comprimían hasta que «Registrar» se caía a
+   * un segundo renglón y cada fila medía el doble. Apretar la información
+   * para que entre se lee mal siempre; dejar que no entre se arregla
+   * corriendo la pantalla. La barra es la del navegador, abajo de la
+   * ventana: está siempre en el mismo lugar, y no al pie de una lista de
+   * cinco mil píxeles como la del tablero viejo.
+   */
+  const anchos = await p.evaluate(() => {
+    const t = document.querySelector('.contenido table.seguimientos')
+    const padre = t?.parentElement
+    return {
+      minimo: parseInt(getComputedStyle(t).minWidth, 10),
+      ancho: t?.getBoundingClientRect().width ?? 0,
+      // Nadie se queda con la barra por dentro: la lleva la página, y por eso
+      // queda abajo de la ventana en vez de al pie de la lista.
+      recortaAlguien: padre ? getComputedStyle(padre).overflowX !== 'visible' : true,
+      filaEnUnRenglon: (() => {
+        const f = [...document.querySelectorAll('.contenido table.seguimientos tbody tr')].slice(0, 5)
+        return f.length > 0 && f.every((x) => x.getBoundingClientRect().height < 80)
+      })(),
+      lateralQuieta: getComputedStyle(document.querySelector('.lateral')).position,
+    }
+  })
+  comprobar(anchos.minimo >= 1000 && anchos.ancho >= anchos.minimo,
+            'la lista tiene un ancho mínimo y no se aprieta')
+  comprobar(anchos.filaEnUnRenglon,
+            'y cada fila entra en un renglón: «Registrar» no se cae abajo')
+  comprobar(anchos.recortaAlguien === false,
+            'y ningún recuadro de adentro se queda con la barra: la lleva la página')
+  comprobar(anchos.lateralQuieta === 'sticky',
+            'el menú se queda quieto cuando la pantalla se corre de costado')
 
   const paso1 = () => p.locator('.contenido .paso-barra').nth(0)
   comprobar((await paso1().locator('.cuantos').textContent()) === '1',

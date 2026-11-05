@@ -85,6 +85,15 @@ h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; color: var(--negro); }
   padding: 0 14px 14px;
   display: flex;
   flex-direction: column;
+  /* Se queda quieto cuando la pantalla se corre de costado.
+   *
+   * Sin esto, correr la pantalla a la derecha se lleva puesto el menú y la
+   * aplicación parece rota: lo que se busca al correrla es ver una columna
+   * más, no perder de dónde se vino. Sólo horizontal —`left` y no `top`— así
+   * que hacia abajo sigue acompañando a la página como siempre. */
+  position: sticky;
+  left: 0;
+  z-index: 20;
 }
 
 /* El sello de la marca: cuadrado negro con la inicial, como un favicon grande.
@@ -415,6 +424,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .paso-barra.activo .tarde { color: #ff9b9b; }
 
 /* ── La lista de trabajo ────────────────────────────────────────────────── */
+/* La lista tiene un ancho mínimo y la pantalla se corre de costado.
+ *
+ * Sin esto, en una pantalla de 1366 las seis columnas se aprietan hasta que
+ * el botón «Registrar» se cae a un segundo renglón y cada fila mide el doble.
+ * Apretar la información para que entre es peor que dejar que no entre: lo
+ * primero se lee mal siempre, lo segundo se arregla corriendo la pantalla.
+ *
+ * La barra es la del navegador, abajo de la ventana: está siempre en el mismo
+ * lugar y se llega a ella desde cualquier punto de la lista, que es lo que no
+ * pasaba cuando la barra vivía al pie de un bloque de cinco mil píxeles. */
+.seguimientos { min-width: 1080px; }
 .seguimientos td { vertical-align: top; padding-top: 9px; padding-bottom: 9px; }
 .seguimientos tr.elegido td { background: var(--gris-fondo); }
 .seguimientos .tilde { width: 30px; padding-right: 0; }

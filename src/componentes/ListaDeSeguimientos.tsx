@@ -62,7 +62,12 @@ export function ListaDeSeguimientos({ fichas, hoy }: { fichas: Ficha[]; hoy: str
   return (
     <>
       <Aviso r={hecho} />
-      <div className="tabla-scroll">
+      {/* Sin `tabla-scroll` a propósito: si el que recorta fuera este `div`,
+          su barra quedaría al pie de una lista de cinco mil píxeles y habría
+          que bajar hasta el final para usarla. Dejándolo pasar, el que recorta
+          es la página y la barra es la del navegador, abajo de la ventana,
+          siempre en el mismo lugar. */}
+      <div>
         <table className="seguimientos">
           <thead>
             <tr>
