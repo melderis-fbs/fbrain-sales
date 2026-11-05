@@ -77,7 +77,7 @@ export async function sacarDelPipelineAccion(datos: FormData): Promise<void> {
   const leadId = Number(datos.get('leadId'))
   await exigirAccesoAlLead(leadId, alcanceDe(usuario))
 
-  await salirDelPipeline(leadId)
+  await salirDelPipeline(leadId, 'a_mano')
   refrescar(leadId)
 }
 

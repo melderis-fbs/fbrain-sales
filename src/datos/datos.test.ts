@@ -844,6 +844,61 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect((await leads.verLead(id))?.resultado).toBe('perdida')
   })
 
+  it('la cadencia TERMINA: el último toque saca el lead, no lo deja girando', async () => {
+    /**
+     * `toqueSiguiente` devuelve null después del último toque y su comentario
+     * dice por qué: «no dejarlo girando para siempre». Quien lo usaba hacía
+     * `siguiente ?? actual`, así que el lead se quedaba clavado en el toque 12
+     * con la cuenta reiniciada desde hoy: a los diez días volvía a estar
+     * vencido, y así sin fin. Vencidos que nadie podía bajar porque no quedaba
+     * toque que registrar.
+     */
+    const id = await alta('María')
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+
+    const cadencia = await seguimientos.toques()
+    const ultimo = Math.max(...cadencia.map((t) => t.orden))
+
+    let visto: number | null = 1
+    for (let n = 0; n < cadencia.length; n++) {
+      const r = await seguimientos.registrarInteraccion(id, 'no_contesto', null, usuarioId)
+      if (r.salio) { visto = null; break }
+      visto = r.toque
+    }
+
+    // Recorrió los doce y salió: no quedó ni activo ni en el último toque.
+    expect(visto).toBeNull()
+    const estado = await seguimientos.seguimientoDelLead(id, '2026-09-30')
+    expect(estado?.situacion).toBe('fuera')
+
+    const fila = await db.fila<{ motivo_salida: string; toque_actual: number }>(
+      'select motivo_salida, toque_actual from seguimiento_estado where lead_id = $1', [id])
+    expect(fila?.motivo_salida).toBe('cadencia_agotada')
+    expect(fila?.toque_actual).toBe(ultimo)
+
+    // Y deja de contarse como vencido: es la mitad del problema.
+    const p = await seguimientos.pipelineDeSeguimientos(TODO, '2026-12-31')
+    expect(p.columnas.flatMap((c) => c.tarjetas).some((t) => t.leadId === id)).toBe(false)
+    expect(p.fuera.find((t) => t.leadId === id)?.motivoSalida).toBe('cadencia_agotada')
+  })
+
+  it('cada salida del pipeline dice por qué, y la tarjeta trae sus últimos toques', async () => {
+    const id = await alta('María')
+    await resultado.cargarResultado(id, { estado: 'asistio', resultado: 'seguimiento' }, usuarioId)
+    await seguimientos.registrarInteraccion(id, 'no_contesto', 'Buzón', usuarioId)
+    await seguimientos.registrarInteraccion(id, 'contesto', 'Pidió precios', usuarioId)
+
+    const enCadencia = (await seguimientos.pipelineDeSeguimientos(TODO, '2026-09-20'))
+      .columnas.flatMap((c) => c.tarjetas).find((t) => t.leadId === id)
+    expect(enCadencia?.ultimos.map((u) => u.estado)).toEqual(['contesto', 'no_contesto'])
+    expect(enCadencia?.ultimos[0]?.nota).toBe('Pidió precios')
+
+    await seguimientos.registrarInteraccion(id, 'agendo', null, usuarioId)
+    const afuera = (await seguimientos.pipelineDeSeguimientos(TODO, '2026-09-20'))
+      .fuera.find((t) => t.leadId === id)
+    expect(afuera?.motivoSalida).toBe('agendo')
+  })
+
   it('el lead quality no puntúa cero lo que no se preguntó', async () => {
     const id = await alta('María')
     const pocas = await calificacion.guardarCalificacion(id, { capacidad_inversion: 'si' }, usuarioId)

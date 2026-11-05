@@ -5,7 +5,7 @@ import { oNulo } from '@/lib/texto'
 import { condicionDeAlcance, type Alcance } from '@/lib/permisos'
 import { anotar } from './cambios'
 import { comoViene, fechaDelToque, toqueSiguiente, type Toque, type Urgencia } from '@/motor/toques'
-import { sacaDelPipeline, type EstadoToque, type Situacion } from '@/dominio/seguimientos'
+import { sacaDelPipeline, type EstadoToque, type MotivoDeSalida, type Situacion } from '@/dominio/seguimientos'
 import type { NivelDeCalidad } from '@/dominio/calidad'
 
 /**
@@ -47,17 +47,21 @@ export async function entrarAlPipeline(leadId: number, cx?: PoolClient): Promise
         set situacion = case when seguimiento_estado.situacion = 'fuera' then 'activo'
                              else seguimiento_estado.situacion end,
             salio_en = null,
+            motivo_salida = null,
             actualizado_en = now()`,
     [leadId], { esperadas: 1, cliente: cx },
   )
 }
 
-export async function salirDelPipeline(leadId: number, cx?: PoolClient): Promise<void> {
+export async function salirDelPipeline(
+  leadId: number, motivo: MotivoDeSalida = 'resultado', cx?: PoolClient,
+): Promise<void> {
   await escribir(
     `update seguimiento_estado
-        set situacion = 'fuera', salio_en = current_date, actualizado_en = now()
+        set situacion = 'fuera', salio_en = current_date,
+            motivo_salida = $2, actualizado_en = now()
       where lead_id = $1 and situacion <> 'fuera'`,
-    [leadId], { esperadas: 'cualquiera', cliente: cx },
+    [leadId, motivo], { esperadas: 'cualquiera', cliente: cx },
   )
 }
 
@@ -83,9 +87,25 @@ export async function registrarInteraccion(
 
   const cadencia = await toques()
   const siguiente = toqueSiguiente(cadencia, actual.toque_actual)
-  // «No interesado» lo saca; «agendó» también, porque vuelve a estar en agenda
-  // y perseguirlo en dos lados es perseguirlo mal.
-  const salio = sacaDelPipeline(estado) || estado === 'agendo'
+  /**
+   * Por qué sale, si sale.
+   *
+   * «No interesado» lo saca; «agendó» también, porque vuelve a estar en agenda
+   * y perseguirlo en dos lados es perseguirlo mal. Y el tercero es el que
+   * faltaba: cuando no hay toque siguiente, la cadencia se terminó.
+   *
+   * Antes eso se resolvía con `siguiente ?? actual` y el lead se quedaba
+   * clavado en el último toque con la cuenta reiniciada desde hoy: a los diez
+   * días volvía a estar vencido, y así para siempre. Vencidos que nadie podía
+   * bajar porque no quedaba toque que registrar. La cadencia tiene que
+   * terminar y devolver el lead a una decisión.
+   */
+  const motivo: MotivoDeSalida | null =
+    sacaDelPipeline(estado) ? 'no_interesado'
+    : estado === 'agendo' ? 'agendo'
+    : siguiente === null ? 'cadencia_agotada'
+    : null
+  const salio = motivo !== null
 
   await enTransaccion(async (cx) => {
     await escribir(
@@ -98,9 +118,10 @@ export async function registrarInteraccion(
     if (salio) {
       await escribir(
         `update seguimiento_estado
-            set situacion = 'fuera', salio_en = current_date, actualizado_en = now()
+            set situacion = 'fuera', salio_en = current_date,
+                motivo_salida = $2, actualizado_en = now()
           where lead_id = $1`,
-        [leadId], { esperadas: 1, cliente: cx },
+        [leadId, motivo], { esperadas: 1, cliente: cx },
       )
       // Marcar «no interesado» cierra el lead: si quedara en seguimiento,
       // seguiría contando como oportunidad abierta en el embudo.
@@ -118,7 +139,7 @@ export async function registrarInteraccion(
         `update seguimiento_estado
             set toque_actual = $1, desde = current_date, actualizado_en = now()
           where lead_id = $2`,
-        [siguiente ?? actual.toque_actual, leadId], { esperadas: 1, cliente: cx },
+        [siguiente, leadId], { esperadas: 1, cliente: cx },
       )
     }
 
@@ -143,7 +164,8 @@ export async function moverAToque(leadId: number, toque: number, usuarioId: numb
     await escribir(
       `update seguimiento_estado
           set toque_actual = $1, desde = current_date, situacion = 'activo',
-              fecha_larga = null, salio_en = null, actualizado_en = now()
+              fecha_larga = null, salio_en = null, motivo_salida = null,
+              actualizado_en = now()
         where lead_id = $2`,
       [toque, leadId], { esperadas: 1, cliente: cx },
     )
@@ -175,7 +197,7 @@ export async function ponerSeguimientoLargo(
        from leads l where l.id = $1
      on conflict (lead_id) do update
         set situacion = 'largo', fecha_larga = excluded.fecha_larga,
-            salio_en = null, actualizado_en = now()`,
+            salio_en = null, motivo_salida = null, actualizado_en = now()`,
     [leadId, fecha], { esperadas: 1, cliente: cx },
   )
   await escribir(
@@ -214,6 +236,17 @@ export type Tarjeta = {
   fechaLarga: string | null
   ingresoEn: string
   ultimoEstado: EstadoToque | null
+  /** Por qué salió, cuando ya no está en la cadencia. */
+  motivoSalida: MotivoDeSalida | null
+  /**
+   * Los últimos toques, del más nuevo al más viejo.
+   *
+   * Va en la tarjeta porque es el dato que decide qué hacer ahora: cuatro «no
+   * contestó» seguidos y un «sigue interesado» son dos leads distintos, y
+   * hasta acá los dos se veían igual. Estaba en la ficha, a dos clics y una
+   * vuelta.
+   */
+  ultimos: { estado: EstadoToque; toque: number; nota: string | null; cuando: string }[]
   valorPotencial: number | null
   moneda: string
   calidadNivel: NivelDeCalidad | null
@@ -239,11 +272,19 @@ async function tarjetas(
 
   const f = await filas<Record<string, any>>(
     `select se.lead_id, se.toque_actual, se.desde, se.ingreso_en, se.situacion, se.fecha_larga,
+            se.motivo_salida,
             l.nombre, l.empresa, l.closer_id, l.valor_potencial, l.moneda,
             c.nombre as closer, q.nivel as calidad_nivel,
             (select count(*) from seguimiento_interacciones i where i.lead_id = se.lead_id) as interacciones,
             (select i2.estado from seguimiento_interacciones i2 where i2.lead_id = se.lead_id
-              order by i2.creado_en desc, i2.id desc limit 1) as ultimo_estado
+              order by i2.creado_en desc, i2.id desc limit 1) as ultimo_estado,
+            -- Los últimos cuatro toques, en una sola consulta. Traerlos por
+            -- tarjeta serían sesenta viajes a la base para dibujar una pantalla.
+            (select json_agg(x) from (
+               select i3.estado, i3.toque, i3.nota, i3.creado_en::date::text as cuando
+                 from seguimiento_interacciones i3
+                where i3.lead_id = se.lead_id
+                order by i3.creado_en desc, i3.id desc limit 4) x) as ultimos
        from seguimiento_estado se
        join leads l on l.id = se.lead_id and l.borrado_en is null
        left join closers c on c.id = l.closer_id
@@ -279,6 +320,8 @@ async function tarjetas(
       fecha: v.fecha, atraso: v.atraso, urgencia: v.urgencia,
       situacion: x.situacion, fechaLarga: x.fecha_larga, ingresoEn: x.ingreso_en,
       ultimoEstado: x.ultimo_estado ?? null,
+      motivoSalida: x.motivo_salida ?? null,
+      ultimos: x.ultimos ?? [],
       valorPotencial: x.valor_potencial === null ? null : Number(x.valor_potencial),
       moneda: x.moneda,
       calidadNivel: x.calidad_nivel ?? null,

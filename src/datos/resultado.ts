@@ -299,7 +299,7 @@ export async function cargarResultado(
                            anterior: null, nuevo: datos.volverEl })
       } else {
         // Sin cadencia y sin fecha: queda en seguimiento y nadie lo persigue.
-        await salirDelPipeline(leadId, cx)
+        await salirDelPipeline(leadId, 'resultado', cx)
       }
     }
     /**
@@ -313,7 +313,7 @@ export async function cargarResultado(
      */
     if (datos.resultado === 'venta' || datos.resultado === 'sena'
         || datos.resultado === 'perdida' || datos.resultado === 'no_calificado') {
-      await salirDelPipeline(leadId, cx)
+      await salirDelPipeline(leadId, 'resultado', cx)
     }
 
     // La reunión que se acaba de cargar queda como fila propia. Es lo que
@@ -391,7 +391,7 @@ export async function agendarSegundaLlamada(
     )
 
     // Con reunión agendada no hace falta perseguirlo con toques.
-    await salirDelPipeline(leadId, cx)
+    await salirDelPipeline(leadId, 'resultado', cx)
 
     await anotar([{
       entidad: 'lead', entidadId: leadId, campo: 'segunda llamada',

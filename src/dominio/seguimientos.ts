@@ -28,3 +28,24 @@ export const NOMBRE_DE_SITUACION: Record<Situacion, string> = {
   largo: 'Seguimiento largo',
   fuera: 'No interesado',
 }
+
+/**
+ * Por qué un lead salió del pipeline.
+ *
+ * Hasta acá «fuera del pipeline» era una bolsa: el que dijo que no, el que
+ * agendó y el que se cerró, todos en la misma lista y sin forma de
+ * distinguirlos. Y falta el cuarto, que era el que no existía: el que recorrió
+ * los doce toques sin decidirse.
+ */
+export const MOTIVOS_DE_SALIDA = [
+  'no_interesado', 'agendo', 'cadencia_agotada', 'resultado', 'a_mano',
+] as const
+export type MotivoDeSalida = (typeof MOTIVOS_DE_SALIDA)[number]
+
+export const NOMBRE_DE_SALIDA_SEG: Record<MotivoDeSalida, string> = {
+  no_interesado: 'Dijo que no',
+  agendo: 'Agendó',
+  cadencia_agotada: 'Se acabó la cadencia',
+  resultado: 'Se cargó su resultado',
+  a_mano: 'Lo sacaron a mano',
+}
