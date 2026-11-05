@@ -9,8 +9,7 @@ import {
   NOMBRE_DE_TOQUE, NOMBRE_DE_SITUACION, NOMBRE_DE_SALIDA_SEG, type MotivoDeSalida,
 } from '@/dominio/seguimientos'
 import { FiltroDeCloser } from '@/componentes/FiltroDeCloser'
-import { PasosDelPipeline } from '@/componentes/PasosDelPipeline'
-import { ListaDeSeguimientos } from '@/componentes/ListaDeSeguimientos'
+import { TableroDeSeguimientos } from '@/componentes/TableroDeSeguimientos'
 import { VolverAMeterlo } from '@/componentes/VolverAMeterlo'
 
 /**
@@ -60,32 +59,19 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   }))
   const largosEnElTablero = soloLoQueToca ? largos.filter(urge) : largos
 
-  // El paso elegido en la barra de arriba. `largo` son los que pidieron que
-  // los llamen en una fecha puntual, que no están en ningún toque.
-  const paso: number | 'largo' | null =
-    q.paso === 'largo' ? 'largo' : q.paso && Number.isInteger(Number(q.paso)) ? Number(q.paso) : null
-
   /**
-   * La lista, ordenada por lo que más atrasado está.
+   * Lo más atrasado primero, dentro de cada columna.
    *
-   * Es el orden del trabajo y no el del calendario: con treinta vencidos, lo
-   * primero que hay que ver es lo que lleva más tiempo sin que nadie lo
-   * toque. Antes el orden era alfabético dentro de cada columna, que no
-   * contesta ninguna pregunta.
+   * Es el orden del trabajo y no el del calendario: con treinta en una
+   * columna, lo primero que hay que ver es lo que lleva más tiempo sin que
+   * nadie lo toque. Antes era alfabético, que no contesta ninguna pregunta —y
+   * importa más ahora, porque de cada columna se ven las primeras seis.
    */
-  const enLaLista = [
-    ...(paso === 'largo' ? [] : enElTablero.filter((c) => paso === null || c.toque.orden === paso)
-      .flatMap((c) => c.tarjetas)),
-    ...(paso === null || paso === 'largo' ? largosEnElTablero : []),
-  ].sort((a, b) => b.atraso - a.atraso || a.nombre.localeCompare(b.nombre))
-
-  const nombreDelPaso = paso === 'largo'
-    ? 'Seguimiento largo'
-    : columnas.find((c) => c.toque.orden === paso)?.toque.nombre
-  const titulo = paso === null
-    ? (soloLoQueToca ? `Lo que toca (${enLaLista.length})` : `Todos (${enLaLista.length})`)
-    : `${paso === 'largo' ? '★' : paso} · ${nombreDelPaso} (${enLaLista.length})`
-  const ayuda = 'Lo más atrasado primero. Se pueden marcar varios y resolverlos de una vez.'
+  for (const c of enElTablero) {
+    c.tarjetas = [...c.tarjetas].sort((a, b) => b.atraso - a.atraso || a.nombre.localeCompare(b.nombre))
+  }
+  const largosOrdenados = [...largosEnElTablero]
+    .sort((a, b) => b.atraso - a.atraso || a.nombre.localeCompare(b.nombre))
 
   /**
    * Los que recorrieron los doce toques sin decidirse.
@@ -108,7 +94,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
   return (
     <div className="apilado">
       <Encabezado kicker="Seguimientos" titulo="Pipeline de 12 toques"
-                  bajada="Los doce pasos arriba, con cuántos hay en cada uno y cuántos están atrasados. Tocá uno para trabajar sólo ése." />
+                  bajada="Una columna por toque. El tablero se desliza de costado con la barra de abajo de la ventana; registrar el toque mueve la tarjeta a la columna siguiente." />
 
       <div className="rejilla g4">
         <Numero etiqueta="En cadencia" valor={resumen.enCadencia} />
@@ -147,32 +133,7 @@ export default async function Seguimientos({ searchParams }: { searchParams: Bus
           </Vacio>
         </Tarjeta>
       ) : (
-        <>
-          {/* Los doce pasos de un vistazo. El tablero en columnas no podía
-              mostrarlos: doce columnas legibles son tres mil píxeles. */}
-          <PasosDelPipeline
-            pasos={enElTablero.map((c) => ({
-              toque: c.toque,
-              cuantos: c.tarjetas.length,
-              tarde: c.tarjetas.filter((t) => t.urgencia === 'vencido').length,
-            }))}
-            largos={largosEnElTablero.length}
-            largosTarde={largosEnElTablero.filter(urge).length}
-            elegido={paso}
-            href={(x) => con({ paso: x === null ? undefined : String(x) })} />
-
-          <Tarjeta titulo={titulo} ayuda={ayuda}>
-            {enLaLista.length === 0 ? (
-              <Vacio>
-                {soloLoQueToca
-                  ? 'No hay nada vencido ni para hoy. La cadencia está al día.'
-                  : 'No hay nadie en este paso.'}
-              </Vacio>
-            ) : (
-              <ListaDeSeguimientos fichas={enLaLista} hoy={hoy} />
-            )}
-          </Tarjeta>
-        </>
+        <TableroDeSeguimientos columnas={enElTablero} largos={largosOrdenados} hoy={hoy} />
       )}
 
       {/* La cadencia se terminó y hay que decidir. Van aparte de «fuera del

@@ -85,14 +85,21 @@ h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; color: var(--negro); }
   padding: 0 14px 14px;
   display: flex;
   flex-direction: column;
-  /* Se queda quieto cuando la pantalla se corre de costado.
+  /* Fijo, para que el tablero se pueda correr de costado sin perderlo.
    *
-   * Sin esto, correr la pantalla a la derecha se lleva puesto el menú y la
-   * aplicación parece rota: lo que se busca al correrla es ver una columna
-   * más, no perder de dónde se vino. Sólo horizontal —`left` y no `top`— así
-   * que hacia abajo sigue acompañando a la página como siempre. */
-  position: sticky;
+   * `sticky` no alcanzaba: el marco mide lo que mide la ventana, así que el
+   * menú se pegaba sólo hasta ahí y al correr el tablero a la derecha
+   * desaparecía igual. Y lo que se busca al correr es ver una columna más, no
+   * perder de dónde se vino.
+   *
+   * Fijo también gana en lo de todos los días: el menú deja de irse hacia
+   * arriba en una lista larga. `overflow-y: auto` por si la ventana es más
+   * baja que los trece renglones. */
+  position: fixed;
+  top: 0;
   left: 0;
+  height: 100vh;
+  overflow-y: auto;
   z-index: 20;
 }
 
@@ -153,7 +160,7 @@ h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; color: var(--negro); }
 }
 .buscador input:focus { background: var(--blanco); border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-suave); }
 
-.contenido { flex: 1; padding: 22px 26px 60px; max-width: 1500px; min-width: 0; }
+.contenido { flex: 1; padding: 22px 26px 60px; max-width: 1500px; min-width: 0; margin-left: 260px; }
 
 /* ── Piezas ─────────────────────────────────────────────────────────────── */
 
@@ -376,84 +383,94 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .ficha .acciones select { font-size: 12px; padding: 5px 7px; flex: 1; min-width: 0; }
 .ficha .acciones button { padding: 5px 11px; font-size: 12px; }
 
-/* ── Los doce pasos, de un vistazo ──────────────────────────────────────── */
-/* Antes esto era un tablero de trece columnas. No podía mostrar los pasos:
- * doce columnas legibles son tres mil píxeles, así que o se cortaban a la
- * derecha o envolvían en tres filas y había que recorrer la pantalla entera
- * para contestar la única pregunta que el pipeline existe para contestar,
- * que es dónde se junta la gente. Acá entran los doce en un renglón. */
-.pasos { display: flex; gap: 4px; align-items: stretch; }
-.paso-barra {
-  flex: 1 1 0; min-width: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 8px 4px 7px; border-radius: var(--radio);
-  background: var(--gris-fondo); border: 1px solid transparent;
-  text-decoration: none; color: inherit;
-}
-.paso-barra:hover { border-color: var(--borde); text-decoration: none; }
-.paso-barra.activo { background: var(--negro); border-color: var(--negro); }
-.paso-barra.vacio { background: transparent; border: 1px dashed var(--borde); }
-.paso-barra .orden {
-  font-size: 10px; font-weight: 700; color: var(--gris-claro);
-  font-variant-numeric: tabular-nums; line-height: 1;
-}
-/* La altura de la barrita es la proporción, no el número: el amontonamiento
- * se ve antes de leer ninguna cifra. */
-.paso-barra .pila {
-  width: 100%; height: 34px; display: flex; align-items: flex-end;
-  background: var(--borde-suave); border-radius: 3px; overflow: hidden;
-}
-.paso-barra .pila .relleno { width: 100%; background: var(--gris); border-radius: 3px; min-height: 2px; }
-.paso-barra .cuantos {
-  font-size: 15px; font-weight: 700; color: var(--negro); line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-.paso-barra .tarde {
-  font-size: 10.5px; font-weight: 700; color: var(--rojo); line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.paso-barra .tarde.vacia { color: var(--borde); }
-.paso-barra .nombre {
-  font-size: 9.5px; line-height: 1.15; color: var(--gris); text-align: center;
-  max-height: 2.3em; overflow: hidden;
-}
-.paso-barra.activo .orden, .paso-barra.activo .nombre { color: rgba(255,255,255,.72); }
-.paso-barra.activo .cuantos { color: #fff; }
-.paso-barra.activo .pila { background: rgba(255,255,255,.18); }
-.paso-barra.activo .pila .relleno { background: rgba(255,255,255,.62); }
-.paso-barra.activo .tarde { color: #ff9b9b; }
-
-/* ── La lista de trabajo ────────────────────────────────────────────────── */
-/* La lista tiene un ancho mínimo y la pantalla se corre de costado.
+/* ── El tablero: una columna por toque, y se desliza ────────────────────── */
+/*
+ * Las doce columnas no entran en una pantalla y no tienen que entrar.
+ * Apretarlas hasta que entren las vuelve ilegibles; resumirlas en una barra
+ * de bloquecitos deja de ser un tablero. Lo que tiene que estar bien es CÓMO
+ * se recorre.
  *
- * Sin esto, en una pantalla de 1366 las seis columnas se aprietan hasta que
- * el botón «Registrar» se cae a un segundo renglón y cada fila mide el doble.
- * Apretar la información para que entre es peor que dejar que no entre: lo
- * primero se lee mal siempre, lo segundo se arregla corriendo la pantalla.
+ * Por eso acá NO hay `overflow-x`. Cuando el tablero se quedaba con su propia
+ * barra, esa barra caía al pie de la fila de columnas: con un toque de
+ * treinta leads son cinco mil píxeles hacia abajo, así que para correrlo
+ * había que bajar hasta el fondo y al llegar ya no se veía de qué columna era
+ * cada tarjeta. Dos barras peleando.
  *
- * La barra es la del navegador, abajo de la ventana: está siempre en el mismo
- * lugar y se llega a ella desde cualquier punto de la lista, que es lo que no
- * pasaba cuando la barra vivía al pie de un bloque de cinco mil píxeles. */
-.seguimientos { min-width: 1080px; }
-.seguimientos td { vertical-align: top; padding-top: 9px; padding-bottom: 9px; }
-.seguimientos tr.elegido td { background: var(--gris-fondo); }
-.seguimientos .tilde { width: 30px; padding-right: 0; }
-.seguimientos .tilde input { width: 15px; height: 15px; margin: 2px 0 0; cursor: pointer; }
-.seguimientos .meta { font-size: 11.5px; color: var(--gris); margin-top: 1px; }
-.seguimientos .meta.nota { font-style: italic; margin-top: 4px; }
-.seguimientos .cuando { white-space: nowrap; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.seguimientos .cuando .tarde { color: var(--rojo); font-weight: 650; }
-.seguimientos .cuando .hoy { color: var(--acento); font-weight: 650; }
-.seguimientos .cuando .espera { color: var(--gris); }
-.seguimientos .rastro { display: inline-flex; gap: 3px; flex-wrap: wrap; }
-.seguimientos .rastro .pildora { font-size: 10px; padding: 1px 6px; }
-.seguimientos form.carga { flex-wrap: wrap; }
-.seguimientos form.carga select { max-width: 132px; }
+ * Dejándolo pasar, la que corre es la página: su barra la dibuja el navegador
+ * abajo de la ventana, está siempre en el mismo lugar y se llega a ella desde
+ * cualquier punto del tablero. Y el menú se queda quieto, que es lo que hace
+ * que correr de costado no se sienta como que la pantalla se rompió.
+ */
+.tablero { display: flex; gap: 10px; align-items: flex-start; padding-bottom: 4px; }
 
-/* La barra de la tanda: pegada abajo, porque se eligen veinte recorriendo la
- * lista y tiene que seguir ahí cuando se termina de elegir. */
+.tablero .columna {
+  flex: 0 0 272px; display: flex; flex-direction: column; min-width: 0;
+  background: var(--gris-fondo); border-radius: var(--radio); padding: 9px 9px 10px;
+}
+.tablero .columna.vacia { background: transparent; border: 1px dashed var(--borde); }
+/* La cabeza se queda pegada arriba mientras se recorre su columna: en una
+ * columna larga, al bajar se perdía de vista de qué toque era lo que se
+ * estaba mirando. Sólo mientras su columna está en pantalla —`sticky` no sale
+ * de su caja— así que una columna de dos tarjetas no deja su título flotando. */
+.tablero .cabeza {
+  position: sticky; top: 0; z-index: 2;
+  margin: -9px -9px 9px; padding: 9px 9px 7px;
+  background: var(--gris-fondo);
+  border-radius: var(--radio) var(--radio) 0 0;
+}
+.tablero .columna.vacia .cabeza { background: var(--papel); }
+/* Dos renglones: el nombre del toque arriba con su número, y abajo el día y
+ * cuántos hay. En uno solo, un nombre largo se comía la cuenta. */
+.tablero .cabeza .arriba { display: flex; align-items: center; gap: 6px; }
+.tablero .cabeza .orden {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 99px; flex: none;
+  background: var(--blanco); border: 1px solid var(--borde);
+  font-size: 10.5px; font-weight: 700; color: var(--gris);
+}
+.tablero .cabeza .que {
+  flex: 1; min-width: 0; font-size: 12px; font-weight: 650; color: var(--negro);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tablero .cabeza .cuantos {
+  flex: none; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.tablero .cabeza .abajo {
+  margin-top: 2px; padding-left: 25px;
+  font-size: 10.5px; color: var(--gris); letter-spacing: .02em;
+}
+.tablero .cabeza .abajo .tarde { color: var(--rojo); font-weight: 650; }
+.tablero .cuerpo { display: flex; flex-direction: column; gap: 8px; }
+.tablero .ficha { padding: 10px 11px; box-shadow: none; }
+.tablero .ficha.elegida { border-color: var(--negro); box-shadow: inset 0 0 0 1px var(--negro); }
+.tablero .ficha .nombre { font-size: 13px; }
+.tablero .ficha .tilde { width: 14px; height: 14px; margin: 3px 0 0; flex: none; cursor: pointer; }
+.tablero .nadie { font-size: 11.5px; color: var(--gris-claro); padding: 2px 2px 4px; }
+
+/* Lo que pasó en los toques anteriores, que es lo que decide qué hacer ahora. */
+.tablero .rastro { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 7px; }
+.tablero .rastro .pildora { font-size: 9.5px; padding: 1px 5px; }
+.tablero .nota-toque {
+  font-size: 11px; color: var(--gris); font-style: italic; margin-top: 4px;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* El resto de la columna, plegado. Abierto se queda abierto: es un `details`
+ * del navegador, así que registrar un toque no lo cierra. */
+.tablero details.mas > summary {
+  cursor: pointer; list-style: none;
+  font-size: 11.5px; font-weight: 650; color: var(--gris);
+  background: var(--blanco); border: 1px solid var(--borde); border-radius: var(--radio);
+  padding: 7px 9px; text-align: center;
+}
+.tablero details.mas > summary::-webkit-details-marker { display: none; }
+.tablero details.mas > summary:hover { color: var(--negro); border-color: var(--gris-claro); }
+.tablero details.mas[open] > summary { color: var(--negro); }
+
+/* La barra de la tanda: pegada abajo, porque se marcan veinte recorriendo el
+ * tablero y tiene que seguir ahí cuando se termina de marcar. */
 .tanda-barra {
-  position: sticky; bottom: 0; z-index: 5; margin-top: 10px;
+  position: sticky; bottom: 0; left: 0; z-index: 5; margin-top: 10px;
   background: var(--blanco); border: 1px solid var(--borde); border-radius: var(--radio);
   padding: 10px 12px; box-shadow: 0 -6px 18px rgba(0,0,0,.07);
 }
@@ -485,10 +502,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 @media (max-width: 900px) {
   .marco { flex-direction: column; }
   .lateral {
+    position: static; height: auto; overflow-y: visible;
     width: 100%; flex: none; flex-direction: row; overflow-x: auto;
     padding: 8px; gap: 3px; align-items: center; border-right: none;
     border-bottom: 1px solid var(--borde);
   }
+  .contenido { margin-left: 0; }
   .lateral .marca, .lateral .pie, .lateral .buscador { display: none; }
   .lateral .entradas { flex-direction: row; gap: 3px; }
   .lateral a { white-space: nowrap; padding: 7px 10px; }
