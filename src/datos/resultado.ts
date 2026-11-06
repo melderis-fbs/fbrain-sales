@@ -1,5 +1,5 @@
 import 'server-only'
-import { escribir, escribirDevolviendo, fila, enTransaccion } from '@/lib/db'
+import { escribir, escribirDevolviendo, fila, filas, enTransaccion } from '@/lib/db'
 import { oNulo } from '@/lib/texto'
 import { anotar, type Cambio } from './cambios'
 import { entrarAlPipeline, salirDelPipeline, ponerSeguimientoLargo } from './seguimientos'
@@ -180,16 +180,25 @@ export async function cargarResultado(
         })
       }
 
-      // Si venía de una seña, la seña se convierte y su importe pasa a ser el
-      // primer pago de esta venta. Así el dinero se cuenta una vez: no dos, y
-      // no cero.
-      const abierta = await fila<{ id: number; importe: number; moneda: string; fecha: string }>(
+      /**
+       * Las señas se convierten y su importe pasa a ser pago de esta venta.
+       * Así el dinero se cuenta una vez: no dos, y no cero.
+       *
+       * TODAS las abiertas, no la primera. Decía `order by fecha limit 1`, y
+       * un lead puede tener más de una abierta —se cargan por ciclo, y el
+       * control de «no crear una segunda» también filtra por ciclo— así que
+       * al vender se convertía una y la otra quedaba abierta para siempre.
+       * En la pantalla eso es un lead contado como venta cerrada Y como seña
+       * pendiente, sin forma de sacarlo: no hay nada que apretar para cerrar
+       * una seña que el sistema cree que sigue viva.
+       */
+      const abiertas = await filas<{ id: number; importe: number; moneda: string; fecha: string }>(
         `select id, importe, moneda, fecha from senias
           where lead_id = $1 and estado = 'abierta' and borrado_en is null
-          order by fecha limit 1`,
+          order by fecha, id`,
         [leadId], cx,
       )
-      if (abierta) {
+      for (const abierta of abiertas) {
         await escribir(`update senias set estado = 'convertida', venta_id = $1 where id = $2`,
           [ventaId, abierta.id], { esperadas: 1, cliente: cx })
         await escribir(

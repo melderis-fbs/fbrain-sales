@@ -389,6 +389,18 @@ async function dinero(
     // después completó el pago, contado como venta Y como seña activa por los
     // mismos 2.000.
     condiciones.push(`m.estado = 'abierta'`)
+    /**
+     * Y ademas: si el LEAD ya esta vendido, su sena no esta pendiente.
+     *
+     * La fila deberia estar en 'convertida' —eso lo escribe quien carga la
+     * venta— pero el numero no puede depender de que eso haya salido bien. Un
+     * lead que quedo con una sena abierta por lo que sea se seguiria contando
+     * como plata por entrar, y no hay nada que apretar para arreglarlo: la
+     * pantalla no ofrece «cerrar una sena», porque el sistema cree que sigue
+     * viva. Cuando las dos columnas se contradicen manda el resultado del
+     * lead, que es lo que la gente mira y corrige.
+     */
+    condiciones.push(`l.resultado <> 'venta'`)
   }
   if (tabla === 'pagos') {
     condiciones.push(`m.estado = 'cobrado'`)
@@ -719,6 +731,65 @@ export type SenaAbierta = {
   saldo: number | null
   comprometida: string | null
   vencida: boolean
+}
+
+/**
+ * Las senas que el numero del periodo esta contando, una por una.
+ *
+ * Existe por la misma razon que la lista detras de «Cierres»: cuando un
+ * numero no coincide con lo que alguien tiene en la cabeza, discutirlo es
+ * imposible y lo unico que queda es «sigue sin actualizarse». Con los nombres
+ * a la vista la conversacion dura una pantalla: o falta un lead, o sobra uno,
+ * y en los dos casos se ve cual.
+ */
+export type SenaDelPeriodo = {
+  leadId: number
+  lead: string
+  closer: string | null
+  importe: number
+  moneda: string
+  fecha: string
+  saldo: number | null
+  comprometida: string | null
+}
+
+export async function senasDelPeriodo(
+  rango: Rango, alcance: Alcance, filtros: FiltrosDeMetricas = {},
+): Promise<SenaDelPeriodo[]> {
+  const valores: unknown[] = [rango.desde, rango.hasta]
+  const condiciones = [
+    's.borrado_en is null', 'l.borrado_en is null',
+    's.fecha between $1 and $2', "s.estado = 'abierta'", "l.resultado <> 'venta'",
+  ]
+
+  const alc = condicionDeAlcance(alcance, { closer: 'l.closer_id', setter: 'l.setter_id', creador: 'l.creado_por' }, valores.length + 1)
+  valores.push(...alc.parametros)
+  condiciones.push(alc.condicion)
+
+  for (const [campo, columna] of [
+    ['closerId', 'l.closer_id'], ['setterId', 'l.setter_id'],
+    ['fuenteId', 'l.fuente_id'], ['funnelId', 'l.funnel_id'],
+  ] as const) {
+    const v = filtros[campo]
+    if (v !== undefined) { valores.push(v); condiciones.push(`${columna} = $${valores.length}`) }
+  }
+
+  const f = await filas<Record<string, any>>(
+    `select l.id, l.nombre, c.nombre as closer,
+            s.importe, s.moneda, s.fecha, s.saldo_pendiente, s.fecha_comprometida
+       from senias s
+       join leads l on l.id = s.lead_id
+       left join closers c on c.id = l.closer_id
+      where ${condiciones.join(' and ')}
+      order by s.fecha desc, l.nombre`,
+    valores,
+  )
+  return f.map((x) => ({
+    leadId: x.id, lead: x.nombre, closer: x.closer,
+    importe: Number(x.importe), moneda: x.moneda, fecha: x.fecha,
+    saldo: x.saldo_pendiente === null ? null : Number(x.saldo_pendiente),
+    comprometida: x.fecha_comprometida,
+  }))
 }
 
 export async function senasAbiertas(alcance: Alcance, hoy: string): Promise<SenaAbierta[]> {

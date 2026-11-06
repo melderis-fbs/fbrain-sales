@@ -371,6 +371,92 @@ siHayBase('la operación comercial, contra una base de verdad', () => {
     expect(kevin?.senas).toBe(0)
   })
 
+  it('al vender se cierran TODAS las señas abiertas, no sólo la primera', async () => {
+    /**
+     * El reporte: «la venta se computa y el lead pasa a venta bien, pero en
+     * el tracker le sigue computando la seña».
+     *
+     * Un lead puede quedar con más de una seña abierta: se guardan por ciclo
+     * y el control de «no crear una segunda» también filtra por ciclo. Al
+     * vender se convertía `order by fecha limit 1` —una sola— y la otra
+     * quedaba abierta para siempre. En la pantalla eso es un lead contado
+     * como cierre Y como seña pendiente, y no hay nada que apretar para
+     * sacarlo: la aplicación no ofrece «cerrar una seña» porque cree que
+     * sigue viva.
+     */
+    const id = await leads.crearLead(
+      { nombre: 'Dos señas', closerId: closerKevin, fechaSesion: '2026-09-03' }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 500, moneda: 'USD', fecha: '2026-09-04' },
+    }, usuarioId)
+    // La segunda entra con otro ciclo, que es como aparecen en la práctica.
+    await db.escribir(
+      `insert into senias (lead_id, ciclo, importe, moneda, fecha, creado_por)
+       values ($1, 2, 300, 'USD', '2026-09-09', $2)`, [id, usuarioId], { esperadas: 1 })
+
+    const antes = (await metricas.metricas(rango, TODO)).medidas
+    expect(antes.senas).toBe(2)
+    expect(antes.senasImporte).toBe(800)
+
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 4000, moneda: 'USD', fecha: '2026-09-15' },
+    }, usuarioId)
+
+    const abiertas = await db.filas<{ estado: string }>(
+      'select estado from senias where lead_id = $1', [id])
+    expect(abiertas.every((x) => x.estado === 'convertida')).toBe(true)
+
+    const despues = (await metricas.metricas(rango, TODO)).medidas
+    expect(despues.senas).toBe(0)
+    expect(despues.senasImporte).toBe(0)
+    // Las dos entraron al cash una vez cada una, no dos ni ninguna.
+    expect(despues.cashCollected).toBe(800)
+    expect(await metricas.senasDelPeriodo(rango, TODO)).toEqual([])
+  })
+
+  it('una seña de un lead ya vendido no se cuenta como pendiente, diga lo que diga su fila', async () => {
+    // Cinturón además del tirante: el estado de la seña lo escribe quien
+    // carga la venta, y el número no puede depender de que eso haya salido
+    // bien. Si las dos columnas se contradicen, manda el resultado del lead.
+    const id = await leads.crearLead(
+      { nombre: 'Fila sucia de seña', closerId: closerKevin, fechaSesion: '2026-09-03' }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 700, moneda: 'USD', fecha: '2026-09-05' },
+    }, usuarioId)
+    await resultado.cargarResultado(id, {
+      resultado: 'venta', venta: { importe: 2000, moneda: 'USD', fecha: '2026-09-12' },
+    }, usuarioId)
+
+    // A mano, como si la conversión no hubiera corrido nunca.
+    await db.escribir(
+      `update senias set estado = 'abierta', venta_id = null where lead_id = $1`,
+      [id], { esperadas: 1 })
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    expect(m.senas).toBe(0)
+    expect(m.senasImporte).toBe(0)
+    expect((await metricas.senasDelPeriodo(rango, TODO)).some((x) => x.leadId === id)).toBe(false)
+  })
+
+  it('la lista de señas del período dice exactamente lo que cuenta el número', async () => {
+    const id = await leads.crearLead(
+      { nombre: 'Guillermina', closerId: closerKevin, fechaSesion: '2026-09-03' }, usuarioId)
+    await resultado.cargarResultado(id, {
+      estado: 'asistio', resultado: 'sena',
+      sena: { importe: 900, moneda: 'USD', fecha: '2026-09-06',
+              saldoPendiente: 2100, fechaComprometida: '2026-09-30' },
+    }, usuarioId)
+
+    const m = (await metricas.metricas(rango, TODO)).medidas
+    const lista = await metricas.senasDelPeriodo(rango, TODO)
+    expect(lista.length).toBe(m.senas)
+    expect(lista[0]).toMatchObject({
+      lead: 'Guillermina', importe: 900, saldo: 2100, comprometida: '2026-09-30',
+    })
+  })
+
   it('un cierre se cuenta en el mes en que se firmó, no en el de la llamada', async () => {
     // El reporte fue «a Kevin no le está tomando la fecha de cierre, le toma
     // la fecha de llamada». La llamada fue en agosto y la firma en

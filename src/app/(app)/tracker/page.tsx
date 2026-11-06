@@ -3,7 +3,7 @@ import { exigirUsuario } from '@/lib/auth'
 import { alcanceDe, puede } from '@/lib/permisos'
 import {
   metricas, apertura, porDia, sinCargar, sinFechaDeReunion, recorridoPorCloser, ventasDelPeriodo,
-  cierresEnOtroMes,
+  cierresEnOtroMes, senasDelPeriodo,
   DEFINICIONES,
 } from '@/datos/metricas'
 import { listarLeads } from '@/datos/leads'
@@ -64,7 +64,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
   const deHoy = { desde: hoy, hasta: hoy, etiqueta: 'hoy' }
 
   const [datos, leads, dias, porCloser, pendientes, sueltos, sinAgendar, toques, cats,
-         agendaDeHoy, hoyMetricas, recorrido, ventas, enOtroMes] = await Promise.all([
+         agendaDeHoy, hoyMetricas, recorrido, ventas, enOtroMes, senas] = await Promise.all([
     metricas(r, alcance, filtros, monedaBase),
     listarLeads(alcance, {
       desde: r.desde, hasta: r.hasta,
@@ -83,6 +83,7 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
     recorridoPorCloser(r, alcance, hoy, monedaBase),
     ventasDelPeriodo(r, alcance, filtros),
     cierresEnOtroMes(r, alcance, filtros),
+    senasDelPeriodo(r, alcance, filtros),
   ])
 
   const m = datos.medidas
@@ -212,7 +213,8 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
                 contra="de los cierres, en segunda llamada"
                 comoSeCalcula={DEFINICIONES.cierresEnSegunda!.formula} />
         <Numero etiqueta="Señas" valor={m.senas}
-                contra={verPlata ? `${plata(m.senasImporte, monedaBase)} comprometidos` : undefined} />
+                contra={<a href="#senas">ver cuáles →</a>}
+                comoSeCalcula={DEFINICIONES.senas!.formula} />
         <Numero etiqueta="Sin cargar" valor={m.pendientesDeCargar}
                 contra={m.pendientesDeCargar > 0 ? 'los números están incompletos' : 'todo al día'} />
         {verPlata ? (
@@ -243,6 +245,60 @@ export default async function Tracker({ searchParams }: { searchParams: Busqueda
           </Tarjeta>
         </div>
       ) : null}
+
+      {/* Las señas, con nombre y apellido.
+          «Sigue sin actualizarse» no se puede discutir contra un número
+          solo: o falta un lead o sobra uno, y hasta que no se ven los
+          nombres no hay forma de saber cuál. */}
+      <div id="senas">
+        <Tarjeta titulo={`Señas pendientes de ${r.etiqueta} (${senas.length})`}
+                 ayuda="Por fecha de la seña, y sólo las que siguen abiertas: cuando el lead se cierra, esa plata pasa a contarse como venta y sale de acá.">
+          {senas.length === 0 ? (
+            <Vacio>No hay ninguna seña pendiente con fecha en el período.</Vacio>
+          ) : (
+            <div className="tabla-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lead</th><th>Closer</th><th>Fecha de la seña</th>
+                    {verPlata ? <th className="num">Seña</th> : null}
+                    {verPlata ? <th className="num">Falta</th> : null}
+                    <th>Comprometida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {senas.map((x) => (
+                    <tr key={x.leadId}>
+                      <td>
+                        <Link href={`/leads/${x.leadId}?pestana=resultado`} style={{ fontWeight: 650 }}>
+                          {x.lead}
+                        </Link>
+                      </td>
+                      <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>{x.closer ?? '—'}</td>
+                      <td style={{ fontSize: 12.5 }}>{fechaCorta(x.fecha)}</td>
+                      {verPlata ? <td className="num">{plata(x.importe, x.moneda)}</td> : null}
+                      {verPlata ? (
+                        <td className="num" style={{ color: 'var(--gris)' }}>
+                          {x.saldo === null ? '—' : plata(x.saldo, x.moneda)}
+                        </td>
+                      ) : null}
+                      <td style={{ fontSize: 12.5, color: 'var(--gris)' }}>
+                        {x.comprometida ? fechaCorta(x.comprometida) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {verPlata ? (
+            <p className="ayuda" style={{ marginTop: 10, marginBottom: 0 }}>
+              Suman <strong>{plata(m.senasImporte, monedaBase)}</strong> comprometidos. No es
+              facturación ni cash: recién cuentan cuando la seña se convierte.
+            </p>
+          ) : null}
+        </Tarjeta>
+      </div>
 
       <Tarjeta titulo="Hoy"
                ayuda="La agenda del día, en orden. Lo que ya pasó y nadie cargó está primero, y se carga desde acá sin abrir la ficha.">
